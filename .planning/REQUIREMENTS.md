@@ -73,30 +73,30 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GUI-01 | Phase 1 | Pending |
-| GUI-02 | Phase 1 | Pending |
-| GUI-03 | Phase 1 | Pending |
-| GUI-04 | Phase 1 | Pending |
-| GUI-05 | Phase 1 | Pending |
-| GUI-06 | Phase 1 | Pending |
-| GUI-07 | Phase 1 | Pending |
-| RSLT-01 | Phase 2 | Pending |
-| RSLT-02 | Phase 2 | Pending |
-| RSLT-03 | Phase 2 | Pending |
-| RSLT-04 | Phase 2 | Pending |
-| SIM-01 | Phase 3 | Pending |
-| SIM-02 | Phase 3 | Pending |
-| SIM-03 | Phase 3 | Pending |
-| SIM-04 | Phase 3 | Pending |
-| MAT-01 | Phase 3 | Pending |
-| MAT-02 | Phase 3 | Pending |
-| MAT-03 | Phase 3 | Pending |
-| PLSH-01 | Phase 4 | Pending |
-| PLSH-02 | Phase 4 | Pending |
-| PLSH-03 | Phase 4 | Pending |
-| DIST-01 | Phase 5 | Pending |
-| DIST-02 | Phase 5 | Pending |
-| DIST-03 | Phase 5 | Pending |
+| GUI-01 | Phase 1 — Foundation | Pending |
+| GUI-02 | Phase 1 — Foundation | Pending |
+| GUI-03 | Phase 1 — Foundation | Pending |
+| GUI-04 | Phase 1 — Foundation | Pending |
+| GUI-05 | Phase 1 — Foundation | Pending |
+| GUI-06 | Phase 1 — Foundation | Pending |
+| GUI-07 | Phase 1 — Foundation | Pending |
+| RSLT-01 | Phase 2 — Results | Pending |
+| RSLT-02 | Phase 2 — Results | Pending |
+| RSLT-03 | Phase 2 — Results | Pending |
+| RSLT-04 | Phase 2 — Results | Pending |
+| SIM-01 | Phase 3 — Simulation Capabilities | Pending |
+| SIM-02 | Phase 3 — Simulation Capabilities | Pending |
+| SIM-03 | Phase 3 — Simulation Capabilities | Pending |
+| SIM-04 | Phase 3 — Simulation Capabilities | Pending |
+| MAT-01 | Phase 3 — Simulation Capabilities | Pending |
+| MAT-02 | Phase 3 — Simulation Capabilities | Pending |
+| MAT-03 | Phase 3 — Simulation Capabilities | Pending |
+| PLSH-01 | Phase 4 — Polish | Pending |
+| PLSH-02 | Phase 4 — Polish | Pending |
+| PLSH-03 | Phase 4 — Polish | Pending |
+| DIST-01 | Phase 5 — Distribution | Pending |
+| DIST-02 | Phase 5 — Distribution | Pending |
+| DIST-03 | Phase 5 — Distribution | Pending |
 
 **Coverage:**
 - v1 requirements: 24 total
@@ -105,4 +105,4 @@
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after initial definition*
+*Last updated: 2026-03-14 after roadmap creation*
