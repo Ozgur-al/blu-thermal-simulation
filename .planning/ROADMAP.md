@@ -30,7 +30,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Status bar always shows the current file path, a modified asterisk when unsaved changes exist, and the time of the last run
   4. All CLI capabilities (output directory, CSV export, solver mode selection) are reachable from the GUI without opening a terminal
   5. F5 triggers run, Escape cancels, Ctrl+S saves — all work from any focused widget
-**Plans**: TBD
+**Plans:** 4 plans
+- [ ] 01-01-PLAN.md -- Extract TableDataParser and PlotManager from MainWindow
+- [ ] 01-02-PLAN.md -- SimulationController, transient solver progress hooks, three-zone status bar
+- [ ] 01-03-PLAN.md -- Undo/redo, menus, keyboard shortcuts, dirty tracking, unsaved changes prompt
+- [ ] 01-04-PLAN.md -- Human verification checkpoint for all Phase 1 requirements
 
 ### Phase 2: Results
 **Goal**: Engineers can immediately see structured thermal metrics after a run, navigate hotspots on the map, export a PDF report for design review, and compare named result snapshots side-by-side
@@ -82,7 +86,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/4 | Planning complete | - |
 | 2. Results | 0/TBD | Not started | - |
 | 3. Simulation Capabilities | 0/TBD | Not started | - |
 | 4. Polish | 0/TBD | Not started | - |
