@@ -1,0 +1,178 @@
+{
+  "name": "Display Module - Uniform Backlight",
+  "width": 0.18,
+  "height": 0.1,
+  "materials": {
+    "Glass": {
+      "name": "Glass",
+      "k_in_plane": 1.05,
+      "k_through": 1.05,
+      "density": 2500.0,
+      "specific_heat": 840.0,
+      "emissivity": 0.92
+    },
+    "OCA": {
+      "name": "OCA",
+      "k_in_plane": 0.25,
+      "k_through": 0.25,
+      "density": 980.0,
+      "specific_heat": 1800.0,
+      "emissivity": 0.95
+    },
+    "PMMA": {
+      "name": "PMMA",
+      "k_in_plane": 0.2,
+      "k_through": 0.2,
+      "density": 1180.0,
+      "specific_heat": 1470.0,
+      "emissivity": 0.94
+    },
+    "FR4": {
+      "name": "FR4",
+      "k_in_plane": 0.35,
+      "k_through": 0.3,
+      "density": 1900.0,
+      "specific_heat": 1100.0,
+      "emissivity": 0.9
+    },
+    "Aluminum": {
+      "name": "Aluminum",
+      "k_in_plane": 205.0,
+      "k_through": 205.0,
+      "density": 2700.0,
+      "specific_heat": 897.0,
+      "emissivity": 0.1
+    },
+    "ThermalPad": {
+      "name": "ThermalPad",
+      "k_in_plane": 3.0,
+      "k_through": 3.0,
+      "density": 2200.0,
+      "specific_heat": 1200.0,
+      "emissivity": 0.9
+    }
+  },
+  "layers": [
+    {
+      "name": "BackCover",
+      "material": "Aluminum",
+      "thickness": 0.001,
+      "interface_resistance_to_next": 0.0003
+    },
+    {
+      "name": "GapFiller",
+      "material": "ThermalPad",
+      "thickness": 0.0008,
+      "interface_resistance_to_next": 0.0002
+    },
+    {
+      "name": "LED_Board",
+      "material": "FR4",
+      "thickness": 0.0014,
+      "interface_resistance_to_next": 0.0001
+    },
+    {
+      "name": "BacklightGuide",
+      "material": "PMMA",
+      "thickness": 0.001,
+      "interface_resistance_to_next": 0.0001
+    },
+    {
+      "name": "LCD_Cell",
+      "material": "Glass",
+      "thickness": 0.0007,
+      "interface_resistance_to_next": 0.00008
+    },
+    {
+      "name": "OpticalBond",
+      "material": "OCA",
+      "thickness": 0.00025,
+      "interface_resistance_to_next": 0.00005
+    },
+    {
+      "name": "CoverLens",
+      "material": "Glass",
+      "thickness": 0.0011
+    }
+  ],
+  "heat_sources": [
+    {
+      "name": "LED_Power",
+      "layer": "LED_Board",
+      "power_w": 12.0,
+      "shape": "rectangle",
+      "x": 0.09,
+      "y": 0.05,
+      "width": 0.16,
+      "height": 0.075
+    },
+    {
+      "name": "DriverIC_A",
+      "layer": "LED_Board",
+      "power_w": 1.1,
+      "shape": "rectangle",
+      "x": 0.03,
+      "y": 0.085,
+      "width": 0.012,
+      "height": 0.009
+    },
+    {
+      "name": "PMIC",
+      "layer": "LED_Board",
+      "power_w": 1.4,
+      "shape": "rectangle",
+      "x": 0.148,
+      "y": 0.02,
+      "width": 0.013,
+      "height": 0.01
+    }
+  ],
+  "boundaries": {
+    "top": {
+      "ambient_c": 35.0,
+      "convection_h": 9.0,
+      "include_radiation": true
+    },
+    "bottom": {
+      "ambient_c": 35.0,
+      "convection_h": 6.0,
+      "include_radiation": true
+    },
+    "side": {
+      "ambient_c": 35.0,
+      "convection_h": 3.0,
+      "include_radiation": false
+    }
+  },
+  "mesh": {
+    "nx": 30,
+    "ny": 18
+  },
+  "transient": {
+    "time_step_s": 0.2,
+    "total_time_s": 120.0,
+    "output_interval_s": 2.0,
+    "method": "implicit_euler"
+  },
+  "initial_temperature_c": 35.0,
+  "probes": [
+    {
+      "name": "Probe_LCD_Center",
+      "layer": "LCD_Cell",
+      "x": 0.09,
+      "y": 0.05
+    },
+    {
+      "name": "Probe_PMIC_Near",
+      "layer": "LED_Board",
+      "x": 0.148,
+      "y": 0.02
+    },
+    {
+      "name": "Probe_Cover_TopEdge",
+      "layer": "CoverLens",
+      "x": 0.09,
+      "y": 0.095
+    }
+  ]
+}

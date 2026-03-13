@@ -1,0 +1,108 @@
+{
+  "name": "Display Module - LED Array Backlight",
+  "width": 0.18,
+  "height": 0.1,
+  "materials": {
+    "Glass": {
+      "name": "Glass",
+      "k_in_plane": 1.05,
+      "k_through": 1.05,
+      "density": 2500.0,
+      "specific_heat": 840.0,
+      "emissivity": 0.92
+    },
+    "FR4": {
+      "name": "FR4",
+      "k_in_plane": 0.35,
+      "k_through": 0.3,
+      "density": 1900.0,
+      "specific_heat": 1100.0,
+      "emissivity": 0.9
+    },
+    "Aluminum": {
+      "name": "Aluminum",
+      "k_in_plane": 205.0,
+      "k_through": 205.0,
+      "density": 2700.0,
+      "specific_heat": 897.0,
+      "emissivity": 0.1
+    }
+  },
+  "layers": [
+    {
+      "name": "BackCover",
+      "material": "Aluminum",
+      "thickness": 0.001
+    },
+    {
+      "name": "LED_Board",
+      "material": "FR4",
+      "thickness": 0.0015,
+      "interface_resistance_to_next": 0.0001
+    },
+    {
+      "name": "DisplayCell",
+      "material": "Glass",
+      "thickness": 0.001
+    }
+  ],
+  "heat_sources": [],
+  "led_arrays": [
+    {
+      "name": "BL_Array_A",
+      "layer": "LED_Board",
+      "center_x": 0.09,
+      "center_y": 0.05,
+      "count_x": 8,
+      "count_y": 4,
+      "pitch_x": 0.018,
+      "pitch_y": 0.018,
+      "power_per_led_w": 0.22,
+      "footprint_shape": "rectangle",
+      "led_width": 0.006,
+      "led_height": 0.004
+    }
+  ],
+  "boundaries": {
+    "top": {
+      "ambient_c": 35.0,
+      "convection_h": 9.0,
+      "include_radiation": true
+    },
+    "bottom": {
+      "ambient_c": 35.0,
+      "convection_h": 6.0,
+      "include_radiation": true
+    },
+    "side": {
+      "ambient_c": 35.0,
+      "convection_h": 3.0,
+      "include_radiation": false
+    }
+  },
+  "mesh": {
+    "nx": 36,
+    "ny": 20
+  },
+  "transient": {
+    "time_step_s": 0.2,
+    "total_time_s": 160.0,
+    "output_interval_s": 2.0,
+    "method": "implicit_euler"
+  },
+  "initial_temperature_c": 35.0,
+  "probes": [
+    {
+      "name": "LCD_Center",
+      "layer": "DisplayCell",
+      "x": 0.09,
+      "y": 0.05
+    },
+    {
+      "name": "LED_Board_Center",
+      "layer": "LED_Board",
+      "x": 0.09,
+      "y": 0.05
+    }
+  ]
+}
