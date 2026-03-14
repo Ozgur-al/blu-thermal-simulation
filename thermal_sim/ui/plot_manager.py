@@ -39,6 +39,26 @@ class PlotManager:
         self.map_canvas = MplCanvas(width=5.0, height=4.0, dpi=100)
         self.profile_canvas = MplCanvas(width=5.0, height=4.0, dpi=100)
         self.history_canvas = MplCanvas(width=5.0, height=4.0, dpi=100)
+        self._batching: bool = False
+
+    # ------------------------------------------------------------------
+    # Batch rendering
+    # ------------------------------------------------------------------
+
+    def begin_batch(self) -> None:
+        """Suppress individual canvas.draw() calls until end_batch() is called."""
+        self._batching = True
+
+    def end_batch(self) -> None:
+        """Flush all three canvases via draw_idle() and exit batch mode.
+
+        draw_idle() schedules the repaint through the Qt event loop rather
+        than blocking the main thread synchronously.
+        """
+        self._batching = False
+        self.map_canvas.draw_idle()
+        self.profile_canvas.draw_idle()
+        self.history_canvas.draw_idle()
 
     # ------------------------------------------------------------------
     # Plot methods
@@ -87,7 +107,8 @@ class PlotManager:
             self.map_canvas._image = im
             self.map_canvas.figure.tight_layout()
 
-        self.map_canvas.draw()
+        if not self._batching:
+            self.map_canvas.draw()
 
     def plot_layer_profile(
         self,
@@ -123,7 +144,8 @@ class PlotManager:
         ax.set_title(f"Layer Profile @ x={x_m:.4f} m, y={y_m:.4f} m")
         ax.grid(True, alpha=0.3)
         self.profile_canvas.figure.tight_layout()
-        self.profile_canvas.draw()
+        if not self._batching:
+            self.profile_canvas.draw()
 
     def plot_probe_history(
         self,
@@ -155,7 +177,8 @@ class PlotManager:
             ax.grid(True, alpha=0.25)
             ax.legend(loc="best")
         self.history_canvas.figure.tight_layout()
-        self.history_canvas.draw()
+        if not self._batching:
+            self.history_canvas.draw()
 
     # ------------------------------------------------------------------
     # Summary helpers

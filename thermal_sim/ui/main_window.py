@@ -901,7 +901,8 @@ class MainWindow(QMainWindow):
                 hottest = top_n_hottest_cells(result, n=top_n)
                 final_map = result.temperatures_c
                 layer_names = result.layer_names
-                self._plot_manager.plot_probe_history(None, {})
+                probe_times = None
+                probe_hist: dict = {}
             else:
                 self.last_transient_result = result
                 self.last_steady_result = None
@@ -913,13 +914,17 @@ class MainWindow(QMainWindow):
                 hottest = top_n_hottest_cells_transient(result, n=top_n)
                 final_map = result.final_temperatures_c
                 layer_names = result.layer_names
-                self._plot_manager.plot_probe_history(result.times_s, self.last_probe_history)
+                probe_times = result.times_s
+                probe_hist = self.last_probe_history
         except Exception as exc:  # noqa: BLE001
             self._show_error("Post-processing failed", self._friendly_error(exc))
             return
 
+        self._plot_manager.begin_batch()
+        self._plot_manager.plot_probe_history(probe_times, probe_hist)
         self._plot_map(final_map, layer_names)
         self._plot_profile(final_map, layer_names)
+        self._plot_manager.end_batch()
         self._plot_manager.refresh_summary(
             self.stats_label, self.hot_table, self.summary_text,
             stats.min_c, stats.avg_c, stats.max_c, final_map, layer_names, hottest,
