@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -50,30 +52,9 @@ from thermal_sim.models.project import DisplayProject
 from thermal_sim.solvers.steady_state import SteadyStateResult, SteadyStateSolver
 from thermal_sim.solvers.transient import TransientResult, TransientSolver
 from thermal_sim.ui.plot_manager import PlotManager
+from thermal_sim.ui.simulation_controller import SimulationController
 from thermal_sim.ui.structure_preview import StructurePreviewDialog
 from thermal_sim.ui.table_data_parser import TableDataParser
-
-
-class _SimWorker(QObject):
-    """Runs solver in a background thread."""
-
-    finished = Signal(object)
-    error = Signal(str)
-
-    def __init__(self, project: DisplayProject, mode: str) -> None:
-        super().__init__()
-        self._project = project
-        self._mode = mode
-
-    def run(self) -> None:
-        try:
-            if self._mode == "steady":
-                result = SteadyStateSolver().solve(self._project)
-            else:
-                result = TransientSolver().solve(self._project)
-            self.finished.emit(result)
-        except Exception as exc:  # noqa: BLE001
-            self.error.emit(str(exc))
 
 
 class MainWindow(QMainWindow):
@@ -92,12 +73,13 @@ class MainWindow(QMainWindow):
         self.last_probe_values: dict[str, float] = {}
         self.last_probe_history: dict[str, np.ndarray] = {}
         self._preview_windows: list[StructurePreviewDialog] = []
-        self._sim_thread: QThread | None = None
-        self._sim_worker: _SimWorker | None = None
         self._sim_mode: str = "steady"
+        self._last_run_start: float = 0.0
         self._plot_manager = PlotManager()
+        self._sim_controller = SimulationController(self)
 
         self._build_ui()
+        self._connect_controller_signals()
         self._load_startup_project()
 
     def _build_ui(self) -> None:
@@ -120,7 +102,22 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 3)
 
-        self.statusBar().showMessage("Ready")
+        # Three-zone status bar -----------------------------------------------
+        # Left zone: current file path (or "No file")
+        # Center zone: solver state label + progress bar during transient runs
+        # Right zone: last run metrics (T_max, elapsed, mesh size)
+        sb = self.statusBar()
+        self._path_label = QLabel("No file")
+        self._solver_label = QLabel("Ready")
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setVisible(False)
+        self._progress_bar.setMaximumWidth(200)
+        self._progress_bar.setTextVisible(True)
+        self._run_info_label = QLabel("")
+        sb.addPermanentWidget(self._path_label, stretch=2)
+        sb.addPermanentWidget(self._solver_label, stretch=1)
+        sb.addPermanentWidget(self._progress_bar, stretch=1)
+        sb.addPermanentWidget(self._run_info_label, stretch=1)
 
         QShortcut(QKeySequence.StandardKey.Open, self, self._load_project_dialog)
         QShortcut(QKeySequence.StandardKey.Save, self, self._save_project_dialog)
@@ -399,7 +396,7 @@ class MainWindow(QMainWindow):
                 project = load_project(default_path)
                 self._populate_ui_from_project(project)
                 self.current_project_path = default_path
-                self.statusBar().showMessage(f"Loaded {default_path}")
+                self._update_path_label()
                 return
             except Exception:  # noqa: BLE001
                 pass
@@ -479,6 +476,34 @@ class MainWindow(QMainWindow):
         """Delegate to TableDataParser.validate_tables()."""
         return TableDataParser.validate_tables(self._tables_dict)
 
+    def _connect_controller_signals(self) -> None:
+        """Wire SimulationController signals to MainWindow slots."""
+        c = self._sim_controller
+        c.run_started.connect(self._on_run_started)
+        c.run_ended.connect(self._on_run_ended)
+        c.progress_updated.connect(self._on_progress)
+        c.run_finished.connect(self._on_sim_finished)
+        c.run_error.connect(self._on_sim_error)
+
+    def _on_run_started(self) -> None:
+        """Disable Run button and show progress bar when a simulation starts."""
+        self._run_btn.setEnabled(False)
+        self._run_btn.setText("Running\u2026")
+        self._progress_bar.setValue(0)
+        self._progress_bar.setVisible(True)
+        self._solver_label.setText("Running\u2026")
+
+    def _on_run_ended(self) -> None:
+        """Re-enable Run button and hide progress bar when a simulation ends."""
+        self._run_btn.setEnabled(True)
+        self._run_btn.setText("Run Simulation")
+        self._progress_bar.setVisible(False)
+
+    def _on_progress(self, percent: int, message: str) -> None:
+        """Update progress bar and center label from worker progress signal."""
+        self._progress_bar.setValue(percent)
+        self._solver_label.setText(message)
+
     def _run_simulation(self) -> None:
         errors = self._validate_project()
         if errors:
@@ -495,20 +520,12 @@ class MainWindow(QMainWindow):
         self._refresh_layer_choices(project)
         self._refresh_profile_choices(project)
         self._sim_mode = self.mode_combo.currentText()
-        self._set_running_state(True)
-
-        self._sim_thread = QThread()
-        self._sim_worker = _SimWorker(project, self._sim_mode)
-        self._sim_worker.moveToThread(self._sim_thread)
-        self._sim_thread.started.connect(self._sim_worker.run)
-        self._sim_worker.finished.connect(self._on_sim_finished)
-        self._sim_worker.error.connect(self._on_sim_error)
-        self._sim_worker.finished.connect(self._sim_thread.quit)
-        self._sim_worker.error.connect(self._sim_thread.quit)
-        self._sim_thread.finished.connect(lambda: self._set_running_state(False))
-        self._sim_thread.start()
+        self._last_run_start = time.monotonic()
+        self._sim_controller.start_run(project, self._sim_mode)
 
     def _on_sim_finished(self, result: object) -> None:
+        elapsed = time.monotonic() - self._last_run_start
+
         # Invalidate cached map image so next plot_temperature_map rebuilds for the new geometry.
         map_canvas = self._plot_manager.map_canvas
         map_canvas._image = None
@@ -553,16 +570,18 @@ class MainWindow(QMainWindow):
             stats.min_c, stats.avg_c, stats.max_c, final_map, layer_names, hottest,
         )
         self._plot_manager.fill_probe_table(self.probe_table, self.last_probe_values)
-        self.statusBar().showMessage(f"Simulation complete ({self._sim_mode}).")
+
+        # Update three-zone status bar with run metrics.
+        n_layers = len(layer_names)
+        self._solver_label.setText(f"Complete ({self._sim_mode})")
+        self._run_info_label.setText(
+            f"T_max: {stats.max_c:.1f} C | {elapsed:.1f}s"
+            f" | {project.mesh.nx}x{project.mesh.ny}x{n_layers}"
+        )
 
     def _on_sim_error(self, message: str) -> None:
+        self._solver_label.setText("Error")
         self._show_error("Simulation failed", message)
-
-    def _set_running_state(self, running: bool) -> None:
-        self._run_btn.setEnabled(not running)
-        self._run_btn.setText("Running\u2026" if running else "Run Simulation")
-        if running:
-            self.statusBar().showMessage("Running simulation\u2026")
 
     @staticmethod
     def _friendly_error(exc: Exception) -> str:
@@ -637,6 +656,13 @@ class MainWindow(QMainWindow):
     def _fill_probe_table(self, probe_values: dict[str, float]) -> None:
         self._plot_manager.fill_probe_table(self.probe_table, probe_values)
 
+    def _update_path_label(self) -> None:
+        """Update the left status bar zone with the current file path."""
+        if self.current_project_path is not None:
+            self._path_label.setText(str(self.current_project_path))
+        else:
+            self._path_label.setText("No file")
+
     def _load_project_dialog(self) -> None:
         path_str, _ = QFileDialog.getOpenFileName(self, "Open Project", str(Path.cwd()), "JSON (*.json)")
         if not path_str:
@@ -646,7 +672,7 @@ class MainWindow(QMainWindow):
             project = load_project(path)
             self._populate_ui_from_project(project)
             self.current_project_path = path
-            self.statusBar().showMessage(f"Loaded {path}")
+            self._update_path_label()
         except Exception as exc:  # noqa: BLE001
             self._show_error("Load failed", str(exc))
 
@@ -665,7 +691,7 @@ class MainWindow(QMainWindow):
             save_project(project, path)
             self.current_project_path = path
             self._update_window_title(project.name)
-            self.statusBar().showMessage(f"Saved {path}")
+            self._update_path_label()
         except Exception as exc:  # noqa: BLE001
             self._show_error("Save failed", str(exc))
 
@@ -681,7 +707,6 @@ class MainWindow(QMainWindow):
         window.destroyed.connect(lambda *_: self._on_preview_destroyed(window))
         self._preview_windows.append(window)
         window.show()
-        self.statusBar().showMessage("Structure preview opened.")
 
     def _on_preview_destroyed(self, window: StructurePreviewDialog) -> None:
         if window in self._preview_windows:
@@ -706,7 +731,7 @@ class MainWindow(QMainWindow):
                 dy=self.last_transient_result.dy,
                 output_path=path,
             )
-        self.statusBar().showMessage(f"Exported {path}")
+        self._solver_label.setText(f"Exported {path.name}")
 
     def _export_probe_csv_dialog(self) -> None:
         if self.last_steady_result is None and self.last_transient_result is None:
@@ -721,7 +746,7 @@ class MainWindow(QMainWindow):
         else:
             assert self.last_transient_result is not None
             export_probe_temperatures_vs_time(self.last_transient_result.times_s, self.last_probe_history, path)
-        self.statusBar().showMessage(f"Exported {path}")
+        self._solver_label.setText(f"Exported {path.name}")
 
     def _show_error(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)

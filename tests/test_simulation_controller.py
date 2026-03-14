@@ -57,13 +57,19 @@ def test_cancel_on_idle_controller_does_not_crash(qapp):
 
 
 def test_start_run_while_running_does_nothing(qapp):
-    """Calling start_run() a second time while a run is in progress is a no-op."""
-    from thermal_sim.ui.simulation_controller import SimulationController
+    """Calling start_run() a second time while a run is in progress is a no-op.
+
+    This test verifies the guard without spinning a real background thread,
+    by monkeypatching QThread.isRunning to simulate an active state.
+    """
+    from thermal_sim.ui.simulation_controller import SimulationController, _SimWorker
     from thermal_sim.models.boundary import BoundaryConditions, SurfaceBoundary
     from thermal_sim.models.heat_source import HeatSource
     from thermal_sim.models.layer import Layer
     from thermal_sim.models.material import Material
     from thermal_sim.models.project import DisplayProject, MeshConfig, TransientConfig
+    from PySide6.QtCore import QThread
+    from unittest.mock import MagicMock
 
     material = Material(
         name="M",
@@ -95,18 +101,19 @@ def test_start_run_while_running_does_nothing(qapp):
     )
 
     controller = SimulationController()
-    results = []
-    controller.run_finished.connect(lambda r: results.append(r))
 
-    # First start_run
-    controller.start_run(project, "steady")
+    # Simulate an already-running state by injecting a mock thread that
+    # reports isRunning() == True. This avoids spinning a real background thread.
+    fake_thread = MagicMock(spec=QThread)
+    fake_thread.isRunning.return_value = True
+    controller._thread = fake_thread
+    controller._worker = MagicMock(spec=_SimWorker)
+
     assert controller.is_running is True
 
-    # Second start_run while running — must not raise, must not start a second thread.
-    # We capture the thread reference before the call to verify it didn't change.
-    thread_before = controller._thread
-    controller.start_run(project, "steady")  # no-op
-    assert controller._thread is thread_before
+    # Second start_run must be a no-op: thread reference must not change.
+    controller.start_run(project, "steady")
+    assert controller._thread is fake_thread  # unchanged — no new thread created
 
 
 def test_worker_cancel_flag_set_by_cancel(qapp):
