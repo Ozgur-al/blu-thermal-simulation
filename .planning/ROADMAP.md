@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 4 plans
 - [x] 01-01-PLAN.md -- Extract TableDataParser and PlotManager from MainWindow
 - [x] 01-02-PLAN.md -- SimulationController, transient solver progress hooks, three-zone status bar
-- [ ] 01-03-PLAN.md -- Undo/redo, menus, keyboard shortcuts, dirty tracking, unsaved changes prompt
+- [x] 01-03-PLAN.md -- Undo/redo, menus, keyboard shortcuts, dirty tracking, unsaved changes prompt
 - [ ] 01-04-PLAN.md -- Human verification checkpoint for all Phase 1 requirements
 
 ### Phase 2: Results
@@ -90,7 +90,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/4 | In progress | - |
+| 1. Foundation | 3/4 | In progress | - |
 | 2. Results | 0/4 | Planning complete | - |
 | 3. Simulation Capabilities | 0/TBD | Not started | - |
 | 4. Polish | 0/TBD | Not started | - |

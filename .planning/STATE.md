@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 1 of 5 (Foundation)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-03-14 — Completed 01-02: SimulationController + three-zone status bar
+Last activity: 2026-03-14 — Completed 01-03: QUndoStack, menus, shortcuts, dirty tracking
 
-Progress: [██░░░░░░░░] 8%
+Progress: [███░░░░░░░] 12%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 10 min
+- Total plans completed: 3
+- Average duration: 8 min
 - Total execution time: 0.4 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation | 2 | 19 min | 10 min |
+| 01-foundation | 3 | 23 min | 8 min |
 
 **Recent Trend:**
-- Last 5 plans: 13m, 6m
+- Last 5 plans: 13m, 6m, 4m
 - Trend: fast
 
 *Updated after each plan completion*
@@ -54,6 +54,10 @@ Recent decisions affecting current work:
 - [01-02]: Progress capped at ~100 cross-thread signal emissions via progress_every = n_steps // 100
 - [01-02]: TransientSolver returns valid partial TransientResult on cancel rather than raising
 - [01-02]: Three-zone status bar uses addPermanentWidget (not showMessage) to preserve persistent solver state
+- [01-03]: _CellEditCommand captures pre-edit value via currentCellChanged (before edit) rather than cellPressed — more reliable
+- [01-03]: Run/Cancel are QActions in both menu and toolbar — single enabled-state source, no QPushButton duplication
+- [01-03]: _save_project() (Ctrl+S) saves silently to current path; _save_project_as_dialog() always shows dialog — VS Code behavior
+- [01-03]: _maybe_save_changes() is the single guard called from closeEvent, _new_project(), and _load_project_dialog()
 
 ### Pending Todos
 
@@ -67,5 +71,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 01-02-PLAN.md — SimulationController extracted; three-zone status bar built; 28 tests pass
+Stopped at: Completed 01-03-PLAN.md — QUndoStack wired to all tables; menus/toolbar/shortcuts built; dirty tracking + unsaved-changes prompt; 28 tests pass
 Resume file: None
