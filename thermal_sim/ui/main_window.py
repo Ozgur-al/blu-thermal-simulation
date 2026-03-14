@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -35,6 +36,8 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -71,10 +74,12 @@ from thermal_sim.solvers.transient import TransientResult, TransientSolver
 from thermal_sim.io.pdf_export import generate_pdf_report
 from thermal_sim.models.snapshot import ResultSnapshot
 from thermal_sim.ui.comparison_tab import ComparisonWidget
-from thermal_sim.ui.plot_manager import PlotManager
+from thermal_sim.ui.plot_manager import MplCanvas, PlotManager
 from thermal_sim.ui.results_tab import ResultsSummaryWidget
 from thermal_sim.ui.simulation_controller import SimulationController
 from thermal_sim.ui.structure_preview import StructurePreviewDialog
+from thermal_sim.ui.sweep_dialog import SweepDialog
+from thermal_sim.ui.sweep_results_widget import SweepResultsWidget
 from thermal_sim.ui.table_data_parser import TableDataParser
 
 
@@ -154,6 +159,9 @@ class MainWindow(QMainWindow):
 
         # Material source tracking: name -> "Built-in" | "User"
         self._material_source: dict[str, str] = {}
+
+        # Power profile breakpoints: source_row_index -> list[PowerBreakpoint]
+        self._source_profiles: dict[int, list] = {}
 
         # Persistent output directory
         settings = QSettings("ThermalSim", "ThermalSimulator")
@@ -268,6 +276,13 @@ class MainWindow(QMainWindow):
         export_csv_action = QAction("&Export CSV", self)
         export_csv_action.triggered.connect(self._export_csv_dialog)
         run_menu.addAction(export_csv_action)
+
+        run_menu.addSeparator()
+
+        sweep_action = QAction("&Parametric Sweep...", self)
+        sweep_action.setShortcut(QKeySequence("Ctrl+Shift+P"))
+        sweep_action.triggered.connect(self._open_sweep_dialog)
+        run_menu.addAction(sweep_action)
 
     def _build_toolbar(self) -> None:
         """Create the main toolbar with mode dropdown and run/cancel actions."""
@@ -436,10 +451,69 @@ class MainWindow(QMainWindow):
         return tab
 
     def _build_sources_tab(self) -> QWidget:
-        tab, self.sources_table = self._build_table_tab(
+        """Build the Heat Sources tab with main table + power profile sub-panel."""
+        tab = QWidget()
+        outer_layout = QVBoxLayout(tab)
+
+        # Main heat source table (same as before)
+        self.sources_table = TableDataParser._new_table(
             ["Name", "Layer", "Power [W]", "Shape", "x [m]", "y [m]", "width [m]", "height [m]", "radius [m]"]
         )
+        outer_layout.addWidget(self.sources_table)
+
+        # Standard Add / Remove buttons
+        btn_row = QHBoxLayout()
+        add_btn = QPushButton("Add")
+        add_btn.clicked.connect(lambda: self._add_table_row_undoable(self.sources_table))
+        rm_btn = QPushButton("Remove")
+        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, self.sources_table))
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(rm_btn)
+        btn_row.addStretch()
+        outer_layout.addLayout(btn_row)
+
+        # Power profile sub-panel (initially hidden)
+        self._profile_panel = QGroupBox("Power Profile (time-varying)")
+        profile_layout = QVBoxLayout(self._profile_panel)
+
+        self._time_varying_check = QCheckBox("Time-varying power")
+        self._time_varying_check.toggled.connect(self._on_time_varying_toggled)
+        profile_layout.addWidget(self._time_varying_check)
+
+        # Breakpoint table (Time [s], Power [W])
+        self._bp_table = QTableWidget(0, 2)
+        self._bp_table.setHorizontalHeaderLabels(["Time [s]", "Power [W]"])
+        self._bp_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._bp_table.verticalHeader().setVisible(False)
+        self._bp_table.setAlternatingRowColors(True)
+        self._bp_table.setMaximumHeight(140)
+        self._bp_table.cellChanged.connect(self._on_bp_table_changed)
+        profile_layout.addWidget(self._bp_table)
+
+        bp_btn_row = QHBoxLayout()
+        add_bp_btn = QPushButton("Add Breakpoint")
+        add_bp_btn.clicked.connect(self._add_breakpoint_row)
+        rm_bp_btn = QPushButton("Remove Breakpoint")
+        rm_bp_btn.clicked.connect(self._remove_breakpoint_row)
+        bp_btn_row.addWidget(add_bp_btn)
+        bp_btn_row.addWidget(rm_bp_btn)
+        bp_btn_row.addStretch()
+        profile_layout.addLayout(bp_btn_row)
+
+        # Preview plot canvas
+        self._profile_canvas = MplCanvas(width=4.0, height=2.2, dpi=90)
+        self._profile_canvas.setMaximumHeight(170)
+        profile_layout.addWidget(self._profile_canvas)
+
+        self._profile_panel.setVisible(False)
+        outer_layout.addWidget(self._profile_panel)
+
+        # Wire undo to main table
         self._wire_table_undo(self.sources_table)
+
+        # Wire row-selection to show/hide profile panel
+        self.sources_table.itemSelectionChanged.connect(self._on_source_selection_changed)
+
         return tab
 
     def _build_boundaries_tab(self) -> QWidget:
@@ -523,6 +597,10 @@ class MainWindow(QMainWindow):
         # Comparison tab: snapshot management and side-by-side analysis
         self._comparison_widget = ComparisonWidget()
         self.result_tabs.addTab(self._comparison_widget, "Comparison")
+
+        # Sweep Results tab: comparison table + parameter-vs-metric plot
+        self._sweep_results_widget = SweepResultsWidget()
+        self.result_tabs.addTab(self._sweep_results_widget, "Sweep Results")
 
         return self.result_tabs
 
@@ -670,6 +748,12 @@ class MainWindow(QMainWindow):
         TableDataParser.set_boundary_widgets(self.side_boundary_widgets, project.boundaries.side)
         self._refresh_layer_choices(project)
         self._refresh_profile_choices(project)
+
+        # Restore power profiles from loaded project
+        self._source_profiles = {}
+        for i, src in enumerate(project.heat_sources):
+            if src.power_profile is not None and len(src.power_profile) >= 2:
+                self._source_profiles[i] = list(src.power_profile)
 
         for table in editable_tables:
             table.blockSignals(False)
@@ -1023,6 +1107,7 @@ class MainWindow(QMainWindow):
         c.progress_updated.connect(self._on_progress)
         c.run_finished.connect(self._on_sim_finished)
         c.run_error.connect(self._on_sim_error)
+        c.sweep_finished.connect(self._on_sweep_finished)
 
     def _on_run_started(self) -> None:
         """Disable Run action and show progress bar when a simulation starts."""
@@ -1141,6 +1226,32 @@ class MainWindow(QMainWindow):
     def _on_sim_error(self, message: str) -> None:
         self._solver_label.setText("Error")
         self._show_error("Simulation failed", message)
+
+    # ------------------------------------------------------------------
+    # Parametric sweep
+    # ------------------------------------------------------------------
+
+    def _open_sweep_dialog(self) -> None:
+        """Open the SweepDialog; start sweep if the user confirms."""
+        try:
+            project = self._build_project_from_ui()
+        except Exception as exc:  # noqa: BLE001
+            self._show_error("Invalid project", self._friendly_error(exc))
+            return
+
+        dlg = SweepDialog(project, parent=self)
+        if dlg.exec() != SweepDialog.DialogCode.Accepted:
+            return
+        config = dlg.get_config()
+        if config is None:
+            return
+        self.last_project = project
+        self._sim_controller.start_sweep(project, config)
+
+    def _on_sweep_finished(self, result: object) -> None:
+        """Update the Sweep Results tab and switch to it."""
+        self._sweep_results_widget.update_results(result)
+        self.result_tabs.setCurrentWidget(self._sweep_results_widget)
 
     # ------------------------------------------------------------------
     # Snapshot management
@@ -1357,6 +1468,141 @@ class MainWindow(QMainWindow):
         self._plot_manager.fill_probe_table(self.probe_table, probe_values)
 
     # ------------------------------------------------------------------
+    # Power profile UI helpers
+    # ------------------------------------------------------------------
+
+    def _on_source_selection_changed(self) -> None:
+        """Show the profile panel when a source row is selected."""
+        row = self.sources_table.currentRow()
+        if row < 0:
+            self._profile_panel.setVisible(False)
+            return
+        self._profile_panel.setVisible(True)
+        # Load breakpoints for this row (if any stored)
+        bps = self._source_profiles.get(row, [])
+        has_profile = len(bps) >= 2
+        self._time_varying_check.blockSignals(True)
+        self._time_varying_check.setChecked(has_profile)
+        self._time_varying_check.blockSignals(False)
+        self._bp_table.setVisible(has_profile)
+        self._profile_canvas.setVisible(has_profile)
+        if has_profile:
+            self._load_breakpoints_into_table(bps)
+            self._refresh_profile_preview()
+
+    def _on_time_varying_toggled(self, checked: bool) -> None:
+        """Show/hide breakpoint table and preview based on checkbox state."""
+        self._bp_table.setVisible(checked)
+        self._profile_canvas.setVisible(checked)
+        if checked:
+            row = self.sources_table.currentRow()
+            bps = self._source_profiles.get(row, [])
+            if len(bps) < 2:
+                # Seed with two rows: (0, current power) and (1, current power)
+                from thermal_sim.models.heat_source import PowerBreakpoint
+                try:
+                    power = float(TableDataParser._cell_text(self.sources_table, row, 2) or "1")
+                except (ValueError, Exception):
+                    power = 1.0
+                bps = [PowerBreakpoint(0.0, power), PowerBreakpoint(1.0, power)]
+                self._source_profiles[row] = bps
+            self._load_breakpoints_into_table(bps)
+            self._refresh_profile_preview()
+        else:
+            row = self.sources_table.currentRow()
+            if row >= 0:
+                self._source_profiles.pop(row, None)
+            self._bp_table.setRowCount(0)
+            ax = self._profile_canvas.axes
+            ax.clear()
+            self._profile_canvas.draw_idle()
+
+    def _load_breakpoints_into_table(self, bps: list) -> None:
+        """Populate the breakpoint table from a list of PowerBreakpoint objects."""
+        self._bp_table.blockSignals(True)
+        self._bp_table.setRowCount(0)
+        for bp in bps:
+            r = self._bp_table.rowCount()
+            self._bp_table.insertRow(r)
+            self._bp_table.setItem(r, 0, QTableWidgetItem(f"{bp.time_s:g}"))
+            self._bp_table.setItem(r, 1, QTableWidgetItem(f"{bp.power_w:g}"))
+        self._bp_table.blockSignals(False)
+
+    def _on_bp_table_changed(self) -> None:
+        """Save breakpoints and refresh preview when table is edited."""
+        self._save_breakpoints_from_table()
+        self._refresh_profile_preview()
+
+    def _save_breakpoints_from_table(self) -> None:
+        """Read the breakpoint table into _source_profiles for the selected row."""
+        from thermal_sim.models.heat_source import PowerBreakpoint
+        src_row = self.sources_table.currentRow()
+        if src_row < 0:
+            return
+        bps = []
+        for r in range(self._bp_table.rowCount()):
+            t_item = self._bp_table.item(r, 0)
+            p_item = self._bp_table.item(r, 1)
+            if t_item is None or p_item is None:
+                continue
+            try:
+                t = float(t_item.text())
+                p = float(p_item.text())
+                bps.append(PowerBreakpoint(t, p))
+            except ValueError:
+                continue
+        self._source_profiles[src_row] = bps
+
+    def _add_breakpoint_row(self) -> None:
+        """Append a new row to the breakpoint table."""
+        r = self._bp_table.rowCount()
+        self._bp_table.insertRow(r)
+        # Default: time one unit after last, same power as last
+        if r > 0:
+            prev_t = self._bp_table.item(r - 1, 0)
+            prev_p = self._bp_table.item(r - 1, 1)
+            try:
+                t_val = float(prev_t.text()) + 1.0 if prev_t else float(r)
+                p_val = float(prev_p.text()) if prev_p else 0.0
+            except ValueError:
+                t_val, p_val = float(r), 0.0
+        else:
+            t_val, p_val = 0.0, 0.0
+        self._bp_table.setItem(r, 0, QTableWidgetItem(f"{t_val:g}"))
+        self._bp_table.setItem(r, 1, QTableWidgetItem(f"{p_val:g}"))
+
+    def _remove_breakpoint_row(self) -> None:
+        """Remove the currently selected breakpoint row."""
+        row = self._bp_table.currentRow()
+        if row < 0:
+            return
+        self._bp_table.removeRow(row)
+        self._save_breakpoints_from_table()
+        self._refresh_profile_preview()
+
+    def _refresh_profile_preview(self) -> None:
+        """Redraw the power-profile preview plot."""
+        src_row = self.sources_table.currentRow()
+        bps = self._source_profiles.get(src_row, [])
+        ax = self._profile_canvas.axes
+        ax.clear()
+        if len(bps) >= 2:
+            times = [bp.time_s for bp in bps]
+            powers = [bp.power_w for bp in bps]
+            ax.plot(times, powers, marker="o", linewidth=1.5)
+            ax.set_xlabel("Time [s]", fontsize=8)
+            ax.set_ylabel("Power [W]", fontsize=8)
+            ax.set_title("Power Profile", fontsize=9)
+            ax.grid(True, alpha=0.3)
+            ax.tick_params(labelsize=7)
+        else:
+            ax.text(0.5, 0.5, "Add breakpoints", ha="center", va="center",
+                    transform=ax.transAxes, color="grey")
+            ax.set_axis_off()
+        self._profile_canvas.figure.tight_layout()
+        self._profile_canvas.draw_idle()
+
+    # ------------------------------------------------------------------
     # Structure preview
     # ------------------------------------------------------------------
 
@@ -1414,9 +1660,16 @@ class MainWindow(QMainWindow):
         }
 
     def _build_project_from_ui(self) -> DisplayProject:
-        return TableDataParser.build_project_from_tables(
+        project = TableDataParser.build_project_from_tables(
             self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
         )
+        # Attach power profiles from the profile sub-panel
+        from thermal_sim.models.heat_source import PowerBreakpoint
+        for row_idx, bps in self._source_profiles.items():
+            if row_idx < len(project.heat_sources) and len(bps) >= 2:
+                src = project.heat_sources[row_idx]
+                src.power_profile = list(bps)
+        return project
 
     def _validate_project(self) -> list[str]:
         """Delegate to TableDataParser.validate_tables()."""

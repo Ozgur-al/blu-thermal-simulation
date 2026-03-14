@@ -57,6 +57,45 @@ def export_probe_temperatures(probe_values: dict[str, float], output_path: str |
             writer.writerow([name, value])
 
 
+def export_sweep_results(sweep_result: object, output_path: "str | Path") -> None:
+    """Export a SweepResult as a comparison CSV.
+
+    Columns: ``parameter_value``, then ``{layer}_t_max_c`` and
+    ``{layer}_t_avg_c`` for each layer in the sweep.
+
+    Parameters
+    ----------
+    sweep_result:
+        A ``SweepResult`` dataclass instance.
+    output_path:
+        Destination CSV path.
+    """
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not sweep_result.runs:
+        # Write an empty file with only the header
+        with path.open("w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerow(["parameter_value"])
+        return
+
+    layer_names = [s["layer"] for s in sweep_result.runs[0].layer_stats]
+    header = ["parameter_value"]
+    for name in layer_names:
+        header.append(f"{name}_t_max_c")
+        header.append(f"{name}_t_avg_c")
+
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        for run in sweep_result.runs:
+            row = [run.parameter_value]
+            for stat in run.layer_stats:
+                row.append(stat["t_max_c"])
+                row.append(stat["t_avg_c"])
+            writer.writerow(row)
+
+
 def export_probe_temperatures_vs_time(
     times_s: np.ndarray,
     probe_history_c: dict[str, np.ndarray],
