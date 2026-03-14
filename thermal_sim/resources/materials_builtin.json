@@ -1,0 +1,122 @@
+{
+  "Glass": {
+    "name": "Glass",
+    "k_in_plane": 1.05,
+    "k_through": 1.05,
+    "density": 2500.0,
+    "specific_heat": 840.0,
+    "emissivity": 0.92
+  },
+  "OCA": {
+    "name": "OCA",
+    "k_in_plane": 0.25,
+    "k_through": 0.25,
+    "density": 980.0,
+    "specific_heat": 1800.0,
+    "emissivity": 0.95
+  },
+  "PMMA": {
+    "name": "PMMA",
+    "k_in_plane": 0.20,
+    "k_through": 0.20,
+    "density": 1180.0,
+    "specific_heat": 1470.0,
+    "emissivity": 0.94
+  },
+  "PC": {
+    "name": "PC",
+    "k_in_plane": 0.20,
+    "k_through": 0.20,
+    "density": 1210.0,
+    "specific_heat": 1250.0,
+    "emissivity": 0.94
+  },
+  "Aluminum": {
+    "name": "Aluminum",
+    "k_in_plane": 205.0,
+    "k_through": 205.0,
+    "density": 2700.0,
+    "specific_heat": 897.0,
+    "emissivity": 0.10
+  },
+  "Steel": {
+    "name": "Steel",
+    "k_in_plane": 16.0,
+    "k_through": 16.0,
+    "density": 7850.0,
+    "specific_heat": 490.0,
+    "emissivity": 0.60
+  },
+  "FR4": {
+    "name": "FR4",
+    "k_in_plane": 0.35,
+    "k_through": 0.30,
+    "density": 1900.0,
+    "specific_heat": 1100.0,
+    "emissivity": 0.90
+  },
+  "Copper": {
+    "name": "Copper",
+    "k_in_plane": 390.0,
+    "k_through": 390.0,
+    "density": 8960.0,
+    "specific_heat": 385.0,
+    "emissivity": 0.20
+  },
+  "Thermal Pad": {
+    "name": "Thermal Pad",
+    "k_in_plane": 3.0,
+    "k_through": 3.0,
+    "density": 2200.0,
+    "specific_heat": 1200.0,
+    "emissivity": 0.90
+  },
+  "Graphite Sheet": {
+    "name": "Graphite Sheet",
+    "k_in_plane": 400.0,
+    "k_through": 5.0,
+    "density": 1800.0,
+    "specific_heat": 710.0,
+    "emissivity": 0.80
+  },
+  "Solder (SnAgCu)": {
+    "name": "Solder (SnAgCu)",
+    "k_in_plane": 57.0,
+    "k_through": 57.0,
+    "density": 7400.0,
+    "specific_heat": 220.0,
+    "emissivity": 0.05
+  },
+  "BT Substrate": {
+    "name": "BT Substrate",
+    "k_in_plane": 0.60,
+    "k_through": 0.40,
+    "density": 1950.0,
+    "specific_heat": 1050.0,
+    "emissivity": 0.90
+  },
+  "Polyimide": {
+    "name": "Polyimide",
+    "k_in_plane": 0.12,
+    "k_through": 0.12,
+    "density": 1420.0,
+    "specific_heat": 1090.0,
+    "emissivity": 0.95
+  },
+  "Silicone Rubber": {
+    "name": "Silicone Rubber",
+    "k_in_plane": 0.25,
+    "k_through": 0.25,
+    "density": 1200.0,
+    "specific_heat": 1400.0,
+    "emissivity": 0.90
+  },
+  "Air Gap": {
+    "name": "Air Gap",
+    "k_in_plane": 0.026,
+    "k_through": 0.026,
+    "density": 1.2,
+    "specific_heat": 1005.0,
+    "emissivity": 0.01
+  }
+}
