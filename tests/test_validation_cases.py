@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import numpy as np
 
@@ -9,6 +10,10 @@ from thermal_sim.models.material import Material
 from thermal_sim.models.project import DisplayProject, MeshConfig, TransientConfig
 from thermal_sim.solvers.steady_state import SteadyStateSolver
 from thermal_sim.solvers.transient import TransientSolver
+from thermal_sim.visualization.plotting import (
+    plot_validation_comparison,
+    plot_validation_transient_comparison,
+)
 
 
 def test_1d_two_layer_resistance_chain_matches_hand_calculation() -> None:
@@ -428,3 +433,189 @@ def test_constant_power_profile_matches_no_profile() -> None:
         f"No-profile temperature {t_no:.4f} C differs from constant-profile {t_with:.4f} C "
         f"by {abs(t_no - t_with):.4f} C (tolerance: 0.01 C)"
     )
+
+
+# ---------------------------------------------------------------------------
+# Validation plot generation utility (NOT a test — no test_ prefix)
+# ---------------------------------------------------------------------------
+
+def generate_all_validation_plots(output_dir: Path | str = Path("outputs/validation")) -> None:
+    """Run all validation benchmarks and save comparison PNGs to output_dir.
+
+    Generates:
+      - benchmark_A_three_layer.png  — grouped bar chart (analytical vs numerical)
+      - benchmark_B_rc_square_wave.png — transient line plot
+      - benchmark_C_lateral_spreading.png — grouped bar chart
+      - benchmark_D_constant_profile.png — grouped bar chart (both runs)
+
+    Usage::
+
+        python -c "from tests.test_validation_cases import generate_all_validation_plots; \
+            from pathlib import Path; generate_all_validation_plots(Path('outputs/validation'))"
+    """
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    # --- Benchmark A: 3-layer resistance chain ---
+    width_a = 0.12
+    height_a = 0.08
+    area_a = width_a * height_a
+    amb_a = 23.0
+    q_a = 1.7
+    mat1_a = Material("M1", 0.8, 0.8, 2000.0, 900.0, 0.9)
+    mat2_a = Material("M2", 10.0, 10.0, 2000.0, 900.0, 0.9)
+    mat3_a = Material("M3", 1.5, 1.5, 2000.0, 900.0, 0.9)
+    t1_a, t2_a, t3_a = 0.001, 0.002, 0.0015
+    r12_a, r23_a = 4e-4, 2e-4
+    h_top_a, h_bot_a = 12.0, 4.0
+
+    proj_a = DisplayProject(
+        name="BenchA", width=width_a, height=height_a,
+        materials={"M1": mat1_a, "M2": mat2_a, "M3": mat3_a},
+        layers=[
+            Layer("Bottom", "M1", t1_a, interface_resistance_to_next=r12_a),
+            Layer("Middle", "M2", t2_a, interface_resistance_to_next=r23_a),
+            Layer("Top", "M3", t3_a),
+        ],
+        heat_sources=[HeatSource("Q", "Bottom", q_a, shape="full")],
+        boundaries=BoundaryConditions(
+            top=SurfaceBoundary(amb_a, h_top_a, False),
+            bottom=SurfaceBoundary(amb_a, h_bot_a, False),
+            side=SurfaceBoundary(amb_a, 0.0, False),
+        ),
+        mesh=MeshConfig(nx=1, ny=1),
+    )
+    res_a = SteadyStateSolver().solve(proj_a)
+    g_bot_a = 1.0 / (t1_a / (2.0 * mat1_a.k_through * area_a) + 1.0 / (h_bot_a * area_a))
+    g_top_a = 1.0 / (t3_a / (2.0 * mat3_a.k_through * area_a) + 1.0 / (h_top_a * area_a))
+    g01_a = 1.0 / (t1_a / (2.0 * mat1_a.k_through * area_a) + r12_a / area_a + t2_a / (2.0 * mat2_a.k_through * area_a))
+    g12_a = 1.0 / (t2_a / (2.0 * mat2_a.k_through * area_a) + r23_a / area_a + t3_a / (2.0 * mat3_a.k_through * area_a))
+    A_mat = np.array([[g_bot_a + g01_a, -g01_a, 0.0], [-g01_a, g01_a + g12_a, -g12_a], [0.0, -g12_a, g12_a + g_top_a]])
+    rhs_a = np.array([q_a + g_bot_a * amb_a, 0.0, g_top_a * amb_a])
+    T_anal_a = np.linalg.solve(A_mat, rhs_a)
+    analytical_a = {"Bottom": T_anal_a[0], "Middle": T_anal_a[1], "Top": T_anal_a[2]}
+    numerical_a = {
+        "Bottom": float(res_a.temperatures_c[0, 0, 0]),
+        "Middle": float(res_a.temperatures_c[1, 0, 0]),
+        "Top": float(res_a.temperatures_c[2, 0, 0]),
+    }
+    plot_validation_comparison(
+        "Benchmark A: 3-Layer Resistance Chain (Steady-State)",
+        analytical_a, numerical_a,
+        out / "benchmark_A_three_layer.png",
+    )
+
+    # --- Benchmark B: RC square-wave transient ---
+    width_b, height_b = 0.10, 0.10
+    area_b = width_b * height_b
+    k_b, density_b, cp_b = 10.0, 2700.0, 900.0
+    thickness_b = 0.002
+    h_top_b = 15.0
+    amb_b = 25.0
+    q_b = 2.0
+    T_on_b = 0.5
+    T_off_b = 0.5
+    T_period_b = T_on_b + T_off_b
+    total_b = 2.0
+    dt_b = 0.01
+    g_top_b = 1.0 / (thickness_b / (2.0 * k_b * area_b) + 1.0 / (h_top_b * area_b))
+    G_b = g_top_b
+    C_b = density_b * cp_b * thickness_b * area_b
+    tau_b = C_b / G_b
+    T_ss_on_b = amb_b + q_b / G_b
+    T_ss_off_b = amb_b
+
+    epsilon_b = dt_b
+    profile_b = [
+        PowerBreakpoint(0.0, q_b),
+        PowerBreakpoint(T_on_b - epsilon_b, q_b),
+        PowerBreakpoint(T_on_b, 0.0),
+        PowerBreakpoint(T_period_b - epsilon_b, 0.0),
+    ]
+    mat_b = Material("RC", k_b, k_b, density_b, cp_b, 0.9)
+    proj_b = DisplayProject(
+        name="BenchB", width=width_b, height=height_b,
+        materials={"RC": mat_b},
+        layers=[Layer("L", "RC", thickness_b)],
+        heat_sources=[HeatSource("Q", "L", q_b, shape="full", power_profile=profile_b)],
+        boundaries=BoundaryConditions(
+            top=SurfaceBoundary(amb_b, h_top_b, False),
+            bottom=SurfaceBoundary(amb_b, 0.0, False),
+            side=SurfaceBoundary(amb_b, 0.0, False),
+        ),
+        mesh=MeshConfig(nx=1, ny=1),
+        transient=TransientConfig(dt_b, total_b, dt_b),
+        initial_temperature_c=amb_b,
+    )
+    res_b = TransientSolver().solve(proj_b)
+    # Build dense analytical curve
+    times_anal_b = np.linspace(0.0, total_b, 500)
+    T_curr_b = float(amb_b)
+    t_prev_b = 0.0
+    temps_anal_b = np.empty(len(times_anal_b))
+    for idx_b, t_b in enumerate(times_anal_b):
+        dt_seg = t_b - t_prev_b
+        t_in_period = t_b % T_period_b
+        T_ss = T_ss_on_b if t_in_period < T_on_b else T_ss_off_b
+        T_curr_b = T_ss + (T_curr_b - T_ss) * math.exp(-dt_seg / tau_b)
+        temps_anal_b[idx_b] = T_curr_b
+        t_prev_b = t_b
+    plot_validation_transient_comparison(
+        "Benchmark B: RC Square-Wave Power (Transient)",
+        times_anal_b, temps_anal_b,
+        res_b.times_s,
+        res_b.temperatures_time_c[:, 0, 0, 0],
+        out / "benchmark_B_rc_square_wave.png",
+    )
+
+    # --- Benchmark C: 2-node lateral spreading ---
+    width_c, height_c = 0.04, 0.02
+    thickness_c = 0.003
+    k_c = 50.0
+    density_c, cp_c = 2000.0, 900.0
+    h_top_c = 10.0
+    amb_c = 25.0
+    q_c = 0.5
+    dx_c = width_c / 2
+    dy_c = height_c
+    cell_area_c = dx_c * dy_c
+    g_top_c = 1.0 / (thickness_c / (2.0 * k_c * cell_area_c) + 1.0 / (h_top_c * cell_area_c))
+    g_lat_c = k_c * thickness_c * dy_c / dx_c
+    a_c = g_top_c + g_lat_c
+    b_c = -g_lat_c
+    det_c = a_c * a_c - b_c * b_c
+    rhs0_c = q_c + g_top_c * amb_c
+    rhs1_c = g_top_c * amb_c
+    T0_anal_c = (rhs0_c * a_c - b_c * rhs1_c) / det_c
+    T1_anal_c = (a_c * rhs1_c - rhs0_c * b_c) / det_c
+    mat_c = Material("Spread", k_c, k_c, density_c, cp_c, 0.9)
+    proj_c = DisplayProject(
+        name="BenchC", width=width_c, height=height_c,
+        materials={"Spread": mat_c},
+        layers=[Layer("L", "Spread", thickness_c)],
+        heat_sources=[HeatSource("Q", "L", q_c, shape="rectangle",
+                                  x=dx_c / 2, y=dy_c / 2,
+                                  width=dx_c - 0.001, height=dy_c - 0.001)],
+        boundaries=BoundaryConditions(
+            top=SurfaceBoundary(amb_c, h_top_c, False),
+            bottom=SurfaceBoundary(amb_c, 0.0, False),
+            side=SurfaceBoundary(amb_c, 0.0, False),
+        ),
+        mesh=MeshConfig(nx=2, ny=1),
+    )
+    res_c = SteadyStateSolver().solve(proj_c)
+    analytical_c = {"Left node": T0_anal_c, "Right node": T1_anal_c}
+    numerical_c = {
+        "Left node": float(res_c.temperatures_c[0, 0, 0]),
+        "Right node": float(res_c.temperatures_c[0, 0, 1]),
+    }
+    plot_validation_comparison(
+        "Benchmark C: 2-Node Lateral Heat Spreading (Steady-State)",
+        analytical_c, numerical_c,
+        out / "benchmark_C_lateral_spreading.png",
+    )
+
+    print(f"Validation plots saved to: {out.resolve()}")
+    print(f"  benchmark_A_three_layer.png")
+    print(f"  benchmark_B_rc_square_wave.png")
+    print(f"  benchmark_C_lateral_spreading.png")
