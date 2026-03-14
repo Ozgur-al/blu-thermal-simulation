@@ -42,11 +42,14 @@ from thermal_sim.core.material_library import default_materials
 from thermal_sim.core.postprocess import (
     basic_stats,
     basic_stats_transient,
+    layer_stats,
     probe_temperatures,
     probe_temperatures_over_time,
     top_n_hottest_cells,
+    top_n_hottest_cells_for_layer,
     top_n_hottest_cells_transient,
 )
+from thermal_sim.visualization.plotting import plot_temperature_map_annotated
 from thermal_sim.io.csv_export import (
     export_probe_temperatures,
     export_probe_temperatures_vs_time,
@@ -58,6 +61,7 @@ from thermal_sim.models.project import DisplayProject
 from thermal_sim.solvers.steady_state import SteadyStateResult, SteadyStateSolver
 from thermal_sim.solvers.transient import TransientResult, TransientSolver
 from thermal_sim.ui.plot_manager import PlotManager
+from thermal_sim.ui.results_tab import ResultsSummaryWidget
 from thermal_sim.ui.simulation_controller import SimulationController
 from thermal_sim.ui.structure_preview import StructurePreviewDialog
 from thermal_sim.ui.table_data_parser import TableDataParser
@@ -120,6 +124,11 @@ class MainWindow(QMainWindow):
         self._last_run_start: float = 0.0
         self._plot_manager = PlotManager()
         self._sim_controller = SimulationController(self)
+
+        # Annotated map state ------------------------------------------------
+        self._selected_hotspot_rank: int | None = None
+        self._last_final_map: np.ndarray | None = None
+        self._last_layer_names: list[str] | None = None
 
         # Undo/redo stack
         self._undo_stack = QUndoStack(self)
@@ -424,12 +433,12 @@ class MainWindow(QMainWindow):
         return tab
 
     def _build_result_tabs(self) -> QTabWidget:
-        tabs = QTabWidget()
+        self.result_tabs = QTabWidget()
 
         map_tab = QWidget()
         map_layout = QVBoxLayout(map_tab)
         map_layout.addWidget(self._plot_manager.map_canvas)
-        tabs.addTab(map_tab, "Temperature Map")
+        self.result_tabs.addTab(map_tab, "Temperature Map")
 
         profile_tab = QWidget()
         profile_layout = QVBoxLayout(profile_tab)
@@ -441,12 +450,12 @@ class MainWindow(QMainWindow):
         controls.addStretch()
         profile_layout.addLayout(controls)
         profile_layout.addWidget(self._plot_manager.profile_canvas)
-        tabs.addTab(profile_tab, "Layer Profile")
+        self.result_tabs.addTab(profile_tab, "Layer Profile")
 
         hist_tab = QWidget()
         hist_layout = QVBoxLayout(hist_tab)
         hist_layout.addWidget(self._plot_manager.history_canvas)
-        tabs.addTab(hist_tab, "Probe History")
+        self.result_tabs.addTab(hist_tab, "Probe History")
 
         summary_tab = QWidget()
         summary_layout = QVBoxLayout(summary_tab)
@@ -461,8 +470,14 @@ class MainWindow(QMainWindow):
         summary_layout.addWidget(self.probe_table)
         summary_layout.addWidget(QLabel("Hottest Cells"))
         summary_layout.addWidget(self.hot_table)
-        tabs.addTab(summary_tab, "Summary")
-        return tabs
+        self.result_tabs.addTab(summary_tab, "Summary")
+
+        # New Results tab: structured three-section summary widget
+        self._results_widget = ResultsSummaryWidget()
+        self._results_widget.hotspot_clicked.connect(self._on_hotspot_navigate)
+        self.result_tabs.addTab(self._results_widget, "Results")
+
+        return self.result_tabs
 
     def _build_boundary_group(self, title: str) -> dict[str, QWidget]:
         group = QGroupBox(title)
@@ -493,7 +508,7 @@ class MainWindow(QMainWindow):
                 fontsize=11, color="#8e8e93",
             )
             ax.set_axis_off()
-            canvas.draw()
+            canvas.draw_idle()
 
     # ------------------------------------------------------------------
     # Undo/redo wiring
@@ -920,6 +935,10 @@ class MainWindow(QMainWindow):
             self._show_error("Post-processing failed", self._friendly_error(exc))
             return
 
+        # Store map state for re-render on hotspot navigation.
+        self._last_final_map = final_map
+        self._last_layer_names = layer_names
+
         self._plot_manager.begin_batch()
         self._plot_manager.plot_probe_history(probe_times, probe_hist)
         self._plot_map(final_map, layer_names)
@@ -930,6 +949,13 @@ class MainWindow(QMainWindow):
             stats.min_c, stats.avg_c, stats.max_c, final_map, layer_names, hottest,
         )
         self._plot_manager.fill_probe_table(self.probe_table, self.last_probe_values)
+
+        # Populate the structured Results tab and auto-activate it.
+        layer_stats_data = layer_stats(final_map, layer_names)
+        self._results_widget.update_data(
+            layer_stats_data, hottest, self.last_probe_values, project.probes
+        )
+        self.result_tabs.setCurrentWidget(self._results_widget)
 
         # Update three-zone status bar with run metrics.
         n_layers = len(layer_names)
@@ -957,13 +983,71 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _plot_map(self, final_map_c: np.ndarray, layer_names: list[str]) -> None:
-        """Thin dispatcher — reads widget state and delegates to PlotManager."""
-        self._plot_manager.plot_temperature_map(
-            final_map_c, layer_names,
-            layer_name=self.map_layer_combo.currentText(),
-            width_m=self.width_spin.value(),
-            height_m=self.height_spin.value(),
+        """Render the temperature map with annotated hotspot crosshairs and probe markers."""
+        layer_name = self.map_layer_combo.currentText()
+        layer_idx = (
+            layer_names.index(layer_name) if layer_name in layer_names else len(layer_names) - 1
         )
+        width_m = self.width_spin.value()
+        height_m = self.height_spin.value()
+        data = final_map_c[layer_idx]
+
+        # Compute per-layer hotspots (top 3) for annotation.
+        result = self.last_steady_result or self.last_transient_result
+        if result is not None:
+            per_layer_hotspots = top_n_hottest_cells_for_layer(
+                final_map_c, layer_idx, layer_name, result.dx, result.dy, n=3
+            )
+        else:
+            per_layer_hotspots = None
+
+        # Collect probes on this layer.
+        layer_probes = [
+            p for p in (self.last_project.probes if self.last_project else [])
+            if p.layer == layer_name
+        ]
+
+        canvas = self._plot_manager.map_canvas
+        ax = canvas.axes
+
+        # Remove old colorbar before clearing axes.
+        if canvas._colorbar is not None:
+            canvas._colorbar.remove()
+            canvas._colorbar = None
+        ax.clear()
+        canvas._image = None
+
+        im = plot_temperature_map_annotated(
+            ax, data, width_m, height_m,
+            title=f"Temperature Map - {layer_name}",
+            hotspots=per_layer_hotspots,
+            probes=layer_probes if layer_probes else None,
+            selected_hotspot_rank=self._selected_hotspot_rank,
+        )
+        canvas._colorbar = canvas.figure.colorbar(im, ax=ax, label="Temperature [\u00b0C]")
+        canvas._image = im
+        canvas.figure.tight_layout()
+
+        if not self._plot_manager._batching:
+            canvas.draw_idle()
+
+    def _on_hotspot_navigate(
+        self, rank: int, layer_name: str, x_m: float, y_m: float  # noqa: ARG002
+    ) -> None:
+        """Navigate to a hotspot location on the temperature map.
+
+        Switches the layer combo and re-renders the map with the selected hotspot
+        highlighted, then switches to the Temperature Map tab.
+        """
+        self.map_layer_combo.setCurrentText(layer_name)
+        self._selected_hotspot_rank = rank
+        # Switch to Temperature Map tab (index 0).
+        self.result_tabs.setCurrentIndex(0)
+        # Re-render map with the highlight.
+        if self._last_final_map is not None and self._last_layer_names is not None:
+            self._plot_map(self._last_final_map, self._last_layer_names)
+        # Clear highlight so next manual interaction doesn't retain it.
+        self._selected_hotspot_rank = None
 
     def _plot_profile(self, final_map_c: np.ndarray, layer_names: list[str]) -> None:
         """Thin dispatcher — reads widget state and delegates to PlotManager."""
@@ -975,6 +1059,8 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_map_and_profile(self) -> None:
+        # Clear highlight when user manually changes layer.
+        self._selected_hotspot_rank = None
         if self.last_steady_result is not None:
             self._plot_map(self.last_steady_result.temperatures_c, self.last_steady_result.layer_names)
             self._plot_profile(self.last_steady_result.temperatures_c, self.last_steady_result.layer_names)
