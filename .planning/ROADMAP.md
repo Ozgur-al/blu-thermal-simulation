@@ -85,7 +85,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Double-clicking the launcher opens the GUI within 10 seconds on a clean Windows machine with no Python installed
   2. The bundle runs successfully on a managed Windows machine with Defender enabled and no admin access — no AV quarantine, no UAC prompt
   3. All resource paths (example JSON files, icons, fonts) resolve correctly both from the packaged bundle and from a direct in-repo dev launch
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 - [ ] 05-01-PLAN.md -- Centralized paths.py, caller migration, splash screen, crash handler
 - [ ] 05-02-PLAN.md -- PyInstaller spec file, build.py automation, bundle build and verification
 - [ ] 05-03-PLAN.md -- Human verification checkpoint for all Phase 5 requirements
@@ -101,4 +101,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Results | 4/4 | Complete | 2026-03-14 |
 | 3. Simulation Capabilities | 6/6 | Complete   | 2026-03-14 |
 | 4. Polish | 3/4 | In Progress | - |
-| 5. Distribution | 1/3 | In Progress|  |
+| 5. Distribution | 2/3 | In Progress|  |

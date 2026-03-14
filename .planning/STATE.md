@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-14T23:33:57.898Z"
+progress:
+  total_phases: 5
+  completed_phases: 4
+  total_plans: 21
+  completed_plans: 20
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-14T23:27:53.811Z"
 progress:
   total_phases: 5
@@ -36,9 +49,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 5 of 5 (Distribution) — in progress
-Plan: 1 of 3 in current phase (completed 05-01)
+Plan: 2 of 3 in current phase (completed 05-02)
 Status: Phase 5 in progress
-Last activity: 2026-03-15 - Completed 05-01-PLAN.md — paths.py centralized path resolution, migrated material_library + main_window, gui.py rewrite with splash screen and crash handler (DIST-03 satisfied)
+Last activity: 2026-03-15 - Completed 05-02-PLAN.md — ThermalSim.spec + build.py 5-step pipeline; verified 110 MB onedir bundle launches on build machine (DIST-01, DIST-02 satisfied)
 
 Progress: [██████████] 100%
 
@@ -66,6 +79,7 @@ Progress: [██████████] 100%
 | Phase 04-polish P02 | 5 | 1 task | 1 file |
 | Phase 04-polish P03 | 2 | 2 tasks | 2 files |
 | Phase 05-distribution P01 | 3 | 2 tasks | 5 files |
+| Phase 05-distribution P02 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -133,6 +147,9 @@ Recent decisions affecting current work:
 - [05-01]: SystemExit re-raised in gui.py crash handler — normal app.exec() exit must not be treated as a crash
 - [05-01]: Splash QPainter-drawn at runtime — no external asset file; matches theme colors (#212121 bg, #FFB300 amber)
 - [05-01]: gui.py top-level imports limited to sys, traceback, paths — crash handler can show dialog even if PySide6 import partially fails
+- [Phase 05-02]: build.py imports APP_VERSION from thermal_sim.core.paths — single version source of truth across app and build pipeline
+- [Phase 05-02]: MpCmdRun search uses sorted glob on Platform/* path first (Windows 11), falls back to Program Files — handles version churn without hardcoding
+- [Phase 05-02]: Signing skipped non-fatally when signtool or cert missing — build succeeds unsigned with warning; enables CI builds without Windows SDK
 
 ### Pending Todos
 
@@ -152,5 +169,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-15
-Stopped at: Completed 05-01-PLAN.md — paths.py, material_library migration, main_window migration, gui.py splash+crash handler; 122 tests pass
+Stopped at: Completed 05-02-PLAN.md — ThermalSim.spec + build.py; verified 110 MB onedir bundle launches on build machine (DIST-01, DIST-02 satisfied)
 Resume file: None

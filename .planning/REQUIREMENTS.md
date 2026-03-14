@@ -43,8 +43,8 @@
 
 ### Distribution
 
-- [ ] **DIST-01**: PyInstaller --onedir bundle that launches GUI with double-click on Windows
-- [ ] **DIST-02**: Bundle works without admin access on managed Windows machines
+- [x] **DIST-01**: PyInstaller --onedir bundle that launches GUI with double-click on Windows
+- [x] **DIST-02**: Bundle works without admin access on managed Windows machines
 - [x] **DIST-03**: Resource path helper centralized for packaged and dev builds
 
 ## v2 Requirements
@@ -94,8 +94,8 @@
 | PLSH-01 | Phase 4 — Polish | Complete |
 | PLSH-02 | Phase 4 — Polish | Complete |
 | PLSH-03 | Phase 4 — Polish | Complete |
-| DIST-01 | Phase 5 — Distribution | Pending |
-| DIST-02 | Phase 5 — Distribution | Pending |
+| DIST-01 | Phase 5 — Distribution | Complete |
+| DIST-02 | Phase 5 — Distribution | Complete |
 | DIST-03 | Phase 5 — Distribution | Complete |
 
 **Coverage:**
