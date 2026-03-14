@@ -39,7 +39,7 @@
 
 - [x] **PLSH-01**: Professional qt-material theme applied across all GUI elements
 - [x] **PLSH-02**: QDockWidget-based layout replacing fixed splitter panels
-- [ ] **PLSH-03**: Inline validation feedback (visual indicators on invalid inputs)
+- [x] **PLSH-03**: Inline validation feedback (visual indicators on invalid inputs)
 
 ### Distribution
 
@@ -93,7 +93,7 @@
 | MAT-03 | Phase 3 — Simulation Capabilities | Complete |
 | PLSH-01 | Phase 4 — Polish | Complete |
 | PLSH-02 | Phase 4 — Polish | Complete |
-| PLSH-03 | Phase 4 — Polish | Pending |
+| PLSH-03 | Phase 4 — Polish | Complete |
 | DIST-01 | Phase 5 — Distribution | Pending |
 | DIST-02 | Phase 5 — Distribution | Pending |
 | DIST-03 | Phase 5 — Distribution | Pending |

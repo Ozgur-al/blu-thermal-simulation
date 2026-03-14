@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-14T14:10:00Z"
+last_updated: "2026-03-14T14:12:17Z"
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 
 ## Current Position
 
-Phase: 4 of 5 (Polish)
-Plan: 2 of 3 in current phase (completed 04-02)
-Status: In progress
-Last activity: 2026-03-14 - Completed 04-02-PLAN.md — QDockWidget layout replacing QSplitter, View menu, QSettings layout persistence (PLSH-02 satisfied)
+Phase: 4 of 4 (Polish) — COMPLETE
+Plan: 3 of 3 in current phase (completed 04-03)
+Status: Phase 4 complete
+Last activity: 2026-03-14 - Completed 04-03-PLAN.md — per-cell inline validation, run button disable, error count in status bar (PLSH-03 satisfied)
 
-Progress: [█████████░] 85%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Progress: [█████████░] 85%
 | Phase 03-simulation-capabilities P02 | 5 | 2 tasks | 4 files |
 | Phase 04-polish P01 | 2 | 2 tasks | 5 files |
 | Phase 04-polish P02 | 5 | 1 task | 1 file |
+| Phase 04-polish P03 | 2 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,9 @@ Recent decisions affecting current work:
 - [04-02]: _build_result_tabs() split into _build_plot_tabs() and _build_summary_tabs() — clean separation matches dock structure
 - [04-02]: self.result_tabs replaced by _plot_tabs and _summary_tabs — _results_widget and _sweep_results_widget live in summary dock
 - [04-02]: _restore_layout() called after _load_startup_project() so default dock positions are established first, then overridden by saved state
+- [04-03]: validate_cell() uses exact lowercased header matching — avoids false positives and is consistent with actual headers in _build_*_tab() methods
+- [04-03]: _remove_table_row() wrapper added rather than patching TableDataParser.remove_selected_row() — keeps static helper stateless and pure
+- [04-03]: _on_run_ended() delegates to _update_validation_status() — single source of truth for run button enabled state
 
 ### Pending Todos
 
@@ -130,5 +134,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 04-02-PLAN.md — QDockWidget layout, View menu, QSettings persistence; 111 tests pass
+Stopped at: Completed 04-03-PLAN.md — inline cell validation, run button disable, error count in status bar; 111 tests pass
 Resume file: None

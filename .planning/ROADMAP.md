@@ -71,10 +71,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. All GUI elements render with the qt-material dark theme; no widgets retain the default OS appearance
   2. User can undock, reposition, and resize the main panels (editor, results, plot) independently; layout persists across sessions
   3. Invalid inputs (e.g., negative thickness, non-numeric conductivity) show an inline visual indicator immediately without requiring the user to attempt a run
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 - [x] 04-01-PLAN.md -- Apply qt-material dark amber theme, matplotlib dark style, probe color palette, PDF export isolation
 - [x] 04-02-PLAN.md -- Convert QSplitter to QDockWidgets with View menu and layout persistence
-- [ ] 04-03-PLAN.md -- Inline per-cell validation feedback with run-button disable and error status
+- [x] 04-03-PLAN.md -- Inline per-cell validation feedback with run-button disable and error status
 - [ ] 04-04-PLAN.md -- Human verification checkpoint for all Phase 4 requirements
 
 ### Phase 5: Distribution
@@ -97,5 +97,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Foundation | 3/4 | In progress | - |
 | 2. Results | 4/4 | Complete | 2026-03-14 |
 | 3. Simulation Capabilities | 6/6 | Complete   | 2026-03-14 |
-| 4. Polish | 2/4 | In Progress|  |
+| 4. Polish | 3/4 | In Progress | - |
 | 5. Distribution | 0/TBD | Not started | - |
