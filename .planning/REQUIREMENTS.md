@@ -26,14 +26,14 @@
 
 - [x] **SIM-01**: User can define parametric sweep (parameter + value list) and execute multiple solver runs
 - [ ] **SIM-02**: Sweep results displayed as comparison table and parameter-vs-metric plots
-- [ ] **SIM-03**: User can define time-varying power profiles (duty cycles) on heat sources
-- [ ] **SIM-04**: Transient solver interpolates power profile at each timestep
+- [x] **SIM-03**: User can define time-varying power profiles (duty cycles) on heat sources
+- [x] **SIM-04**: Transient solver interpolates power profile at each timestep
 
 ### Materials & Data
 
 - [x] **MAT-01**: User can import/export custom material libraries as JSON
 - [x] **MAT-02**: Material picker distinguishes built-in presets from user-defined materials
-- [ ] **MAT-03**: Additional analytical validation test cases with comparison plots
+- [x] **MAT-03**: Additional analytical validation test cases with comparison plots
 
 ### Visual Polish
 
@@ -86,11 +86,11 @@
 | RSLT-04 | Phase 2 — Results | Complete (02-03) |
 | SIM-01 | Phase 3 — Simulation Capabilities | Complete |
 | SIM-02 | Phase 3 — Simulation Capabilities | Pending |
-| SIM-03 | Phase 3 — Simulation Capabilities | Pending |
-| SIM-04 | Phase 3 — Simulation Capabilities | Pending |
+| SIM-03 | Phase 3 — Simulation Capabilities | Complete |
+| SIM-04 | Phase 3 — Simulation Capabilities | Complete |
 | MAT-01 | Phase 3 — Simulation Capabilities | Complete |
 | MAT-02 | Phase 3 — Simulation Capabilities | Complete |
-| MAT-03 | Phase 3 — Simulation Capabilities | Pending |
+| MAT-03 | Phase 3 — Simulation Capabilities | Complete |
 | PLSH-01 | Phase 4 — Polish | Pending |
 | PLSH-02 | Phase 4 — Polish | Pending |
 | PLSH-03 | Phase 4 — Polish | Pending |

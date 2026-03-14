@@ -2,26 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-14T13:31:58.385Z"
+status: in_progress
+last_updated: "2026-03-14T14:00:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 14
-  completed_plans: 9
----
-
----
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: in_progress
-last_updated: "2026-03-14T09:28:00Z"
-progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 8
-  completed_plans: 7
+  completed_plans: 10
 ---
 
 # Project State
@@ -36,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 3 of 5 (Simulation Capabilities)
-Plan: 3 of 4 in current phase (completed 03-01 retroactively)
+Plan: 5 of 6 in current phase (completed 03-05)
 Status: In progress
-Last activity: 2026-03-14 - Completed 03-01-PLAN.md — PowerBreakpoint + power_at_time, ThermalNetwork b_vector split, per-step transient power scaling
+Last activity: 2026-03-14 - Completed 03-05-PLAN.md — 4 analytical validation tests + comparison plot utility (MAT-03 satisfied)
 
-Progress: [████████░░] 60%
+Progress: [█████████░] 70%
 
 ## Performance Metrics
 
@@ -107,6 +94,9 @@ Recent decisions affecting current work:
 - [03-01]: First breakpoint enforced at time_s=0 in __post_init__ to prevent looping discontinuities
 - [03-01]: TransientSolver detects _has_profiles once before loop — no overhead for constant-power runs
 - [03-01]: ThermalNetwork b_vector is now a @property returning b_boundary + b_sources for backward compatibility
+- [03-05]: Near-square-wave profile uses 4 breakpoints [(0,Q),(T_on-dt,Q),(T_on,0),(T_period-dt,0)] to stay within 1% of analytical solution
+- [03-05]: generate_all_validation_plots placed in test_validation_cases.py — shares setup boilerplate and callable via python -c
+- [03-05]: Tolerance for lateral spreading test uses rel_tol=1e-6 (tighter) since steady-state is an exact sparse solve
 
 ### Pending Todos
 
@@ -126,5 +116,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 03-01-PLAN.md — Power profile physics foundation complete; 107/107 tests pass
+Stopped at: Completed 03-05-PLAN.md — 4 analytical validation tests and comparison plot utility; 111/111 tests pass
 Resume file: None
