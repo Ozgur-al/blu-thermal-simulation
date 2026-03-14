@@ -40,7 +40,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from thermal_sim.core.material_library import default_materials
+from thermal_sim.core.material_library import (
+    default_materials,
+    export_materials,
+    import_materials,
+    load_builtin_library,
+    load_materials_json,
+)
 from thermal_sim.core.postprocess import (
     basic_stats,
     basic_stats_transient,
@@ -145,6 +151,9 @@ class MainWindow(QMainWindow):
 
         # Store pre-edit values: (id(table), row, col) -> text
         self._pre_edit_values: dict[tuple[int, int, int], str] = {}
+
+        # Material source tracking: name -> "Built-in" | "User"
+        self._material_source: dict[str, str] = {}
 
         # Persistent output directory
         settings = QSettings("ThermalSim", "ThermalSimulator")
@@ -398,9 +407,23 @@ class MainWindow(QMainWindow):
     def _build_materials_tab(self) -> QWidget:
         presets_btn = QPushButton("Load Presets")
         presets_btn.clicked.connect(self._load_default_materials)
+        import_btn = QPushButton("Import...")
+        import_btn.setToolTip("Import materials from a JSON file")
+        import_btn.clicked.connect(self._import_materials_dialog)
+        export_btn = QPushButton("Export...")
+        export_btn.setToolTip("Export selected (or all user) materials to a JSON file")
+        export_btn.clicked.connect(self._export_materials_dialog)
         tab, self.materials_table = self._build_table_tab(
-            ["Name", "k in-plane [W/mK]", "k through [W/mK]", "Density [kg/m\u00b3]", "Specific heat [J/kgK]", "Emissivity"],
-            extra_buttons=[presets_btn],
+            [
+                "Name",
+                "k in-plane [W/mK]",
+                "k through [W/mK]",
+                "Density [kg/m\u00b3]",
+                "Specific heat [J/kgK]",
+                "Emissivity",
+                "Type",
+            ],
+            extra_buttons=[presets_btn, import_btn, export_btn],
         )
         self._wire_table_undo(self.materials_table)
         return tab
@@ -657,18 +680,140 @@ class MainWindow(QMainWindow):
         self._update_path_label()
 
     def _load_default_materials(self) -> None:
-        rows = [
-            [
+        """Load built-in materials into the table; existing user materials are cleared."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QTableWidgetItem
+
+        builtin = load_builtin_library()
+        self._material_source = {}
+        self.materials_table.blockSignals(True)
+        self.materials_table.setRowCount(0)
+        for mat in builtin.values():
+            row = self.materials_table.rowCount()
+            self.materials_table.insertRow(row)
+            values = [
                 mat.name,
                 f"{mat.k_in_plane:g}",
                 f"{mat.k_through:g}",
                 f"{mat.density:g}",
                 f"{mat.specific_heat:g}",
                 f"{mat.emissivity:g}",
+                "Built-in",
             ]
-            for mat in default_materials().values()
+            for col, val in enumerate(values):
+                item = QTableWidgetItem(val)
+                # Built-in rows are read-only (all columns)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.materials_table.setItem(row, col, item)
+            self._material_source[mat.name] = "Built-in"
+        self.materials_table.blockSignals(False)
+
+    def _add_material_row(self, mat, mat_type: str = "User") -> None:
+        """Insert one material row into the materials table with appropriate flags."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QTableWidgetItem
+
+        row = self.materials_table.rowCount()
+        self.materials_table.insertRow(row)
+        values = [
+            mat.name,
+            f"{mat.k_in_plane:g}",
+            f"{mat.k_through:g}",
+            f"{mat.density:g}",
+            f"{mat.specific_heat:g}",
+            f"{mat.emissivity:g}",
+            mat_type,
         ]
-        TableDataParser._set_table_rows(self.materials_table, rows)
+        for col, val in enumerate(values):
+            item = QTableWidgetItem(val)
+            if mat_type == "Built-in":
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.materials_table.setItem(row, col, item)
+        self._material_source[mat.name] = mat_type
+
+    def _import_materials_dialog(self) -> None:
+        """Open a file dialog, import materials, and show rename notifications."""
+        path_str, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Materials",
+            "",
+            "JSON (*.json);;All Files (*)",
+        )
+        if not path_str:
+            return
+        try:
+            incoming = load_materials_json(Path(path_str))
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Import Failed", f"Could not load file:\n{exc}")
+            return
+
+        builtin_names = set(load_builtin_library().keys())
+        existing = TableDataParser.parse_materials_table(self.materials_table)
+        merged, rename_messages = import_materials(existing, incoming, builtin_names)
+
+        # Add only the newly imported materials (not already in table)
+        self.materials_table.blockSignals(True)
+        for name, mat in merged.items():
+            if name not in existing:
+                self._add_material_row(mat, "User")
+        self.materials_table.blockSignals(False)
+
+        self._update_title()  # reflect that project has unsaved changes
+        if rename_messages:
+            msg = "Some materials were renamed to avoid conflicts:\n\n" + "\n".join(rename_messages)
+            QMessageBox.information(self, "Import: Name Conflicts Resolved", msg)
+
+    def _export_materials_dialog(self) -> None:
+        """Export selected materials (or all user materials) to a JSON file."""
+        # Collect selected rows; if none selected, fall back to all User materials
+        selected_rows = {idx.row() for idx in self.materials_table.selectedIndexes()}
+        if not selected_rows:
+            # Export all User materials
+            selected_rows = {
+                row
+                for row in range(self.materials_table.rowCount())
+                if TableDataParser._cell_text(self.materials_table, row, 6) == "User"
+            }
+        if not selected_rows:
+            QMessageBox.information(self, "Export", "No user materials to export.")
+            return
+
+        # Build dict from selected rows
+        to_export: dict = {}
+        for row in sorted(selected_rows):
+            name = TableDataParser._cell_text(self.materials_table, row, 0)
+            if not name:
+                continue
+            try:
+                from thermal_sim.models.material import Material as _Mat
+                mat = _Mat(
+                    name=name,
+                    k_in_plane=float(TableDataParser._cell_text(self.materials_table, row, 1) or "1"),
+                    k_through=float(TableDataParser._cell_text(self.materials_table, row, 2) or "1"),
+                    density=float(TableDataParser._cell_text(self.materials_table, row, 3) or "1"),
+                    specific_heat=float(TableDataParser._cell_text(self.materials_table, row, 4) or "1"),
+                    emissivity=float(TableDataParser._cell_text(self.materials_table, row, 5) or "0.9"),
+                )
+                to_export[name] = mat
+            except (ValueError, Exception):  # noqa: BLE001
+                continue
+
+        if not to_export:
+            QMessageBox.information(self, "Export", "No valid materials to export.")
+            return
+
+        path_str, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Materials",
+            "materials.json",
+            "JSON (*.json);;All Files (*)",
+        )
+        if not path_str:
+            return
+        try:
+            export_materials(to_export, Path(path_str))
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Export Failed", f"Could not write file:\n{exc}")
 
     def _new_project(self) -> None:
         """Create a new blank project, prompting to save if there are unsaved changes."""

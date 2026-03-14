@@ -365,6 +365,7 @@ class TableDataParser:
                 f"{mat.density:g}",
                 f"{mat.specific_heat:g}",
                 f"{mat.emissivity:g}",
+                "User",
             ]
             for mat in project.materials.values()
         ]
