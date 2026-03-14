@@ -2,26 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-14T14:05:25.371Z"
-progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 18
-  completed_plans: 15
----
-
----
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-14T15:01:00Z"
+last_updated: "2026-03-14T14:10:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -31,21 +18,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Phase 3 — Simulation Capabilities
+**Current focus:** Phase 4 — Polish
 
 ## Current Position
 
 Phase: 4 of 5 (Polish)
-Plan: 1 of 3 in current phase (completed 04-01)
+Plan: 2 of 3 in current phase (completed 04-02)
 Status: In progress
-Last activity: 2026-03-14 - Completed 04-01-PLAN.md — qt-material dark_amber theme, DARK_MPL_STYLE, PROBE_COLORS amber palette, PDF export light-style isolation (PLSH-01 satisfied)
+Last activity: 2026-03-14 - Completed 04-02-PLAN.md — QDockWidget layout replacing QSplitter, View menu, QSettings layout persistence (PLSH-02 satisfied)
 
-Progress: [█████████░] 78%
+Progress: [█████████░] 85%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 6 min
 - Total execution time: 0.9 hours
 
@@ -57,12 +44,13 @@ Progress: [█████████░] 78%
 | 02-results | 3 | 10 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 13m, 6m, 4m, 3m, 3m
+- Last 5 plans: 13m, 6m, 4m, 3m, 5m
 - Trend: fast
 
 *Updated after each plan completion*
 | Phase 03-simulation-capabilities P02 | 5 | 2 tasks | 4 files |
 | Phase 04-polish P01 | 2 | 2 tasks | 5 files |
+| Phase 04-polish P02 | 5 | 1 task | 1 file |
 
 ## Accumulated Context
 
@@ -119,6 +107,10 @@ Recent decisions affecting current work:
 - [04-01]: PDF isolation uses plt.style.context('default') not manual rcParams save/restore — context manager is exception-safe
 - [04-01]: PROBE_COLORS defined once in plotting.py and imported by plot_manager.py — single source of truth
 - [03-06]: All 7 Phase 3 requirements verified by human tester in live GUI and CLI — Phase 3 is complete
+- [04-02]: QDockWidget.setObjectName required for saveState/restoreState to correctly identify docks across sessions
+- [04-02]: _build_result_tabs() split into _build_plot_tabs() and _build_summary_tabs() — clean separation matches dock structure
+- [04-02]: self.result_tabs replaced by _plot_tabs and _summary_tabs — _results_widget and _sweep_results_widget live in summary dock
+- [04-02]: _restore_layout() called after _load_startup_project() so default dock positions are established first, then overridden by saved state
 
 ### Pending Todos
 
@@ -138,5 +130,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 04-01-PLAN.md — qt-material dark_amber theme, PROBE_COLORS palette, PDF style isolation; 111 tests pass
+Stopped at: Completed 04-02-PLAN.md — QDockWidget layout, View menu, QSettings persistence; 111 tests pass
 Resume file: None
