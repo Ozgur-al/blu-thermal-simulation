@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation** - Refactor MainWindow into collaborators; wire undo/redo and run-with-progress
 - [ ] **Phase 2: Results** - Structured results summary, hotspot annotation, PDF report, results comparison
-- [ ] **Phase 3: Simulation Capabilities** - Parametric sweep engine, time-varying heat sources, expanded validation
+- [x] **Phase 3: Simulation Capabilities** - Parametric sweep engine, time-varying heat sources, expanded validation (completed 2026-03-14)
 - [ ] **Phase 4: Polish** - Qt Material theme, QDockWidget layout, inline validation feedback
 - [ ] **Phase 5: Distribution** - PyInstaller one-folder bundle, resource path helper, launch verification
 
@@ -71,7 +71,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. All GUI elements render with the qt-material dark theme; no widgets retain the default OS appearance
   2. User can undock, reposition, and resize the main panels (editor, results, plot) independently; layout persists across sessions
   3. Invalid inputs (e.g., negative thickness, non-numeric conductivity) show an inline visual indicator immediately without requiring the user to attempt a run
-**Plans:** 4/6 plans executed
+**Plans:** 6/6 plans complete
 - [ ] 04-01-PLAN.md -- Apply qt-material dark amber theme, matplotlib dark style, probe color palette, PDF export isolation
 - [ ] 04-02-PLAN.md -- Convert QSplitter to QDockWidgets with View menu and layout persistence
 - [ ] 04-03-PLAN.md -- Inline per-cell validation feedback with run-button disable and error status
@@ -96,6 +96,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/4 | In progress | - |
 | 2. Results | 4/4 | Complete | 2026-03-14 |
-| 3. Simulation Capabilities | 5/6 | In Progress|  |
+| 3. Simulation Capabilities | 6/6 | Complete   | 2026-03-14 |
 | 4. Polish | 0/4 | Not started | - |
 | 5. Distribution | 0/TBD | Not started | - |
