@@ -3,3 +3,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 outputs*/
+dist/
+build/
+*.zip
+*.spec.bak
+build_cert.pfx
