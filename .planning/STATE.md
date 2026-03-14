@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 1 of 5 (Foundation)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-03-14 — Completed 01-01: TableDataParser + PlotManager extraction
+Last activity: 2026-03-14 — Completed 01-02: SimulationController + three-zone status bar
 
-Progress: [█░░░░░░░░░] 4%
+Progress: [██░░░░░░░░] 8%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 13 min
-- Total execution time: 0.2 hours
+- Total plans completed: 2
+- Average duration: 10 min
+- Total execution time: 0.4 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation | 1 | 13 min | 13 min |
+| 01-foundation | 2 | 19 min | 10 min |
 
 **Recent Trend:**
-- Last 5 plans: 13m
-- Trend: baseline established
+- Last 5 plans: 13m, 6m
+- Trend: fast
 
 *Updated after each plan completion*
 
@@ -50,6 +50,10 @@ Recent decisions affecting current work:
 - [01-01]: PlotManager takes explicit dimension arguments rather than reading MainWindow widgets — clean interface boundary
 - [01-01]: MplCanvas moved to plot_manager.py (canvas is a plotting concern, not a window concern)
 - [01-01]: populate_tables_from_project added to TableDataParser to cover model-to-table direction
+- [01-02]: SimulationController is a separate QObject from MainWindow so simulation lifecycle is independently testable
+- [01-02]: Progress capped at ~100 cross-thread signal emissions via progress_every = n_steps // 100
+- [01-02]: TransientSolver returns valid partial TransientResult on cancel rather than raising
+- [01-02]: Three-zone status bar uses addPermanentWidget (not showMessage) to preserve persistent solver state
 
 ### Pending Todos
 
@@ -63,5 +67,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 01-01-PLAN.md — TableDataParser + PlotManager extracted; MainWindow 727 lines
+Stopped at: Completed 01-02-PLAN.md — SimulationController extracted; three-zone status bar built; 28 tests pass
 Resume file: None

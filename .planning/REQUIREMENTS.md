@@ -9,8 +9,8 @@
 
 - [ ] **GUI-01**: MainWindow refactored into SimulationController, TableDataParser, and PlotManager
 - [ ] **GUI-02**: User can undo/redo any project edit via Ctrl+Z/Ctrl+Y
-- [ ] **GUI-03**: User can run simulation with visible progress bar and cancel button
-- [ ] **GUI-04**: Status bar shows file path, modified indicator, last run time, and solver state
+- [x] **GUI-03**: User can run simulation with visible progress bar and cancel button
+- [x] **GUI-04**: Status bar shows file path, modified indicator, last run time, and solver state
 - [ ] **GUI-05**: Window title shows asterisk when project has unsaved changes
 - [ ] **GUI-06**: All CLI capabilities accessible from GUI (output dir, CSV export, mode selection)
 - [ ] **GUI-07**: Keyboard shortcuts: Ctrl+S save, Ctrl+Z/Y undo/redo, F5 run, Escape cancel
@@ -73,10 +73,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GUI-01 | Phase 1 — Foundation | In Progress (TableDataParser+PlotManager done; SimulationController in 01-02) |
+| GUI-01 | Phase 1 — Foundation | In Progress (TableDataParser+PlotManager+SimulationController done) |
 | GUI-02 | Phase 1 — Foundation | Pending |
-| GUI-03 | Phase 1 — Foundation | Pending |
-| GUI-04 | Phase 1 — Foundation | Pending |
+| GUI-03 | Phase 1 — Foundation | Complete (01-02) |
+| GUI-04 | Phase 1 — Foundation | Complete (01-02) |
 | GUI-05 | Phase 1 — Foundation | Pending |
 | GUI-06 | Phase 1 — Foundation | Pending |
 | GUI-07 | Phase 1 — Foundation | Pending |
@@ -105,4 +105,4 @@
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after roadmap creation*
+*Last updated: 2026-03-14 after 01-02 completion (GUI-03, GUI-04 complete)*
