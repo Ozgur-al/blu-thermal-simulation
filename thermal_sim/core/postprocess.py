@@ -61,6 +61,40 @@ def layer_average_temperatures(temperature_map_c: np.ndarray, layer_names: list[
     return {name: float(temperature_map_c[idx].mean()) for idx, name in enumerate(layer_names)}
 
 
+def layer_stats(
+    temperature_map_c: np.ndarray,  # [n_layers, ny, nx]
+    layer_names: list[str],
+) -> list[dict]:
+    """Per-layer T_max, T_avg, T_min, and delta_T."""
+    result = []
+    for idx, name in enumerate(layer_names):
+        layer = temperature_map_c[idx]
+        t_max = float(layer.max())
+        t_avg = float(layer.mean())
+        t_min = float(layer.min())
+        result.append({
+            "layer": name,
+            "t_max_c": t_max,
+            "t_avg_c": t_avg,
+            "t_min_c": t_min,
+            "delta_t_c": t_max - t_min,
+        })
+    return result
+
+
+def top_n_hottest_cells_for_layer(
+    temperature_map_c: np.ndarray,  # [n_layers, ny, nx]
+    layer_idx: int,
+    layer_name: str,
+    dx: float,
+    dy: float,
+    n: int = 3,
+) -> list[dict]:
+    """Top-N hottest cells within a single layer."""
+    single = temperature_map_c[layer_idx : layer_idx + 1]
+    return _top_n_from_map(single, [layer_name], dx, dy, n=n)
+
+
 def _stats_from_map(temperature_map_c: np.ndarray) -> TemperatureStats:
     values = temperature_map_c
     return TemperatureStats(max_c=float(values.max()), avg_c=float(values.mean()), min_c=float(values.min()))
