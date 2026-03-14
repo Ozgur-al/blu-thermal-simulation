@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import json
-from importlib.resources import files
 from pathlib import Path
 
+from thermal_sim.core.paths import get_resources_dir
 from thermal_sim.models.material import Material
 
 
 def load_builtin_library() -> dict[str, Material]:
     """Load the bundled materials_builtin.json and return dict[name, Material].
 
-    Uses importlib.resources so the file is accessible both from the source
-    tree and from a PyInstaller --onedir bundle.
+    Uses paths.get_resources_dir() so the file is accessible both from the
+    source tree and from a PyInstaller --onedir bundle.
     """
-    resource = files("thermal_sim.resources").joinpath("materials_builtin.json")
+    resource = get_resources_dir() / "materials_builtin.json"
     text = resource.read_text(encoding="utf-8")
     data: dict = json.loads(text)
     return {name: Material.from_dict(entry) for name, entry in data.items()}

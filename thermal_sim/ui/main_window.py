@@ -52,6 +52,7 @@ from thermal_sim.core.material_library import (
     load_builtin_library,
     load_materials_json,
 )
+from thermal_sim.core.paths import APP_VERSION, get_examples_dir, get_output_dir
 from thermal_sim.core.postprocess import (
     basic_stats,
     basic_stats_transient,
@@ -127,7 +128,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Thermal Simulator")
+        self.setWindowTitle(f"Thermal Simulator v{APP_VERSION}")
         self.resize(1500, 900)
         self.setMinimumSize(800, 500)
 
@@ -170,7 +171,7 @@ class MainWindow(QMainWindow):
 
         # Persistent output directory
         settings = QSettings("ThermalSim", "ThermalSimulator")
-        self._output_dir = Path(settings.value("output_dir", str(Path.cwd() / "outputs")))
+        self._output_dir = Path(settings.value("output_dir", str(get_output_dir())))
 
         self._build_ui()
         self._build_menus()
@@ -884,9 +885,9 @@ class MainWindow(QMainWindow):
 
     def _update_title(self) -> None:
         """Update window title, showing asterisk when there are unsaved changes."""
-        base = "Thermal Simulator"
+        base = f"Thermal Simulator v{APP_VERSION}"
         if self.current_project_path:
-            base = f"{self.current_project_path.name} - Thermal Simulator"
+            base = f"{self.current_project_path.name} - Thermal Simulator v{APP_VERSION}"
         if not self._undo_stack.isClean():
             base = f"* {base}"
         self.setWindowTitle(base)
@@ -906,7 +907,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _load_startup_project(self) -> None:
-        default_path = Path("examples/steady_uniform_stack.json")
+        default_path = get_examples_dir() / "steady_uniform_stack.json"
         if default_path.exists():
             try:
                 project = load_project(default_path)
@@ -1143,7 +1144,9 @@ class MainWindow(QMainWindow):
     def _load_project_dialog(self) -> None:
         if not self._maybe_save_changes():
             return
-        path_str, _ = QFileDialog.getOpenFileName(self, "Open Project", str(Path.cwd()), "JSON (*.json)")
+        settings = QSettings("ThermalSim", "ThermalSimulator")
+        start_dir = str(settings.value("last_open_dir", str(get_examples_dir())))
+        path_str, _ = QFileDialog.getOpenFileName(self, "Open Project", start_dir, "JSON (*.json)")
         if not path_str:
             return
         try:
@@ -1151,6 +1154,7 @@ class MainWindow(QMainWindow):
             project = load_project(path)
             self._populate_ui_from_project(project)
             self.current_project_path = path
+            settings.setValue("last_open_dir", str(path.parent))
             self._update_path_label()
             self._update_title()
         except Exception as exc:  # noqa: BLE001
@@ -1181,7 +1185,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             self._show_error("Invalid project", str(exc))
             return
-        start = self.current_project_path or Path.cwd() / "project.json"
+        start = self.current_project_path or get_examples_dir() / "project.json"
         path_str, _ = QFileDialog.getSaveFileName(self, "Save Project As", str(start), "JSON (*.json)")
         if not path_str:
             return
