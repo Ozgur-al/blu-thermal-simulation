@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-14T14:08:00Z"
+last_updated: "2026-03-14T15:01:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 
 ## Current Position
 
-Phase: 3 of 5 (Simulation Capabilities)
-Plan: 6 of 6 in current phase (completed 03-06)
-Status: Phase complete
-Last activity: 2026-03-14 - Completed 03-06-PLAN.md — Human verification checkpoint approved; all 7 Phase 3 requirements (SIM-01 through SIM-04, MAT-01 through MAT-03) confirmed working
+Phase: 4 of 5 (Polish)
+Plan: 1 of 3 in current phase (completed 04-01)
+Status: In progress
+Last activity: 2026-03-14 - Completed 04-01-PLAN.md — qt-material dark_amber theme, DARK_MPL_STYLE, PROBE_COLORS amber palette, PDF export light-style isolation (PLSH-01 satisfied)
 
-Progress: [███████████] 100% (Phase 3 of 5 complete)
+Progress: [█████████░] 78%
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Progress: [███████████] 100% (Phase 3 of 5 complete)
 
 *Updated after each plan completion*
 | Phase 03-simulation-capabilities P02 | 5 | 2 tasks | 4 files |
+| Phase 04-polish P01 | 2 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,10 @@ Recent decisions affecting current work:
 - [03-04]: Power profile state stored in dict[int, list[PowerBreakpoint]] keyed by sources_table row index — avoids extra dataclass or TableDataParser changes
 - [03-04]: _source_profiles initialized in __init__ (not _build_sources_tab) so it persists across tab construction
 - [03-04]: _build_project_from_ui patches power_profile onto heat_sources after TableDataParser builds base project
+- [04-01]: qt-material import placed inside PySide6 try block — both fail together if PySide6 missing
+- [04-01]: mpl.rcParams.update() called before MainWindow() so MplCanvas Figure picks up dark colors at creation time
+- [04-01]: PDF isolation uses plt.style.context('default') not manual rcParams save/restore — context manager is exception-safe
+- [04-01]: PROBE_COLORS defined once in plotting.py and imported by plot_manager.py — single source of truth
 - [03-06]: All 7 Phase 3 requirements verified by human tester in live GUI and CLI — Phase 3 is complete
 
 ### Pending Todos
@@ -120,5 +125,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 03-06-PLAN.md — Phase 3 human verification approved; Phase 3 complete, ready for Phase 4
+Stopped at: Completed 04-01-PLAN.md — qt-material dark_amber theme, PROBE_COLORS palette, PDF style isolation; 111 tests pass
 Resume file: None
