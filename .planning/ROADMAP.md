@@ -45,7 +45,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Top-N hotspot locations appear as labeled markers directly on the temperature map plot
   3. User can click Export PDF and receive a file containing the stack summary, temperature maps, probe history, and key metrics — suitable for handing to a reviewer
   4. User can save a named result snapshot, run a modified simulation, and view an overlay probe plot and side-by-side metric table comparing the two runs
-**Plans:** 4 plans
+**Plans:** 2/4 plans executed
 - [x] 02-01-PLAN.md -- Backend foundations: layer_stats, per-layer hotspots, annotated map renderer, ResultSnapshot, PDF export
 - [ ] 02-02-PLAN.md -- Results tab UI: structured tables, hotspot click-to-navigate, annotated temperature maps
 - [ ] 02-03-PLAN.md -- Snapshot management, comparison tab, PDF export button wiring
@@ -91,7 +91,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/4 | In progress | - |
-| 2. Results | 1/4 | In progress | - |
+| 2. Results | 2/4 | In Progress|  |
 | 3. Simulation Capabilities | 0/TBD | Not started | - |
 | 4. Polish | 0/TBD | Not started | - |
 | 5. Distribution | 0/TBD | Not started | - |

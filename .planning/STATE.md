@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-14T09:21:39Z"
+status: in_progress
+last_updated: "2026-03-14T09:28:00Z"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -23,28 +23,28 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 2 of 5 (Results)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase (completed 02-02)
 Status: In progress
-Last activity: 2026-03-14 - Completed 02-01-PLAN.md — Results backend: layer_stats, ResultSnapshot, annotated map renderer, PDF report engine
+Last activity: 2026-03-14 - Completed 02-02-PLAN.md — Results tab with structured tables, annotated map rendering, hotspot navigation
 
-Progress: [████░░░░░░] 16%
+Progress: [████░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 8 min
-- Total execution time: 0.4 hours
+- Total plans completed: 6
+- Average duration: 6 min
+- Total execution time: 0.6 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 23 min | 8 min |
-| 02-results | 1 | 3 min | 3 min |
+| 02-results | 2 | 6 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 13m, 6m, 4m
+- Last 5 plans: 13m, 6m, 4m, 3m, 3m
 - Trend: fast
 
 *Updated after each plan completion*
@@ -75,6 +75,9 @@ Recent decisions affecting current work:
 - [02-01]: ResultSnapshot is mutable (not frozen) — frozen=True raises TypeError for numpy arrays which are not hashable
 - [02-01]: plot_temperature_map_annotated() accepts an existing ax rather than creating/saving a figure — enables GUI and PDF to share the same renderer
 - [02-01]: PDF page builders each return a fig for the caller to savefig/close — prevents matplotlib memory accumulation
+- [02-02]: result_tabs stored as self.result_tabs (not local) so _on_hotspot_navigate can switch tabs
+- [02-02]: Old Summary tab retained for backward compatibility; Results tab is additive, not a replacement
+- [02-02]: _plot_map() always does ax.clear() + fresh colorbar — simpler than in-place update when annotations change
 
 ### Pending Todos
 
@@ -94,5 +97,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 02-01-PLAN.md — Results backend: layer_stats, top_n_hottest_cells_for_layer, ResultSnapshot, plot_temperature_map_annotated, generate_pdf_report; 48 tests pass
+Stopped at: Completed 02-02-PLAN.md — Results tab with structured tables, annotated map rendering, hotspot navigation; 48 tests pass
 Resume file: None
