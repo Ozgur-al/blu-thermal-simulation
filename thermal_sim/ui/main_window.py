@@ -845,10 +845,10 @@ class MainWindow(QMainWindow):
     def _update_validation_status(self) -> None:
         """Update run button and status bar based on validation error count."""
         n = len(self._validation_errors)
-        self._run_action.setEnabled(n == 0 and not self._sim_controller.is_running)
+        self._run_action.setEnabled(n == 0)
         if n > 0:
             self._solver_label.setText(f"{n} validation error{'s' if n != 1 else ''}")
-        elif not self._sim_controller.is_running:
+        else:
             self._solver_label.setText("Ready")
 
     def _revalidate_table(self, table: QTableWidget) -> None:
