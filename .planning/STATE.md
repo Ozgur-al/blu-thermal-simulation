@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 1 of 5 (Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-14 — Roadmap created; ready to plan Phase 1
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-03-14 — Completed 01-01: TableDataParser + PlotManager extraction
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 4%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 13 min
+- Total execution time: 0.2 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-foundation | 1 | 13 min | 13 min |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 13m
+- Trend: baseline established
 
 *Updated after each plan completion*
 
@@ -46,10 +46,14 @@ Recent decisions affecting current work:
 - [Init]: Backend engines (sweep, power profile, PDF) built CLI-first before GUI wiring
 - [Init]: PyInstaller --onedir only (never --onefile) — AV quarantine risk on managed Windows machines
 - [Init]: reportlab + qt-material + pyinstaller + pyinstaller-hooks-contrib are the only four new dependencies
+- [01-01]: TableDataParser uses all-static methods — no instance needed, maximally testable without MainWindow
+- [01-01]: PlotManager takes explicit dimension arguments rather than reading MainWindow widgets — clean interface boundary
+- [01-01]: MplCanvas moved to plot_manager.py (canvas is a plotting concern, not a window concern)
+- [01-01]: populate_tables_from_project added to TableDataParser to cover model-to-table direction
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
@@ -59,5 +63,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Roadmap and STATE initialized; no plans created yet
+Stopped at: Completed 01-01-PLAN.md — TableDataParser + PlotManager extracted; MainWindow 727 lines
 Resume file: None

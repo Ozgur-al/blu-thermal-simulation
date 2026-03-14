@@ -73,7 +73,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GUI-01 | Phase 1 — Foundation | Pending |
+| GUI-01 | Phase 1 — Foundation | In Progress (TableDataParser+PlotManager done; SimulationController in 01-02) |
 | GUI-02 | Phase 1 — Foundation | Pending |
 | GUI-03 | Phase 1 — Foundation | Pending |
 | GUI-04 | Phase 1 — Foundation | Pending |
