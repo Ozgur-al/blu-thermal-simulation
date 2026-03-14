@@ -36,9 +36,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 3 of 5 (Simulation Capabilities)
-Plan: 3 of 4 in current phase (completed 03-03)
+Plan: 3 of 4 in current phase (completed 03-01 retroactively)
 Status: In progress
-Last activity: 2026-03-14 - Completed 03-03-PLAN.md — Material library system with built-in JSON, import/export functions, GUI Type column
+Last activity: 2026-03-14 - Completed 03-01-PLAN.md — PowerBreakpoint + power_at_time, ThermalNetwork b_vector split, per-step transient power scaling
 
 Progress: [████████░░] 60%
 
@@ -103,6 +103,10 @@ Recent decisions affecting current work:
 - [03-03]: Built-in table rows use Qt.ItemFlag.ItemIsEditable cleared (not clone-on-edit) — avoids undo system entanglement
 - [03-03]: load_builtin_library uses importlib.resources.files for PyInstaller bundle compatibility
 - [03-03]: Type column placed last (col 6) so parse_materials_table cols 0-5 need no change
+- [03-01]: power_at_time falls back to power_w when profile_end <= 0 (single-breakpoint edge case)
+- [03-01]: First breakpoint enforced at time_s=0 in __post_init__ to prevent looping discontinuities
+- [03-01]: TransientSolver detects _has_profiles once before loop — no overhead for constant-power runs
+- [03-01]: ThermalNetwork b_vector is now a @property returning b_boundary + b_sources for backward compatibility
 
 ### Pending Todos
 
@@ -122,5 +126,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 03-03-PLAN.md — Material library system complete; 106/107 tests pass
+Stopped at: Completed 03-01-PLAN.md — Power profile physics foundation complete; 107/107 tests pass
 Resume file: None
