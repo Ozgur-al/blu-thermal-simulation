@@ -60,6 +60,75 @@ class TableDataParser:
         return None if text == "" else float(text)
 
     @staticmethod
+    def validate_cell(table: QTableWidget, row: int, col: int) -> str:
+        """Return an error message for an invalid numeric cell, or '' if valid.
+
+        Validates individual cells for inline feedback. Complementary to
+        validate_tables() which checks cross-field constraints.
+        """
+        header = table.horizontalHeaderItem(col)
+        if header is None:
+            return ""
+        col_name = header.text()
+        text = TableDataParser._cell_text(table, row, col)
+        if text == "":
+            return ""  # empty cells are allowed (optional fields or handled by validate_tables)
+
+        # Non-numeric columns (Name, Material, Layer, Shape, Type, LED footprint) — skip
+        NON_NUMERIC = {"name", "material", "layer", "shape", "type", "led footprint"}
+        if col_name.lower() in NON_NUMERIC:
+            return ""
+
+        # Try to parse as number
+        try:
+            value = float(text)
+        except ValueError:
+            return f"'{text}' is not a valid number"
+
+        # Domain rules keyed on column header (case-insensitive matching)
+        col_lower = col_name.lower()
+
+        # Must be strictly positive (> 0)
+        MUST_BE_POSITIVE = {
+            "thickness [m]",
+            "k in-plane [w/mk]",
+            "k through [w/mk]",
+            "density [kg/m\u00b3]",
+            "specific heat [j/kgk]",
+            "count x",
+            "count y",
+            "pitch x [m]",
+            "pitch y [m]",
+        }
+        if col_lower in MUST_BE_POSITIVE and value <= 0:
+            return f"{col_name} must be > 0 (got {value})"
+
+        # Must be non-negative (>= 0)
+        MUST_BE_NON_NEGATIVE = {
+            "power [w]",
+            "power per led [w]",
+            "x [m]",
+            "y [m]",
+            "width [m]",
+            "height [m]",
+            "radius [m]",
+            "center x [m]",
+            "center y [m]",
+            "led width [m]",
+            "led height [m]",
+            "led radius [m]",
+            "interface r to next [m\u00b2k/w]",
+        }
+        if col_lower in MUST_BE_NON_NEGATIVE and value < 0:
+            return f"{col_name} must be >= 0 (got {value})"
+
+        # Emissivity: must be between 0 and 1
+        if col_lower == "emissivity" and (value < 0 or value > 1):
+            return f"Emissivity must be between 0 and 1 (got {value})"
+
+        return ""
+
+    @staticmethod
     def _new_table(headers: list[str]) -> QTableWidget:
         table = QTableWidget(0, len(headers))
         table.setHorizontalHeaderLabels(headers)
