@@ -19,11 +19,17 @@ class ThermalNetwork:
     """Discrete network representation of the project."""
 
     a_matrix: csr_matrix
-    b_vector: np.ndarray
+    b_boundary: np.ndarray   # boundary contributions (g * T_amb for surface nodes)
+    b_sources: np.ndarray    # heat source contributions at nominal power_w
     c_vector: np.ndarray
     grid: Grid2D
     n_layers: int
     layer_names: list[str]
+
+    @property
+    def b_vector(self) -> np.ndarray:
+        """Combined forcing vector — backward-compatible sum of boundary + source terms."""
+        return self.b_boundary + self.b_sources
 
     @property
     def n_nodes(self) -> int:
@@ -43,7 +49,8 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
     coo_cols: list[np.ndarray] = []
     coo_data: list[np.ndarray] = []
 
-    b_vec = np.zeros(n_nodes, dtype=float)
+    b_boundary = np.zeros(n_nodes, dtype=float)
+    b_sources = np.zeros(n_nodes, dtype=float)
     c_vec = np.zeros(n_nodes, dtype=float)
 
     def node_index(layer_idx: int, ix: int, iy: int) -> int:
@@ -145,7 +152,7 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
         coo_rows.append(top_indices)
         coo_cols.append(top_indices)
         coo_data.append(np.full(n_per_layer, g_top, dtype=float))
-        b_vec[top_indices] += g_top * project.boundaries.top.ambient_c
+        b_boundary[top_indices] += g_top * project.boundaries.top.ambient_c
 
     # Bottom layer nodes.
     bot_indices = flat_all_layer  # 0 * n_per_layer + flat
@@ -153,7 +160,7 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
         coo_rows.append(bot_indices)
         coo_cols.append(bot_indices)
         coo_data.append(np.full(n_per_layer, g_bot, dtype=float))
-        b_vec[bot_indices] += g_bot * project.boundaries.bottom.ambient_c
+        b_boundary[bot_indices] += g_bot * project.boundaries.bottom.ambient_c
 
     # Side ambient sinks (all layers, perimeter cells only).
     side_amb = project.boundaries.side.ambient_c
@@ -190,7 +197,7 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
             coo_rows.append(lr_nodes)
             coo_cols.append(lr_nodes)
             coo_data.append(np.full(len(lr_nodes), g_x_edge, dtype=float))
-            b_vec[lr_nodes] += g_x_edge * side_amb
+            b_boundary[lr_nodes] += g_x_edge * side_amb
 
         if g_y_edge > 0.0:
             tb_flat = np.concatenate([bottom_flat, top_flat])
@@ -198,7 +205,7 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
             coo_rows.append(tb_nodes)
             coo_cols.append(tb_nodes)
             coo_data.append(np.full(len(tb_nodes), g_y_edge, dtype=float))
-            b_vec[tb_nodes] += g_y_edge * side_amb
+            b_boundary[tb_nodes] += g_y_edge * side_amb
 
     # Assemble COO -> CSR in one shot.
     if coo_rows:
@@ -211,15 +218,55 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
     else:
         a_mat = csr_matrix((n_nodes, n_nodes), dtype=float)
 
-    _apply_heat_sources(project, grid, b_vec, node_index)
+    _apply_heat_sources(project, grid, b_sources, node_index)
     return ThermalNetwork(
         a_matrix=a_mat,
-        b_vector=b_vec,
+        b_boundary=b_boundary,
+        b_sources=b_sources,
         c_vector=c_vec,
         grid=grid,
         n_layers=n_layers,
         layer_names=[layer.name for layer in project.layers],
     )
+
+
+def build_heat_source_vector(
+    project: DisplayProject,
+    grid: Grid2D,
+    time_s: float | None = None,
+) -> np.ndarray:
+    """Build the heat-source forcing vector at a given simulation time.
+
+    When ``time_s`` is None (or sources have no power_profile), this is
+    equivalent to the nominal ``b_sources`` from ``build_thermal_network``.
+    When ``time_s`` is provided, each source is scaled by its
+    ``power_at_time(time_s)`` instead of its static ``power_w``.
+    """
+    n_per_layer = grid.nx * grid.ny
+    n_layers = len(project.layers)
+    n_nodes = n_layers * n_per_layer
+    b_vec = np.zeros(n_nodes, dtype=float)
+
+    x_centers = grid.x_centers()
+    y_centers = grid.y_centers()
+    xx, yy = np.meshgrid(x_centers, y_centers)
+
+    layer_index_cache: dict[str, int] = {
+        layer.name: idx for idx, layer in enumerate(project.layers)
+    }
+
+    for source in project.expanded_heat_sources():
+        layer_idx = layer_index_cache[source.layer]
+        mask = _source_mask(source, xx, yy)
+        iy_arr, ix_arr = np.where(mask)
+        if iy_arr.size == 0:
+            continue  # Already validated during initial network build
+        power = source.power_at_time(time_s) if time_s is not None else source.power_w
+        power_per_node = power / iy_arr.size
+        linear = layer_idx * n_per_layer + iy_arr * grid.nx + ix_arr
+        np.add.at(b_vec, linear, power_per_node)
+
+    return b_vec
 
 
 def _apply_heat_sources(

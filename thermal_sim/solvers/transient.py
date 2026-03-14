@@ -10,7 +10,7 @@ from scipy.sparse import diags
 from scipy.sparse.linalg import splu
 
 from thermal_sim.models.project import DisplayProject
-from thermal_sim.solvers.network_builder import build_thermal_network
+from thermal_sim.solvers.network_builder import build_heat_source_vector, build_thermal_network
 
 
 @dataclass
@@ -64,6 +64,12 @@ class TransientSolver:
         # Cap cross-thread progress signals to ~100 regardless of timestep count.
         progress_every = max(1, n_steps // 100)
 
+        # Detect whether any source has a time-varying power profile.
+        _has_profiles = any(
+            s.power_profile and len(s.power_profile) >= 2
+            for s in project.expanded_heat_sources()
+        )
+
         t_vec = np.full(network.n_nodes, project.initial_temperature_c, dtype=float)
         c_over_dt = network.c_vector / dt
         lhs = network.a_matrix.copy()
@@ -86,7 +92,12 @@ class TransientSolver:
 
         for step in range(1, n_steps + 1):
             np.multiply(c_over_dt, t_vec, out=rhs)
-            rhs += network.b_vector
+            if _has_profiles:
+                t_current = step * dt
+                b_power = build_heat_source_vector(project, network.grid, time_s=t_current)
+                rhs += network.b_boundary + b_power
+            else:
+                rhs += network.b_vector
             t_vec = lu.solve(rhs)
 
             if cancel_check and cancel_check():
