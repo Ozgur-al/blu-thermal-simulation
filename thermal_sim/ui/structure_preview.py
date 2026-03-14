@@ -5,19 +5,30 @@ from __future__ import annotations
 from matplotlib import colormaps
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from matplotlib.patches import Circle, Rectangle
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from matplotlib.patches import Circle, Patch, Rectangle
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
+from PySide6.QtCore import Qt
 
 from thermal_sim.models.project import DisplayProject
 
 
 class _Canvas(FigureCanvasQTAgg):
-    """Simple matplotlib canvas."""
+    """Simple matplotlib canvas that expands to fill available space."""
 
-    def __init__(self, width: float = 5.0, height: float = 4.0, dpi: int = 100) -> None:
+    def __init__(self, width: float = 4.0, height: float = 4.0, dpi: int = 100) -> None:
         self.figure = Figure(figsize=(width, height), dpi=dpi)
         self.axes = self.figure.add_subplot(111)
         super().__init__(self.figure)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
 
 class StructurePreviewDialog(QDialog):
@@ -26,11 +37,27 @@ class StructurePreviewDialog(QDialog):
     def __init__(self, project: DisplayProject, parent=None) -> None:
         super().__init__(parent)
         self.project = project
+        self._expanded_sources = project.expanded_heat_sources()
         self.setWindowTitle(f"Structure Preview - {project.name}")
-        self.resize(1200, 760)
+        # Size to 80% of the available screen, capped at 1200x760
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            w = min(int(avail.width() * 0.8), 1200)
+            h = min(int(avail.height() * 0.8), 760)
+            self.resize(w, h)
+        else:
+            self.resize(1200, 760)
+        self.setMinimumSize(500, 400)
         self._build_ui()
         self._draw_stack()
         self._draw_plan()
+
+    def closeEvent(self, event) -> None:
+        """Close matplotlib figures to prevent memory leaks."""
+        self.stack_canvas.figure.clear()
+        self.plan_canvas.figure.clear()
+        super().closeEvent(event)
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -39,28 +66,32 @@ class StructurePreviewDialog(QDialog):
                 f"Panel: {self.project.width:.4f} m x {self.project.height:.4f} m, "
                 f"Layers: {len(self.project.layers)}, "
                 f"Sources: {len(self.project.heat_sources)} + LED arrays: {len(self.project.led_arrays)} "
-                f"(expanded: {len(self.project.expanded_heat_sources())}), "
+                f"(expanded: {len(self._expanded_sources)}), "
                 f"Probes: {len(self.project.probes)}"
             )
         )
 
-        row = QHBoxLayout()
-        root.addLayout(row)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(QLabel("Cross-Section Stack (Thickness)"))
-        self.stack_canvas = _Canvas(width=5.8, height=5.8, dpi=100)
+        self.stack_canvas = _Canvas(width=4.0, height=4.0, dpi=100)
         left_layout.addWidget(self.stack_canvas)
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addWidget(QLabel("Plan View (Sources / Probes)"))
-        self.plan_canvas = _Canvas(width=5.8, height=5.8, dpi=100)
+        self.plan_canvas = _Canvas(width=4.0, height=4.0, dpi=100)
         right_layout.addWidget(self.plan_canvas)
 
-        row.addWidget(left)
-        row.addWidget(right)
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        root.addWidget(splitter)
 
     def _draw_stack(self) -> None:
         ax = self.stack_canvas.axes
@@ -96,15 +127,19 @@ class StructurePreviewDialog(QDialog):
         ax.set_title("Layer Stack Build-Up")
         ax.grid(True, axis="y", alpha=0.25)
 
-        legend_lines = [f"{mat}: color" for mat in material_names]
-        if legend_lines:
-            ax.text(
-                1.02,
-                0.98,
-                "Materials:\n" + "\n".join(legend_lines),
-                transform=ax.transAxes,
-                va="top",
-                fontsize=8,
+        if material_names:
+            legend_patches = [
+                Patch(facecolor=mat_color[name], edgecolor="black", linewidth=0.5, label=name)
+                for name in material_names
+            ]
+            ax.legend(
+                handles=legend_patches,
+                loc="upper left",
+                bbox_to_anchor=(1.02, 1.0),
+                fontsize=7,
+                title="Materials",
+                title_fontsize=8,
+                frameon=False,
             )
         self.stack_canvas.figure.tight_layout()
         self.stack_canvas.draw()
@@ -120,9 +155,8 @@ class StructurePreviewDialog(QDialog):
         cmap = colormaps["tab10"]
         layer_colors = {name: cmap(i % 10) for i, name in enumerate(layer_names)}
 
-        expanded_sources = self.project.expanded_heat_sources()
-        show_labels = len(expanded_sources) <= 40
-        for source in expanded_sources:
+        show_labels = len(self._expanded_sources) <= 40
+        for source in self._expanded_sources:
             color = layer_colors.get(source.layer, "red")
             if source.shape == "full":
                 patch = Rectangle(

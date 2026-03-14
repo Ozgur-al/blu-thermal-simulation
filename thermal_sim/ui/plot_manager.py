@@ -8,6 +8,7 @@ from __future__ import annotations
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QSizePolicy
 
 from thermal_sim.core.postprocess import layer_average_temperatures
@@ -25,6 +26,23 @@ class MplCanvas(FigureCanvasQTAgg):
         # Cached artist references for in-place updates.
         self._image = None   # imshow artist
         self._colorbar = None  # colorbar instance
+        # Debounce resize events to avoid expensive redraws on every pixel change.
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(150)
+        self._resize_timer.timeout.connect(self._do_deferred_resize)
+        self._pending_resize = None
+
+    def resizeEvent(self, event) -> None:
+        """Debounce resize to prevent expensive redraws during layout changes."""
+        self._pending_resize = event
+        self._resize_timer.start()
+
+    def _do_deferred_resize(self) -> None:
+        """Perform the actual resize after the debounce interval."""
+        if self._pending_resize is not None:
+            super().resizeEvent(self._pending_resize)
+            self._pending_resize = None
 
 
 class PlotManager:
