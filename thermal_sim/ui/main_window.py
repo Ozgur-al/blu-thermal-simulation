@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDockWidget,
     QFileDialog,
     QFormLayout,
     QGridLayout,
@@ -34,7 +35,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
-    QSplitter,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -174,30 +174,40 @@ class MainWindow(QMainWindow):
         self._undo_stack.cleanChanged.connect(self._update_title)
         self._undo_stack.cleanChanged.connect(self._update_path_label)
         self._load_startup_project()
+        self._restore_layout()
 
     # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
-        root = QWidget()
-        root_layout = QHBoxLayout(root)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        root_layout.addWidget(splitter)
-        self.setCentralWidget(root)
+        # Central widget: minimal placeholder (all content lives in docks)
+        self.setCentralWidget(QWidget())
 
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.addWidget(self._build_top_controls())
-        left_layout.addWidget(self._build_editor_tabs())
-        splitter.addWidget(left)
+        # Dock 1: Editor (left) — contains top controls + editor tabs
+        editor_container = QWidget()
+        editor_layout = QVBoxLayout(editor_container)
+        editor_layout.addWidget(self._build_top_controls())
+        editor_layout.addWidget(self._build_editor_tabs())
+        self._editor_dock = QDockWidget("Editor", self)
+        self._editor_dock.setObjectName("EditorDock")
+        self._editor_dock.setWidget(editor_container)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._editor_dock)
 
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.addWidget(self._build_result_tabs())
-        splitter.addWidget(right)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
+        # Dock 2: Result Plots (top-right) — Temperature Map, Layer Profile, Probe History
+        self._plots_dock = QDockWidget("Result Plots", self)
+        self._plots_dock.setObjectName("PlotsDock")
+        self._plots_dock.setWidget(self._build_plot_tabs())
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._plots_dock)
+
+        # Dock 3: Results Summary (bottom-right) — Summary, Results, Comparison, Sweep Results
+        self._summary_dock = QDockWidget("Results Summary", self)
+        self._summary_dock.setObjectName("SummaryDock")
+        self._summary_dock.setWidget(self._build_summary_tabs())
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._summary_dock)
+
+        # Stack summary below plots in the right area
+        self.splitDockWidget(self._plots_dock, self._summary_dock, Qt.Orientation.Vertical)
 
         # Three-zone status bar -----------------------------------------------
         # Left zone: current file path (or "No file")
@@ -283,6 +293,16 @@ class MainWindow(QMainWindow):
         sweep_action.setShortcut(QKeySequence("Ctrl+Shift+P"))
         sweep_action.triggered.connect(self._open_sweep_dialog)
         run_menu.addAction(sweep_action)
+
+        # View menu
+        view_menu = self.menuBar().addMenu("&View")
+        view_menu.addAction(self._editor_dock.toggleViewAction())
+        view_menu.addAction(self._plots_dock.toggleViewAction())
+        view_menu.addAction(self._summary_dock.toggleViewAction())
+        view_menu.addSeparator()
+        reset_action = QAction("Reset Layout", self)
+        reset_action.triggered.connect(self._reset_layout)
+        view_menu.addAction(reset_action)
 
     def _build_toolbar(self) -> None:
         """Create the main toolbar with mode dropdown and run/cancel actions."""
@@ -549,13 +569,14 @@ class MainWindow(QMainWindow):
         self._wire_table_undo(self.probes_table)
         return tab
 
-    def _build_result_tabs(self) -> QTabWidget:
-        self.result_tabs = QTabWidget()
+    def _build_plot_tabs(self) -> QTabWidget:
+        """Build the Result Plots dock contents: Temperature Map, Layer Profile, Probe History."""
+        self._plot_tabs = QTabWidget()
 
         map_tab = QWidget()
         map_layout = QVBoxLayout(map_tab)
         map_layout.addWidget(self._plot_manager.map_canvas)
-        self.result_tabs.addTab(map_tab, "Temperature Map")
+        self._plot_tabs.addTab(map_tab, "Temperature Map")
 
         profile_tab = QWidget()
         profile_layout = QVBoxLayout(profile_tab)
@@ -567,12 +588,18 @@ class MainWindow(QMainWindow):
         controls.addStretch()
         profile_layout.addLayout(controls)
         profile_layout.addWidget(self._plot_manager.profile_canvas)
-        self.result_tabs.addTab(profile_tab, "Layer Profile")
+        self._plot_tabs.addTab(profile_tab, "Layer Profile")
 
         hist_tab = QWidget()
         hist_layout = QVBoxLayout(hist_tab)
         hist_layout.addWidget(self._plot_manager.history_canvas)
-        self.result_tabs.addTab(hist_tab, "Probe History")
+        self._plot_tabs.addTab(hist_tab, "Probe History")
+
+        return self._plot_tabs
+
+    def _build_summary_tabs(self) -> QTabWidget:
+        """Build the Results Summary dock contents: Summary, Results, Comparison, Sweep Results."""
+        self._summary_tabs = QTabWidget()
 
         summary_tab = QWidget()
         summary_layout = QVBoxLayout(summary_tab)
@@ -587,22 +614,22 @@ class MainWindow(QMainWindow):
         summary_layout.addWidget(self.probe_table)
         summary_layout.addWidget(QLabel("Hottest Cells"))
         summary_layout.addWidget(self.hot_table)
-        self.result_tabs.addTab(summary_tab, "Summary")
+        self._summary_tabs.addTab(summary_tab, "Summary")
 
-        # New Results tab: structured three-section summary widget
+        # Results tab: structured three-section summary widget
         self._results_widget = ResultsSummaryWidget()
         self._results_widget.hotspot_clicked.connect(self._on_hotspot_navigate)
-        self.result_tabs.addTab(self._results_widget, "Results")
+        self._summary_tabs.addTab(self._results_widget, "Results")
 
         # Comparison tab: snapshot management and side-by-side analysis
         self._comparison_widget = ComparisonWidget()
-        self.result_tabs.addTab(self._comparison_widget, "Comparison")
+        self._summary_tabs.addTab(self._comparison_widget, "Comparison")
 
         # Sweep Results tab: comparison table + parameter-vs-metric plot
         self._sweep_results_widget = SweepResultsWidget()
-        self.result_tabs.addTab(self._sweep_results_widget, "Sweep Results")
+        self._summary_tabs.addTab(self._sweep_results_widget, "Sweep Results")
 
-        return self.result_tabs
+        return self._summary_tabs
 
     def _build_boundary_group(self, title: str) -> dict[str, QWidget]:
         group = QGroupBox(title)
@@ -619,6 +646,29 @@ class MainWindow(QMainWindow):
         form.addRow("Include radiation", include_rad)
         form.addRow("Emissivity override", emiss)
         return {"group": group, "ambient": ambient, "h": h_coeff, "rad": include_rad, "emiss": emiss}
+
+    def _reset_layout(self) -> None:
+        """Restore the factory default dock arrangement."""
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._editor_dock)
+        self._editor_dock.setFloating(False)
+        self._editor_dock.show()
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._plots_dock)
+        self._plots_dock.setFloating(False)
+        self._plots_dock.show()
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._summary_dock)
+        self._summary_dock.setFloating(False)
+        self._summary_dock.show()
+        self.splitDockWidget(self._plots_dock, self._summary_dock, Qt.Orientation.Vertical)
+
+    def _restore_layout(self) -> None:
+        """Restore dock arrangement and window geometry from QSettings."""
+        settings = QSettings("ThermalSim", "ThermalSimulator")
+        state = settings.value("dock_state")
+        geom = settings.value("window_geometry")
+        if state:
+            self.restoreState(state)
+        if geom:
+            self.restoreGeometry(geom)
 
     def _draw_empty_states(self) -> None:
         for canvas, msg in [
@@ -1209,7 +1259,7 @@ class MainWindow(QMainWindow):
         self._results_widget.update_data(
             layer_stats_data, hottest, self.last_probe_values, project.probes
         )
-        self.result_tabs.setCurrentWidget(self._results_widget)
+        self._summary_tabs.setCurrentWidget(self._results_widget)
 
         # Enable snapshot and PDF export buttons now that a result is available.
         self._save_snapshot_btn.setEnabled(True)
@@ -1251,7 +1301,7 @@ class MainWindow(QMainWindow):
     def _on_sweep_finished(self, result: object) -> None:
         """Update the Sweep Results tab and switch to it."""
         self._sweep_results_widget.update_results(result)
-        self.result_tabs.setCurrentWidget(self._sweep_results_widget)
+        self._summary_tabs.setCurrentWidget(self._sweep_results_widget)
 
     # ------------------------------------------------------------------
     # Snapshot management
@@ -1402,8 +1452,10 @@ class MainWindow(QMainWindow):
         """
         self.map_layer_combo.setCurrentText(layer_name)
         self._selected_hotspot_rank = rank
-        # Switch to Temperature Map tab (index 0).
-        self.result_tabs.setCurrentIndex(0)
+        # Switch to Temperature Map tab (index 0) and ensure plots dock is visible.
+        self._plot_tabs.setCurrentIndex(0)
+        self._plots_dock.show()
+        self._plots_dock.raise_()
         # Re-render map with the highlight.
         if self._last_final_map is not None and self._last_layer_names is not None:
             self._plot_map(self._last_final_map, self._last_layer_names)
@@ -1681,6 +1733,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         """Prompt to save unsaved changes before closing."""
+        settings = QSettings("ThermalSim", "ThermalSimulator")
+        settings.setValue("dock_state", self.saveState())
+        settings.setValue("window_geometry", self.saveGeometry())
         if self._maybe_save_changes():
             event.accept()
         else:
