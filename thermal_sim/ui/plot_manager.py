@@ -36,14 +36,19 @@ class MplCanvas(FigureCanvasQTAgg):
 
     def resizeEvent(self, event) -> None:
         """Debounce resize to prevent expensive redraws during layout changes."""
-        self._pending_resize = event
+        # Store a copy of the event — the original C++ object may be deleted
+        # before the deferred timer fires.
+        from PySide6.QtCore import QSize
+        from PySide6.QtGui import QResizeEvent
+        self._pending_resize = QResizeEvent(QSize(event.size()), QSize(event.oldSize()))
         self._resize_timer.start()
 
     def _do_deferred_resize(self) -> None:
         """Perform the actual resize after the debounce interval."""
         if self._pending_resize is not None:
-            super().resizeEvent(self._pending_resize)
+            evt = self._pending_resize
             self._pending_resize = None
+            super().resizeEvent(evt)
 
 
 class PlotManager:
@@ -104,7 +109,7 @@ class PlotManager:
             layer_names.index(layer_name) if layer_name in layer_names else len(layer_names) - 1
         )
         data = final_map_c[layer_idx]
-        extent = [0.0, width_m, 0.0, height_m]
+        extent = [0.0, width_m * 1000.0, 0.0, height_m * 1000.0]
         ax = self.map_canvas.axes
 
         if self.map_canvas._image is not None:
@@ -116,10 +121,10 @@ class PlotManager:
         else:
             # First plot — create image, colorbar, and layout.
             ax.clear()
-            im = ax.imshow(data, origin="lower", extent=extent, aspect="auto", cmap="inferno")
+            im = ax.imshow(data, origin="lower", extent=extent, aspect="equal", cmap="inferno")
             ax.set_title(f"Temperature Map - {layer_names[layer_idx]}")
-            ax.set_xlabel("x [m]")
-            ax.set_ylabel("y [m]")
+            ax.set_xlabel("x [mm]")
+            ax.set_ylabel("y [mm]")
             self.map_canvas._colorbar = self.map_canvas.figure.colorbar(
                 im, ax=ax, label="Temperature [\u00b0C]"
             )
@@ -160,7 +165,7 @@ class PlotManager:
         ax.set_yticklabels(layer_names)
         ax.set_xlabel("Temperature [\u00b0C]")
         ax.set_ylabel("Layer")
-        ax.set_title(f"Layer Profile @ x={x_m:.4f} m, y={y_m:.4f} m")
+        ax.set_title(f"Layer Profile @ x={x_m * 1000:.1f} mm, y={y_m * 1000:.1f} mm")
         ax.grid(True, alpha=0.3)
         self.profile_canvas.figure.tight_layout()
         if not self._batching:
@@ -239,7 +244,7 @@ class PlotManager:
         set_table_rows_fn(
             hot_table,
             [
-                [h["layer"], f"{h['temperature_c']:.2f}", f"{h['x_m']:.5f}", f"{h['y_m']:.5f}"]
+                [h["layer"], f"{h['temperature_c']:.2f}", f"{h['x_m'] * 1000:.2f}", f"{h['y_m'] * 1000:.2f}"]
                 for h in hottest
             ],
         )

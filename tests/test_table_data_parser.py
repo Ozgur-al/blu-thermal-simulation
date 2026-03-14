@@ -70,8 +70,9 @@ class TestParseMaterialsTable:
 class TestParseLayersTable:
     def test_single_layer_round_trip(self):
         from thermal_sim.ui.table_data_parser import TableDataParser
-        headers = ["Name", "Material", "Thickness [m]", "Interface R to next [m\u00b2K/W]"]
-        rows = [["Glass", "Borosilicate", "0.002", "0.0001"]]
+        headers = ["Name", "Material", "Thickness [mm]", "Interface R to next [m\u00b2K/W]"]
+        # Table shows mm; model expects metres.  2 mm -> 0.002 m
+        rows = [["Glass", "Borosilicate", "2", "0.0001"]]
         table = _make_table(headers, rows)
         result = TableDataParser.parse_layers_table(table)
         assert len(result) == 1
@@ -83,19 +84,19 @@ class TestParseLayersTable:
 
     def test_interface_resistance_defaults_to_zero(self):
         from thermal_sim.ui.table_data_parser import TableDataParser
-        headers = ["Name", "Material", "Thickness [m]", "Interface R to next [m\u00b2K/W]"]
-        rows = [["PCB", "FR4", "0.001", ""]]
+        headers = ["Name", "Material", "Thickness [mm]", "Interface R to next [m\u00b2K/W]"]
+        rows = [["PCB", "FR4", "1", ""]]
         table = _make_table(headers, rows)
         result = TableDataParser.parse_layers_table(table)
         assert result[0].interface_resistance_to_next == pytest.approx(0.0)
 
     def test_multiple_layers_order_preserved(self):
         from thermal_sim.ui.table_data_parser import TableDataParser
-        headers = ["Name", "Material", "Thickness [m]", "Interface R to next [m\u00b2K/W]"]
+        headers = ["Name", "Material", "Thickness [mm]", "Interface R to next [m\u00b2K/W]"]
         rows = [
-            ["Bottom", "Al", "0.003", "0"],
-            ["Middle", "FR4", "0.001", "0"],
-            ["Top", "Glass", "0.002", "0"],
+            ["Bottom", "Al", "3", "0"],
+            ["Middle", "FR4", "1", "0"],
+            ["Top", "Glass", "2", "0"],
         ]
         table = _make_table(headers, rows)
         result = TableDataParser.parse_layers_table(table)
@@ -111,21 +112,21 @@ class TestValidateTables:
             []
         )
         layer_table = _make_table(
-            ["Name", "Material", "Thickness [m]", "Interface R to next [m\u00b2K/W]"],
+            ["Name", "Material", "Thickness [mm]", "Interface R to next [m\u00b2K/W]"],
             []
         )
         source_table = _make_table(
-            ["Name", "Layer", "Power [W]", "Shape", "x [m]", "y [m]",
-             "width [m]", "height [m]", "radius [m]"],
+            ["Name", "Layer", "Power [W]", "Shape", "x [mm]", "y [mm]",
+             "width [mm]", "height [mm]", "radius [mm]"],
             []
         )
         led_table = _make_table(
-            ["Name", "Layer", "Center x [m]", "Center y [m]", "Count x",
-             "Count y", "Pitch x [m]", "Pitch y [m]", "Power per LED [W]",
-             "LED footprint", "LED width [m]", "LED height [m]", "LED radius [m]"],
+            ["Name", "Layer", "Center x [mm]", "Center y [mm]", "Count x",
+             "Count y", "Pitch x [mm]", "Pitch y [mm]", "Power per LED [W]",
+             "LED footprint", "LED width [mm]", "LED height [mm]", "LED radius [mm]"],
             []
         )
-        probe_table = _make_table(["Name", "Layer", "x [m]", "y [m]"], [])
+        probe_table = _make_table(["Name", "Layer", "x [mm]", "y [mm]"], [])
         return {
             "materials": mat_table,
             "layers": layer_table,
@@ -159,7 +160,7 @@ class TestValidateTables:
             tables["materials"].setItem(0, col, QTableWidgetItem(val))
         # Add a layer that references "FR4" (unknown)
         tables["layers"].insertRow(0)
-        for col, val in enumerate(["MyLayer", "FR4", "0.001", "0"]):
+        for col, val in enumerate(["MyLayer", "FR4", "1", "0"]):
             tables["layers"].setItem(0, col, QTableWidgetItem(val))
         errors = TableDataParser.validate_tables(tables)
         assert any("unknown material" in e.lower() for e in errors)
@@ -173,7 +174,7 @@ class TestValidateTables:
             tables["materials"].setItem(0, col, QTableWidgetItem(val))
         # Layer referencing "Al"
         tables["layers"].insertRow(0)
-        for col, val in enumerate(["Base", "Al", "0.003", "0"]):
+        for col, val in enumerate(["Base", "Al", "3", "0"]):
             tables["layers"].setItem(0, col, QTableWidgetItem(val))
         errors = TableDataParser.validate_tables(tables)
         assert errors == []

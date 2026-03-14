@@ -26,14 +26,14 @@ def plot_temperature_map(
     image = ax.imshow(
         temperature_map_c,
         origin="lower",
-        extent=[0.0, width_m, 0.0, height_m],
+        extent=[0.0, width_m * 1000.0, 0.0, height_m * 1000.0],
         aspect="auto",
         cmap="inferno",
     )
     cbar = fig.colorbar(image, ax=ax)
     cbar.set_label("Temperature [C]")
-    ax.set_xlabel("x [m]")
-    ax.set_ylabel("y [m]")
+    ax.set_xlabel("x [mm]")
+    ax.set_ylabel("y [mm]")
     ax.set_title(title)
     fig.tight_layout()
     fig.savefig(out)
@@ -54,19 +54,22 @@ def plot_temperature_map_annotated(
 
     Draws the heatmap with optional crosshair hotspot annotations and probe markers.
     Used by both the GUI canvas and PDF export.
+    Coordinates are converted from metres to millimetres for display.
     """
-    extent = [0.0, width_m, 0.0, height_m]
+    w_mm = width_m * 1000.0
+    h_mm = height_m * 1000.0
+    extent = [0.0, w_mm, 0.0, h_mm]
     im = ax.imshow(temperature_map_c, origin="lower", extent=extent, aspect="auto", cmap="inferno")
     ax.set_title(title)
-    ax.set_xlabel("x [m]")
-    ax.set_ylabel("y [m]")
-    ax.set_xlim(0, width_m)
-    ax.set_ylim(0, height_m)
+    ax.set_xlabel("x [mm]")
+    ax.set_ylabel("y [mm]")
+    ax.set_xlim(0, w_mm)
+    ax.set_ylim(0, h_mm)
 
     # Hotspot crosshairs
     if hotspots:
         for rank, hotspot in enumerate(hotspots, start=1):
-            x, y = hotspot["x_m"], hotspot["y_m"]
+            x, y = hotspot["x_m"] * 1000.0, hotspot["y_m"] * 1000.0
             alpha = 0.85 if (selected_hotspot_rank and rank == selected_hotspot_rank) else 0.55
             linewidth = 1.2 if (selected_hotspot_rank and rank == selected_hotspot_rank) else 0.7
             color = "yellow" if (selected_hotspot_rank and rank == selected_hotspot_rank) else "white"
@@ -75,7 +78,7 @@ def plot_temperature_map_annotated(
             ax.annotate(
                 f"#{rank}\n{hotspot['temperature_c']:.1f}\u00b0C",
                 xy=(x, y),
-                xytext=(x + 0.02 * width_m, y + 0.02 * height_m),
+                xytext=(x + 0.02 * w_mm, y + 0.02 * h_mm),
                 fontsize=7,
                 color=color,
                 fontweight="bold",
@@ -86,9 +89,10 @@ def plot_temperature_map_annotated(
     # Probe markers (diamond, distinct from crosshairs)
     if probes:
         for probe in probes:
-            ax.plot(probe.x, probe.y, marker="D", markersize=5, color="cyan",
+            px, py = probe.x * 1000.0, probe.y * 1000.0
+            ax.plot(px, py, marker="D", markersize=5, color="cyan",
                     markeredgewidth=0.8, markeredgecolor="black", zorder=5)
-            ax.text(probe.x, probe.y + 0.015 * height_m, probe.name,
+            ax.text(px, py + 0.015 * h_mm, probe.name,
                     fontsize=6, color="cyan", ha="center", va="bottom")
 
     return im  # Return for colorbar attachment if caller needs it

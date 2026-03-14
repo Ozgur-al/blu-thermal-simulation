@@ -90,15 +90,15 @@ class TableDataParser:
 
         # Must be strictly positive (> 0)
         MUST_BE_POSITIVE = {
-            "thickness [m]",
+            "thickness [mm]",
             "k in-plane [w/mk]",
             "k through [w/mk]",
             "density [kg/m\u00b3]",
             "specific heat [j/kgk]",
             "count x",
             "count y",
-            "pitch x [m]",
-            "pitch y [m]",
+            "pitch x [mm]",
+            "pitch y [mm]",
         }
         if col_lower in MUST_BE_POSITIVE and value <= 0:
             return f"{col_name} must be > 0 (got {value})"
@@ -107,16 +107,16 @@ class TableDataParser:
         MUST_BE_NON_NEGATIVE = {
             "power [w]",
             "power per led [w]",
-            "x [m]",
-            "y [m]",
-            "width [m]",
-            "height [m]",
-            "radius [m]",
-            "center x [m]",
-            "center y [m]",
-            "led width [m]",
-            "led height [m]",
-            "led radius [m]",
+            "x [mm]",
+            "y [mm]",
+            "width [mm]",
+            "height [mm]",
+            "radius [mm]",
+            "center x [mm]",
+            "center y [mm]",
+            "led width [mm]",
+            "led height [mm]",
+            "led radius [mm]",
             "interface r to next [m\u00b2k/w]",
         }
         if col_lower in MUST_BE_NON_NEGATIVE and value < 0:
@@ -194,7 +194,10 @@ class TableDataParser:
 
     @staticmethod
     def parse_layers_table(table: QTableWidget) -> list[Layer]:
-        """Parse a layers QTableWidget and return list[Layer]."""
+        """Parse a layers QTableWidget and return list[Layer].
+
+        Table displays thickness in mm; convert back to metres for the model.
+        """
         layers: list[Layer] = []
         for row in range(table.rowCount()):
             name = TableDataParser._cell_text(table, row, 0)
@@ -204,7 +207,7 @@ class TableDataParser:
                 Layer(
                     name=name,
                     material=TableDataParser._cell_text(table, row, 1),
-                    thickness=TableDataParser._cell_float(table, row, 2),
+                    thickness=TableDataParser._cell_float(table, row, 2) / 1000.0,
                     interface_resistance_to_next=TableDataParser._cell_float(
                         table, row, 3, default=0.0
                     ),
@@ -214,57 +217,72 @@ class TableDataParser:
 
     @staticmethod
     def parse_sources_table(table: QTableWidget) -> list[HeatSource]:
-        """Parse a heat sources QTableWidget and return list[HeatSource]."""
+        """Parse a heat sources QTableWidget and return list[HeatSource].
+
+        Table displays dimensional values in mm; convert back to metres for the model.
+        """
         heat_sources: list[HeatSource] = []
         for row in range(table.rowCount()):
             name = TableDataParser._cell_text(table, row, 0)
             if not name:
                 continue
+            opt_w = TableDataParser._cell_optional_float(table, row, 6)
+            opt_h = TableDataParser._cell_optional_float(table, row, 7)
+            opt_r = TableDataParser._cell_optional_float(table, row, 8)
             heat_sources.append(
                 HeatSource(
                     name=name,
                     layer=TableDataParser._cell_text(table, row, 1),
                     power_w=TableDataParser._cell_float(table, row, 2),
                     shape=TableDataParser._cell_text(table, row, 3) or "rectangle",
-                    x=TableDataParser._cell_float(table, row, 4, default=0.0),
-                    y=TableDataParser._cell_float(table, row, 5, default=0.0),
-                    width=TableDataParser._cell_optional_float(table, row, 6),
-                    height=TableDataParser._cell_optional_float(table, row, 7),
-                    radius=TableDataParser._cell_optional_float(table, row, 8),
+                    x=TableDataParser._cell_float(table, row, 4, default=0.0) / 1000.0,
+                    y=TableDataParser._cell_float(table, row, 5, default=0.0) / 1000.0,
+                    width=None if opt_w is None else opt_w / 1000.0,
+                    height=None if opt_h is None else opt_h / 1000.0,
+                    radius=None if opt_r is None else opt_r / 1000.0,
                 )
             )
         return heat_sources
 
     @staticmethod
     def parse_led_arrays_table(table: QTableWidget) -> list[LEDArray]:
-        """Parse an LED arrays QTableWidget and return list[LEDArray]."""
+        """Parse an LED arrays QTableWidget and return list[LEDArray].
+
+        Table displays dimensional values in mm; convert back to metres for the model.
+        """
         led_arrays: list[LEDArray] = []
         for row in range(table.rowCount()):
             name = TableDataParser._cell_text(table, row, 0)
             if not name:
                 continue
+            opt_w = TableDataParser._cell_optional_float(table, row, 10)
+            opt_h = TableDataParser._cell_optional_float(table, row, 11)
+            opt_r = TableDataParser._cell_optional_float(table, row, 12)
             led_arrays.append(
                 LEDArray(
                     name=name,
                     layer=TableDataParser._cell_text(table, row, 1),
-                    center_x=TableDataParser._cell_float(table, row, 2),
-                    center_y=TableDataParser._cell_float(table, row, 3),
+                    center_x=TableDataParser._cell_float(table, row, 2) / 1000.0,
+                    center_y=TableDataParser._cell_float(table, row, 3) / 1000.0,
                     count_x=int(TableDataParser._cell_float(table, row, 4)),
                     count_y=int(TableDataParser._cell_float(table, row, 5)),
-                    pitch_x=TableDataParser._cell_float(table, row, 6),
-                    pitch_y=TableDataParser._cell_float(table, row, 7),
+                    pitch_x=TableDataParser._cell_float(table, row, 6) / 1000.0,
+                    pitch_y=TableDataParser._cell_float(table, row, 7) / 1000.0,
                     power_per_led_w=TableDataParser._cell_float(table, row, 8),
                     footprint_shape=TableDataParser._cell_text(table, row, 9) or "rectangle",
-                    led_width=TableDataParser._cell_optional_float(table, row, 10),
-                    led_height=TableDataParser._cell_optional_float(table, row, 11),
-                    led_radius=TableDataParser._cell_optional_float(table, row, 12),
+                    led_width=None if opt_w is None else opt_w / 1000.0,
+                    led_height=None if opt_h is None else opt_h / 1000.0,
+                    led_radius=None if opt_r is None else opt_r / 1000.0,
                 )
             )
         return led_arrays
 
     @staticmethod
     def parse_probes_table(table: QTableWidget) -> list[Probe]:
-        """Parse a probes QTableWidget and return list[Probe]."""
+        """Parse a probes QTableWidget and return list[Probe].
+
+        Table displays positions in mm; convert back to metres for the model.
+        """
         probes: list[Probe] = []
         for row in range(table.rowCount()):
             name = TableDataParser._cell_text(table, row, 0)
@@ -274,8 +292,8 @@ class TableDataParser:
                 Probe(
                     name=name,
                     layer=TableDataParser._cell_text(table, row, 1),
-                    x=TableDataParser._cell_float(table, row, 2),
-                    y=TableDataParser._cell_float(table, row, 3),
+                    x=TableDataParser._cell_float(table, row, 2) / 1000.0,
+                    y=TableDataParser._cell_float(table, row, 3) / 1000.0,
                 )
             )
         return probes
@@ -335,8 +353,8 @@ class TableDataParser:
         sb = spinboxes_dict
         return DisplayProject(
             name=sb["name"].text().strip() or "Untitled Project",
-            width=sb["width"].value(),
-            height=sb["height"].value(),
+            width=sb["width"].value() / 1000.0,
+            height=sb["height"].value() / 1000.0,
             layers=layers,
             materials=materials,
             heat_sources=heat_sources,
@@ -444,7 +462,7 @@ class TableDataParser:
             [
                 layer.name,
                 layer.material,
-                f"{layer.thickness:g}",
+                f"{layer.thickness * 1000.0:g}",
                 f"{layer.interface_resistance_to_next:g}",
             ]
             for layer in project.layers
@@ -457,11 +475,11 @@ class TableDataParser:
                 source.layer,
                 f"{source.power_w:g}",
                 source.shape,
-                f"{source.x:g}",
-                f"{source.y:g}",
-                "" if source.width is None else f"{source.width:g}",
-                "" if source.height is None else f"{source.height:g}",
-                "" if source.radius is None else f"{source.radius:g}",
+                f"{source.x * 1000.0:g}",
+                f"{source.y * 1000.0:g}",
+                "" if source.width is None else f"{source.width * 1000.0:g}",
+                "" if source.height is None else f"{source.height * 1000.0:g}",
+                "" if source.radius is None else f"{source.radius * 1000.0:g}",
             ]
             for source in project.heat_sources
         ]
@@ -471,24 +489,24 @@ class TableDataParser:
             [
                 array.name,
                 array.layer,
-                f"{array.center_x:g}",
-                f"{array.center_y:g}",
+                f"{array.center_x * 1000.0:g}",
+                f"{array.center_y * 1000.0:g}",
                 str(array.count_x),
                 str(array.count_y),
-                f"{array.pitch_x:g}",
-                f"{array.pitch_y:g}",
+                f"{array.pitch_x * 1000.0:g}",
+                f"{array.pitch_y * 1000.0:g}",
                 f"{array.power_per_led_w:g}",
                 array.footprint_shape,
-                "" if array.led_width is None else f"{array.led_width:g}",
-                "" if array.led_height is None else f"{array.led_height:g}",
-                "" if array.led_radius is None else f"{array.led_radius:g}",
+                "" if array.led_width is None else f"{array.led_width * 1000.0:g}",
+                "" if array.led_height is None else f"{array.led_height * 1000.0:g}",
+                "" if array.led_radius is None else f"{array.led_radius * 1000.0:g}",
             ]
             for array in project.led_arrays
         ]
         TableDataParser._set_table_rows(tables_dict["led_arrays"], led_rows)
 
         probe_rows = [
-            [probe.name, probe.layer, f"{probe.x:g}", f"{probe.y:g}"]
+            [probe.name, probe.layer, f"{probe.x * 1000.0:g}", f"{probe.y * 1000.0:g}"]
             for probe in project.probes
         ]
         TableDataParser._set_table_rows(tables_dict["probes"], probe_rows)

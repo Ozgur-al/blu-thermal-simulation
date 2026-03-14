@@ -63,7 +63,7 @@ class StructurePreviewDialog(QDialog):
         root = QVBoxLayout(self)
         root.addWidget(
             QLabel(
-                f"Panel: {self.project.width:.4f} m x {self.project.height:.4f} m, "
+                f"Panel: {self.project.width * 1000:.1f} mm x {self.project.height * 1000:.1f} mm, "
                 f"Layers: {len(self.project.layers)}, "
                 f"Sources: {len(self.project.heat_sources)} + LED arrays: {len(self.project.led_arrays)} "
                 f"(expanded: {len(self._expanded_sources)}), "
@@ -148,7 +148,10 @@ class StructurePreviewDialog(QDialog):
         ax = self.plan_canvas.axes
         ax.clear()
 
-        panel = Rectangle((0.0, 0.0), self.project.width, self.project.height, fill=False, edgecolor="black", linewidth=1.2)
+        w_mm = self.project.width * 1000.0
+        h_mm = self.project.height * 1000.0
+
+        panel = Rectangle((0.0, 0.0), w_mm, h_mm, fill=False, edgecolor="black", linewidth=1.2)
         ax.add_patch(panel)
 
         layer_names = [layer.name for layer in self.project.layers]
@@ -158,11 +161,13 @@ class StructurePreviewDialog(QDialog):
         show_labels = len(self._expanded_sources) <= 40
         for source in self._expanded_sources:
             color = layer_colors.get(source.layer, "red")
+            sx = source.x * 1000.0
+            sy = source.y * 1000.0
             if source.shape == "full":
                 patch = Rectangle(
                     (0.0, 0.0),
-                    self.project.width,
-                    self.project.height,
+                    w_mm,
+                    h_mm,
                     facecolor=color,
                     edgecolor=color,
                     alpha=0.12,
@@ -171,8 +176,8 @@ class StructurePreviewDialog(QDialog):
                 ax.add_patch(patch)
                 if show_labels:
                     ax.text(
-                        self.project.width * 0.5,
-                        self.project.height * 0.5,
+                        w_mm * 0.5,
+                        h_mm * 0.5,
                         source.name,
                         color=color,
                         ha="center",
@@ -181,34 +186,39 @@ class StructurePreviewDialog(QDialog):
             elif source.shape == "rectangle":
                 if source.width is None or source.height is None:
                     continue
+                sw = source.width * 1000.0
+                sh = source.height * 1000.0
                 patch = Rectangle(
-                    (source.x - source.width / 2.0, source.y - source.height / 2.0),
-                    source.width,
-                    source.height,
+                    (sx - sw / 2.0, sy - sh / 2.0),
+                    sw,
+                    sh,
                     facecolor=color,
                     edgecolor=color,
                     alpha=0.28,
                 )
                 ax.add_patch(patch)
                 if show_labels:
-                    ax.text(source.x, source.y, source.name, color=color, ha="center", va="center", fontsize=8)
+                    ax.text(sx, sy, source.name, color=color, ha="center", va="center", fontsize=8)
             elif source.shape == "circle":
                 if source.radius is None:
                     continue
-                patch = Circle((source.x, source.y), radius=source.radius, facecolor=color, edgecolor=color, alpha=0.28)
+                sr = source.radius * 1000.0
+                patch = Circle((sx, sy), radius=sr, facecolor=color, edgecolor=color, alpha=0.28)
                 ax.add_patch(patch)
                 if show_labels:
-                    ax.text(source.x, source.y, source.name, color=color, ha="center", va="center", fontsize=8)
+                    ax.text(sx, sy, source.name, color=color, ha="center", va="center", fontsize=8)
 
         for probe in self.project.probes:
-            ax.plot(probe.x, probe.y, marker="x", markersize=7, color="black")
-            ax.text(probe.x, probe.y, f" {probe.name}", color="black", va="bottom", ha="left", fontsize=8)
+            px = probe.x * 1000.0
+            py = probe.y * 1000.0
+            ax.plot(px, py, marker="x", markersize=7, color="black")
+            ax.text(px, py, f" {probe.name}", color="black", va="bottom", ha="left", fontsize=8)
 
-        ax.set_xlim(0.0, self.project.width)
-        ax.set_ylim(0.0, self.project.height)
+        ax.set_xlim(0.0, w_mm)
+        ax.set_ylim(0.0, h_mm)
         ax.set_aspect("equal", adjustable="box")
-        ax.set_xlabel("x [m]")
-        ax.set_ylabel("y [m]")
+        ax.set_xlabel("x [mm]")
+        ax.set_ylabel("y [mm]")
         ax.set_title("Panel Plan View")
         ax.grid(True, alpha=0.25)
         self.plan_canvas.figure.tight_layout()

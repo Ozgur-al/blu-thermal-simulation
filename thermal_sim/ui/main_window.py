@@ -401,18 +401,23 @@ class MainWindow(QMainWindow):
         geo_box = QGroupBox("Geometry / Mesh")
         geo_form = QFormLayout(geo_box)
         self.project_name_edit = QLineEdit()
-        self.width_spin = TableDataParser._double_spin(0.001, 5.0, 0.18)
-        self.height_spin = TableDataParser._double_spin(0.001, 5.0, 0.10)
+        self.width_spin = TableDataParser._double_spin(1.0, 5000.0, 180.0, decimals=2)
+        self.width_spin.setToolTip("Panel width in millimeters")
+        self.height_spin = TableDataParser._double_spin(1.0, 5000.0, 100.0, decimals=2)
+        self.height_spin.setToolTip("Panel height in millimeters")
         self.nx_spin = QSpinBox()
         self.nx_spin.setRange(1, 500)
         self.nx_spin.setValue(30)
+        self.nx_spin.setToolTip("Number of mesh cells in X direction")
         self.ny_spin = QSpinBox()
         self.ny_spin.setRange(1, 500)
         self.ny_spin.setValue(18)
+        self.ny_spin.setToolTip("Number of mesh cells in Y direction")
         self.initial_temp_spin = TableDataParser._double_spin(-60.0, 200.0, 25.0, decimals=2)
+        self.initial_temp_spin.setToolTip("Starting temperature for all nodes")
         geo_form.addRow("Project name", self.project_name_edit)
-        geo_form.addRow("Width [m]", self.width_spin)
-        geo_form.addRow("Height [m]", self.height_spin)
+        geo_form.addRow("Width [mm]", self.width_spin)
+        geo_form.addRow("Height [mm]", self.height_spin)
         geo_form.addRow("Mesh cells X", self.nx_spin)
         geo_form.addRow("Mesh cells Y", self.ny_spin)
         geo_form.addRow("Initial temp [\u00b0C]", self.initial_temp_spin)
@@ -420,8 +425,11 @@ class MainWindow(QMainWindow):
         tr_box = QGroupBox("Transient")
         tr_form = QFormLayout(tr_box)
         self.dt_spin = TableDataParser._double_spin(1e-4, 1000.0, 0.2, decimals=4)
+        self.dt_spin.setToolTip("Integration time step for transient solver")
         self.total_time_spin = TableDataParser._double_spin(1e-3, 1e6, 120.0, decimals=2)
+        self.total_time_spin.setToolTip("Total simulation duration")
         self.output_interval_spin = TableDataParser._double_spin(1e-4, 1e6, 2.0, decimals=4)
+        self.output_interval_spin.setToolTip("Time between saved snapshots")
         tr_form.addRow("Time step [s]", self.dt_spin)
         tr_form.addRow("Total time [s]", self.total_time_spin)
         tr_form.addRow("Output interval [s]", self.output_interval_spin)
@@ -439,8 +447,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(table)
         row = QHBoxLayout()
         add_btn = QPushButton("Add")
+        add_btn.setToolTip("Add a new row")
         add_btn.clicked.connect(lambda: self._add_table_row_undoable(table))
         rm_btn = QPushButton("Remove")
+        rm_btn.setToolTip("Remove the selected row")
         rm_btn.clicked.connect(lambda: self._remove_table_row(table))
         row.addWidget(add_btn)
         row.addWidget(rm_btn)
@@ -450,8 +460,17 @@ class MainWindow(QMainWindow):
         layout.addLayout(row)
         return tab, table
 
+    @staticmethod
+    def _set_header_tooltips(table: QTableWidget, tooltips: dict[str, str]) -> None:
+        """Set tooltips on table column header items by matching header text."""
+        for col in range(table.columnCount()):
+            item = table.horizontalHeaderItem(col)
+            if item is not None and item.text() in tooltips:
+                item.setToolTip(tooltips[item.text()])
+
     def _build_materials_tab(self) -> QWidget:
         presets_btn = QPushButton("Load Presets")
+        presets_btn.setToolTip("Load built-in material presets")
         presets_btn.clicked.connect(self._load_default_materials)
         import_btn = QPushButton("Import...")
         import_btn.setToolTip("Import materials from a JSON file")
@@ -471,13 +490,28 @@ class MainWindow(QMainWindow):
             ],
             extra_buttons=[presets_btn, import_btn, export_btn],
         )
+        self._set_header_tooltips(self.materials_table, {
+            "Name": "Unique material identifier",
+            "k in-plane [W/mK]": "Thermal conductivity in the lateral (XY) direction",
+            "k through [W/mK]": "Thermal conductivity in the through-thickness (Z) direction",
+            "Density [kg/m\u00b3]": "Material density",
+            "Specific heat [J/kgK]": "Specific heat capacity",
+            "Emissivity": "Surface emissivity (0-1) for radiation calculations",
+            "Type": "User-defined or built-in preset",
+        })
         self._wire_table_undo(self.materials_table)
         return tab
 
     def _build_layers_tab(self) -> QWidget:
         tab, self.layers_table = self._build_table_tab(
-            ["Name", "Material", "Thickness [m]", "Interface R to next [m\u00b2K/W]"]
+            ["Name", "Material", "Thickness [mm]", "Interface R to next [m\u00b2K/W]"]
         )
+        self._set_header_tooltips(self.layers_table, {
+            "Name": "Unique layer identifier",
+            "Material": "Material name (must match a defined material)",
+            "Thickness [mm]": "Layer thickness in millimeters",
+            "Interface R to next [m\u00b2K/W]": "Contact resistance between this layer and the next",
+        })
         self._wire_table_undo(self.layers_table)
         return tab
 
@@ -488,15 +522,28 @@ class MainWindow(QMainWindow):
 
         # Main heat source table (same as before)
         self.sources_table = TableDataParser._new_table(
-            ["Name", "Layer", "Power [W]", "Shape", "x [m]", "y [m]", "width [m]", "height [m]", "radius [m]"]
+            ["Name", "Layer", "Power [W]", "Shape", "x [mm]", "y [mm]", "width [mm]", "height [mm]", "radius [mm]"]
         )
+        self._set_header_tooltips(self.sources_table, {
+            "Name": "Unique heat source identifier",
+            "Layer": "Target layer name",
+            "Power [W]": "Total power dissipated by this source",
+            "Shape": "Geometry: rectangle, circle, or full",
+            "x [mm]": "Source center X position",
+            "y [mm]": "Source center Y position",
+            "width [mm]": "Rectangle width (leave blank for circle/full)",
+            "height [mm]": "Rectangle height (leave blank for circle/full)",
+            "radius [mm]": "Circle radius (leave blank for rectangle/full)",
+        })
         outer_layout.addWidget(self.sources_table)
 
         # Standard Add / Remove buttons
         btn_row = QHBoxLayout()
         add_btn = QPushButton("Add")
+        add_btn.setToolTip("Add a new row")
         add_btn.clicked.connect(lambda: self._add_table_row_undoable(self.sources_table))
         rm_btn = QPushButton("Remove")
+        rm_btn.setToolTip("Remove the selected row")
         rm_btn.clicked.connect(lambda: self._remove_table_row(self.sources_table))
         btn_row.addWidget(add_btn)
         btn_row.addWidget(rm_btn)
@@ -523,8 +570,10 @@ class MainWindow(QMainWindow):
 
         bp_btn_row = QHBoxLayout()
         add_bp_btn = QPushButton("Add Breakpoint")
+        add_bp_btn.setToolTip("Add a time-power breakpoint")
         add_bp_btn.clicked.connect(self._add_breakpoint_row)
         rm_bp_btn = QPushButton("Remove Breakpoint")
+        rm_bp_btn.setToolTip("Remove the selected breakpoint")
         rm_bp_btn.clicked.connect(self._remove_breakpoint_row)
         bp_btn_row.addWidget(add_bp_btn)
         bp_btn_row.addWidget(rm_bp_btn)
@@ -568,15 +617,36 @@ class MainWindow(QMainWindow):
 
     def _build_led_arrays_tab(self) -> QWidget:
         tab, self.led_arrays_table = self._build_table_tab(
-            ["Name", "Layer", "Center x [m]", "Center y [m]", "Count x", "Count y",
-             "Pitch x [m]", "Pitch y [m]", "Power per LED [W]",
-             "LED footprint", "LED width [m]", "LED height [m]", "LED radius [m]"]
+            ["Name", "Layer", "Center x [mm]", "Center y [mm]", "Count x", "Count y",
+             "Pitch x [mm]", "Pitch y [mm]", "Power per LED [W]",
+             "LED footprint", "LED width [mm]", "LED height [mm]", "LED radius [mm]"]
         )
+        self._set_header_tooltips(self.led_arrays_table, {
+            "Name": "Unique LED array identifier",
+            "Layer": "Target layer name",
+            "Center x [mm]": "Array center X position",
+            "Center y [mm]": "Array center Y position",
+            "Count x": "Number of LEDs in X direction",
+            "Count y": "Number of LEDs in Y direction",
+            "Pitch x [mm]": "Spacing between LED centers in X",
+            "Pitch y [mm]": "Spacing between LED centers in Y",
+            "Power per LED [W]": "Power dissipated by each LED",
+            "LED footprint": "LED shape: rectangle or circle",
+            "LED width [mm]": "Individual LED width",
+            "LED height [mm]": "Individual LED height",
+            "LED radius [mm]": "Individual LED radius",
+        })
         self._wire_table_undo(self.led_arrays_table)
         return tab
 
     def _build_probes_tab(self) -> QWidget:
-        tab, self.probes_table = self._build_table_tab(["Name", "Layer", "x [m]", "y [m]"])
+        tab, self.probes_table = self._build_table_tab(["Name", "Layer", "x [mm]", "y [mm]"])
+        self._set_header_tooltips(self.probes_table, {
+            "Name": "Unique probe identifier",
+            "Layer": "Target layer name",
+            "x [mm]": "Probe X position",
+            "y [mm]": "Probe Y position",
+        })
         self._wire_table_undo(self.probes_table)
         return tab
 
@@ -618,7 +688,7 @@ class MainWindow(QMainWindow):
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
         self.probe_table = TableDataParser._new_table(["Probe", "Temp [\u00b0C]"])
-        self.hot_table = TableDataParser._new_table(["Layer", "Temp [\u00b0C]", "x [m]", "y [m]"])
+        self.hot_table = TableDataParser._new_table(["Layer", "Temp [\u00b0C]", "x [mm]", "y [mm]"])
         summary_layout.addWidget(self.stats_label)
         summary_layout.addWidget(self.summary_text)
         summary_layout.addWidget(QLabel("Probe Readings"))
@@ -646,12 +716,16 @@ class MainWindow(QMainWindow):
         group = QGroupBox(title)
         form = QFormLayout(group)
         ambient = TableDataParser._double_spin(-60.0, 200.0, 25.0, decimals=2)
+        ambient.setToolTip("Ambient environment temperature")
         h_coeff = TableDataParser._double_spin(0.0, 5000.0, 8.0, decimals=3)
+        h_coeff.setToolTip("Convective heat transfer coefficient")
         include_rad = QCheckBox()
         include_rad.setChecked(True)
+        include_rad.setToolTip("Include linearized radiation heat transfer")
         emiss = QLineEdit()
         emiss.setPlaceholderText("Leave blank to use layer material value")
         emiss.setValidator(QDoubleValidator(0.0, 1.0, 6, emiss))
+        emiss.setToolTip("Override surface emissivity (blank = use layer material value)")
         form.addRow("Ambient temp [\u00b0C]", ambient)
         form.addRow("h convection [W/m\u00b2K]", h_coeff)
         form.addRow("Include radiation", include_rad)
@@ -858,8 +932,8 @@ class MainWindow(QMainWindow):
             table.blockSignals(True)
 
         self.project_name_edit.setText(project.name)
-        self.width_spin.setValue(project.width)
-        self.height_spin.setValue(project.height)
+        self.width_spin.setValue(project.width * 1000.0)
+        self.height_spin.setValue(project.height * 1000.0)
         self.nx_spin.setValue(project.mesh.nx)
         self.ny_spin.setValue(project.mesh.ny)
         self.initial_temp_spin.setValue(project.initial_temperature_c)
@@ -1483,8 +1557,8 @@ class MainWindow(QMainWindow):
         layer_idx = (
             layer_names.index(layer_name) if layer_name in layer_names else len(layer_names) - 1
         )
-        width_m = self.width_spin.value()
-        height_m = self.height_spin.value()
+        width_m = self.width_spin.value() / 1000.0
+        height_m = self.height_spin.value() / 1000.0
         data = final_map_c[layer_idx]
 
         # Compute per-layer hotspots (top 3) for annotation.
@@ -1551,8 +1625,8 @@ class MainWindow(QMainWindow):
         x_m, y_m = self._selected_profile_point()
         self._plot_manager.plot_layer_profile(
             final_map_c, layer_names, x_m, y_m,
-            width_m=self.width_spin.value(),
-            height_m=self.height_spin.value(),
+            width_m=self.width_spin.value() / 1000.0,
+            height_m=self.height_spin.value() / 1000.0,
         )
 
     def _refresh_map_and_profile(self) -> None:
@@ -1574,11 +1648,11 @@ class MainWindow(QMainWindow):
     def _selected_profile_point(self) -> tuple[float, float]:
         label = self.profile_point_combo.currentText()
         if self.last_project is None or label == "Center":
-            return self.width_spin.value() / 2.0, self.height_spin.value() / 2.0
+            return self.width_spin.value() / 2000.0, self.height_spin.value() / 2000.0
         for probe in self.last_project.probes:
             if probe.name == label:
                 return probe.x, probe.y
-        return self.width_spin.value() / 2.0, self.height_spin.value() / 2.0
+        return self.width_spin.value() / 2000.0, self.height_spin.value() / 2000.0
 
     def _refresh_layer_choices(self, project: DisplayProject) -> None:
         current = self.map_layer_combo.currentText()
