@@ -26,7 +26,7 @@ from thermal_sim.visualization.plotting import plot_probe_history, plot_temperat
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Thermal simulator (steady + transient).")
+    parser = argparse.ArgumentParser(description="Run steady-state or transient thermal simulations on a project.")
     parser.add_argument(
         "--project",
         type=Path,
@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=("steady", "transient"),
         default="steady",
-        help="Simulation mode.",
+        help="Simulation mode: steady-state or transient.",
     )
     parser.add_argument("--output-dir", type=Path, default=Path("outputs"), help="Folder for output files.")
     parser.add_argument("--top-n", type=int, default=5, help="Number of hottest cells to print.")
@@ -53,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional path to write a normalized copy of the loaded project JSON.",
     )
+    parser.add_argument(
+        "--sweep",
+        type=Path,
+        default=None,
+        help="Path to a sweep JSON file. When provided, runs a parametric sweep instead of a single simulation.",
+    )
     return parser
 
 
@@ -63,6 +69,10 @@ def main() -> None:
     if args.save_project_copy is not None:
         save_project(project, args.save_project_copy)
 
+    if args.sweep is not None:
+        _run_sweep(project, args)
+        return
+
     try:
         if args.mode == "steady":
             _run_steady(project, args.output_dir, args.top_n, args.plot, args.plot_layer)
@@ -71,6 +81,48 @@ def main() -> None:
     except RuntimeError as exc:
         print(f"Error: {exc}")
         raise SystemExit(2) from exc
+
+
+def _run_sweep(project, args) -> None:
+    """Load a sweep config and execute a parametric sweep, printing results to stdout."""
+    import csv
+
+    from thermal_sim.core.sweep_engine import SweepEngine, load_sweep_config
+
+    config = load_sweep_config(args.sweep)
+
+    def _on_progress(n: int, m: int) -> None:
+        print(f"Run {n} of {m} ...")
+
+    sweep_result = SweepEngine().run(project, config, on_progress=_on_progress)
+
+    print(f"\nSweep complete: {config.parameter} ({config.mode})")
+    print(f"{'Value':>12}  {'Layer':<20}  {'T_max [C]':>10}  {'T_avg [C]':>10}  {'T_min [C]':>10}")
+    print("-" * 70)
+    for run in sweep_result.runs:
+        for i, stats in enumerate(run.layer_stats):
+            value_col = f"{run.parameter_value:.5g}" if i == 0 else ""
+            print(
+                f"{value_col:>12}  {stats['layer']:<20}  "
+                f"{stats['t_max_c']:>10.2f}  {stats['t_avg_c']:>10.2f}  {stats['t_min_c']:>10.2f}"
+            )
+
+    # Export CSV to output_dir
+    csv_path = args.output_dir / "sweep_results.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["parameter_value", "layer", "t_max_c", "t_avg_c", "t_min_c", "delta_t_c"])
+        for run in sweep_result.runs:
+            for stats in run.layer_stats:
+                writer.writerow([
+                    run.parameter_value,
+                    stats["layer"],
+                    stats["t_max_c"],
+                    stats["t_avg_c"],
+                    stats["t_min_c"],
+                    stats["delta_t_c"],
+                ])
+    print(f"\nSweep results exported to: {csv_path.resolve()}")
 
 
 def _run_steady(
