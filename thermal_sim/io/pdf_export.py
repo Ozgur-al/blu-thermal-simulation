@@ -17,33 +17,34 @@ def generate_pdf_report(snapshot: ResultSnapshot, output_path: Path | str) -> No
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with PdfPages(output_path) as pdf:
-        # Page 1: header + stack summary + metrics table
-        fig = _make_summary_page(snapshot)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-
-        # Pages 2..N: temperature maps per layer (with per-layer hotspot annotations)
-        for layer_idx, layer_name in enumerate(snapshot.layer_names):
-            fig = _make_temperature_map_page(snapshot, layer_idx, layer_name)
+    with plt.style.context("default"):
+        with PdfPages(output_path) as pdf:
+            # Page 1: header + stack summary + metrics table
+            fig = _make_summary_page(snapshot)
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
 
-        # Page N+1: hotspot ranking table
-        fig = _make_hotspot_table_page(snapshot)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
+            # Pages 2..N: temperature maps per layer (with per-layer hotspot annotations)
+            for layer_idx, layer_name in enumerate(snapshot.layer_names):
+                fig = _make_temperature_map_page(snapshot, layer_idx, layer_name)
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close(fig)
 
-        # Page N+2: probe history (transient only)
-        if snapshot.mode == "transient" and snapshot.times_s is not None:
-            fig = _make_probe_history_page(snapshot)
+            # Page N+1: hotspot ranking table
+            fig = _make_hotspot_table_page(snapshot)
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
 
-        # PDF metadata
-        d = pdf.infodict()
-        d["Title"] = f"Thermal Report - {snapshot.project_name}"
-        d["Subject"] = f"{snapshot.mode} simulation"
+            # Page N+2: probe history (transient only)
+            if snapshot.mode == "transient" and snapshot.times_s is not None:
+                fig = _make_probe_history_page(snapshot)
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close(fig)
+
+            # PDF metadata
+            d = pdf.infodict()
+            d["Title"] = f"Thermal Report - {snapshot.project_name}"
+            d["Subject"] = f"{snapshot.mode} simulation"
 
 
 # ---------------------------------------------------------------------------

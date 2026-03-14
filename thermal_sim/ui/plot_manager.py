@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QSizePolicy
 
 from thermal_sim.core.postprocess import layer_average_temperatures
 from thermal_sim.ui.table_data_parser import TableDataParser
+from thermal_sim.visualization.plotting import PROBE_COLORS
 
 
 class MplCanvas(FigureCanvasQTAgg):
@@ -187,8 +188,9 @@ class PlotManager:
             )
             ax.set_axis_off()
         else:
-            for name, values in probe_history.items():
-                ax.plot(times_s, values, label=name)
+            for i, (name, values) in enumerate(probe_history.items()):
+                color = PROBE_COLORS[i % len(PROBE_COLORS)]
+                ax.plot(times_s, values, label=name, color=color)
             ax.set_xlabel("Time [s]")
             ax.set_ylabel("Temperature [\u00b0C]")
             ax.set_title("Probe Temperatures vs Time")

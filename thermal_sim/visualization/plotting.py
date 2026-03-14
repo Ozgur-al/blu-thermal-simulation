@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
+PROBE_COLORS = ["#ffc107", "#ff7043", "#66bb6a", "#42a5f5", "#ab47bc"]
+
 
 def plot_temperature_map(
     temperature_map_c: np.ndarray,
@@ -219,8 +221,9 @@ def plot_probe_history(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(7.5, 4.5), dpi=150)
-    for name, values in probe_history_c.items():
-        ax.plot(times_s, values, label=name)
+    for i, (name, values) in enumerate(probe_history_c.items()):
+        color = PROBE_COLORS[i % len(PROBE_COLORS)]
+        ax.plot(times_s, values, label=name, color=color)
     ax.set_xlabel("Time [s]")
     ax.set_ylabel("Temperature [C]")
     ax.set_title(title)
