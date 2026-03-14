@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-14T14:00:00Z"
+last_updated: "2026-03-14T14:08:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 3 of 5 (Simulation Capabilities)
-Plan: 5 of 6 in current phase (completed 03-05)
+Plan: 6 of 6 in current phase (completed 03-04)
 Status: In progress
-Last activity: 2026-03-14 - Completed 03-05-PLAN.md — 4 analytical validation tests + comparison plot utility (MAT-03 satisfied)
+Last activity: 2026-03-14 - Completed 03-04-PLAN.md — Sweep GUI (SweepDialog, _SweepWorker, SweepResultsWidget) and power profile breakpoint UI (SIM-01, SIM-02 satisfied)
 
-Progress: [█████████░] 70%
+Progress: [█████████░] 75%
 
 ## Performance Metrics
 
@@ -97,6 +97,9 @@ Recent decisions affecting current work:
 - [03-05]: Near-square-wave profile uses 4 breakpoints [(0,Q),(T_on-dt,Q),(T_on,0),(T_period-dt,0)] to stay within 1% of analytical solution
 - [03-05]: generate_all_validation_plots placed in test_validation_cases.py — shares setup boilerplate and callable via python -c
 - [03-05]: Tolerance for lateral spreading test uses rel_tol=1e-6 (tighter) since steady-state is an exact sparse solve
+- [03-04]: Power profile state stored in dict[int, list[PowerBreakpoint]] keyed by sources_table row index — avoids extra dataclass or TableDataParser changes
+- [03-04]: _source_profiles initialized in __init__ (not _build_sources_tab) so it persists across tab construction
+- [03-04]: _build_project_from_ui patches power_profile onto heat_sources after TableDataParser builds base project
 
 ### Pending Todos
 
@@ -116,5 +119,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 03-05-PLAN.md — 4 analytical validation tests and comparison plot utility; 111/111 tests pass
+Stopped at: Completed 03-04-PLAN.md — Sweep GUI and power profile UI; 111/111 tests pass
 Resume file: None

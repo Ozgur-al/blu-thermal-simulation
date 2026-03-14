@@ -25,7 +25,7 @@
 ### Simulation Capabilities
 
 - [x] **SIM-01**: User can define parametric sweep (parameter + value list) and execute multiple solver runs
-- [ ] **SIM-02**: Sweep results displayed as comparison table and parameter-vs-metric plots
+- [x] **SIM-02**: Sweep results displayed as comparison table and parameter-vs-metric plots
 - [x] **SIM-03**: User can define time-varying power profiles (duty cycles) on heat sources
 - [x] **SIM-04**: Transient solver interpolates power profile at each timestep
 
@@ -85,7 +85,7 @@
 | RSLT-03 | Phase 2 — Results | Complete (02-01) |
 | RSLT-04 | Phase 2 — Results | Complete (02-03) |
 | SIM-01 | Phase 3 — Simulation Capabilities | Complete |
-| SIM-02 | Phase 3 — Simulation Capabilities | Pending |
+| SIM-02 | Phase 3 — Simulation Capabilities | Complete |
 | SIM-03 | Phase 3 — Simulation Capabilities | Complete |
 | SIM-04 | Phase 3 — Simulation Capabilities | Complete |
 | MAT-01 | Phase 3 — Simulation Capabilities | Complete |
