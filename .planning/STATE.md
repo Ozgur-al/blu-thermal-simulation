@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 Phase: 1 of 5 (Foundation)
 Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-03-14 — Completed 01-03: QUndoStack, menus, shortcuts, dirty tracking
+Last activity: 2026-03-14 - Completed quick task 1: the app stutters a lot
 
 Progress: [███░░░░░░░] 12%
 
@@ -80,6 +80,12 @@ None.
 
 - [Phase 3]: Sweep memory — estimate ~350 MB for 10-run transient sweep; validate with tracemalloc early in Phase 3 before it becomes an emergency
 - [Phase 5]: Corporate AV behavior beyond Defender (CrowdStrike, Cylance) not verified — needs real test on a target machine
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | the app stutters a lot | 2026-03-14 | fec724d | [1-the-app-stutters-a-lot](./quick/1-the-app-stutters-a-lot/) |
 
 ## Session Continuity
 
