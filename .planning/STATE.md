@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-14T09:52:39.296Z"
+last_updated: "2026-03-14T13:31:58.385Z"
 progress:
-  total_phases: 3
+  total_phases: 4
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 14
+  completed_plans: 9
 ---
 
 ---
@@ -61,6 +61,7 @@ Progress: [██████░░░░] 35%
 - Trend: fast
 
 *Updated after each plan completion*
+| Phase 03-simulation-capabilities P02 | 5 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Recent decisions affecting current work:
 - [02-03]: probe_values for transient snapshots stores full time-series arrays (not just final scalar)
 - [02-03]: Steady-state probes in comparison rendered as horizontal axhline rather than skipped
 - [02-04]: All RSLT requirements verified by human tester in the live GUI — Phase 2 is complete
+- [Phase 03-simulation-capabilities]: SweepEngine discards full solver result after stats extraction — memory-safe design prevents large transient array accumulation
+- [Phase 03-simulation-capabilities]: Material mutation via dataclasses.replace() since Material is frozen=True — setattr raises FrozenInstanceError
+- [Phase 03-simulation-capabilities]: SweepResult imports SweepConfig lazily inside from_dict() to avoid circular import
 
 ### Pending Todos
 
