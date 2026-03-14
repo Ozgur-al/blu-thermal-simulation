@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import (
+    QBrush,
+    QColor,
     QDoubleValidator,
     QKeySequence,
     QAction,
@@ -156,6 +158,9 @@ class MainWindow(QMainWindow):
 
         # Store pre-edit values: (id(table), row, col) -> text
         self._pre_edit_values: dict[tuple[int, int, int], str] = {}
+
+        # Inline validation errors: (id(table), row, col) -> error message
+        self._validation_errors: dict[tuple[int, int, int], str] = {}
 
         # Material source tracking: name -> "Built-in" | "User"
         self._material_source: dict[str, str] = {}
@@ -381,6 +386,12 @@ class MainWindow(QMainWindow):
         tabs.addTab(self._build_led_arrays_tab(), "LED Arrays")
         tabs.addTab(self._build_boundaries_tab(), "Boundaries")
         tabs.addTab(self._build_probes_tab(), "Probes")
+        # Connect cellChanged for inline validation on all five editor tables
+        for table in [
+            self.materials_table, self.layers_table, self.sources_table,
+            self.led_arrays_table, self.probes_table,
+        ]:
+            table.cellChanged.connect(lambda r, c, t=table: self._validate_cell(t, r, c))
         return tabs
 
     def _build_setup_tab(self) -> QWidget:
@@ -430,7 +441,7 @@ class MainWindow(QMainWindow):
         add_btn = QPushButton("Add")
         add_btn.clicked.connect(lambda: self._add_table_row_undoable(table))
         rm_btn = QPushButton("Remove")
-        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, table))
+        rm_btn.clicked.connect(lambda: self._remove_table_row(table))
         row.addWidget(add_btn)
         row.addWidget(rm_btn)
         for btn in (extra_buttons or []):
@@ -486,7 +497,7 @@ class MainWindow(QMainWindow):
         add_btn = QPushButton("Add")
         add_btn.clicked.connect(lambda: self._add_table_row_undoable(self.sources_table))
         rm_btn = QPushButton("Remove")
-        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, self.sources_table))
+        rm_btn.clicked.connect(lambda: self._remove_table_row(self.sources_table))
         btn_row.addWidget(add_btn)
         btn_row.addWidget(rm_btn)
         btn_row.addStretch()
@@ -729,6 +740,70 @@ class MainWindow(QMainWindow):
         TableDataParser._add_table_row(table)
         self._undo_stack.endMacro()
 
+    def _remove_table_row(self, table: QTableWidget) -> None:
+        """Remove selected row and revalidate to clear any stale error entries."""
+        TableDataParser.remove_selected_row(self, table)
+        self._revalidate_table(table)
+
+    # ------------------------------------------------------------------
+    # Inline cell validation
+    # ------------------------------------------------------------------
+
+    def _validate_cell(self, table: QTableWidget, row: int, col: int) -> None:
+        """Validate a single cell and update its visual state."""
+        item = table.item(row, col)
+        if item is None:
+            return
+        error = TableDataParser.validate_cell(table, row, col)
+        key = (id(table), row, col)
+        if error:
+            self._validation_errors[key] = error
+            item.setBackground(QBrush(QColor("#8B0000")))  # dark red
+            item.setForeground(QBrush(QColor("#ffcccc")))  # light pink text
+            item.setToolTip(error)
+        else:
+            self._validation_errors.pop(key, None)
+            item.setBackground(QBrush())  # default — clears to style default
+            item.setForeground(QBrush())
+            item.setToolTip("")
+        self._update_validation_status()
+
+    def _update_validation_status(self) -> None:
+        """Update run button and status bar based on validation error count."""
+        n = len(self._validation_errors)
+        self._run_action.setEnabled(n == 0 and not self._sim_controller.is_running)
+        if n > 0:
+            self._solver_label.setText(f"{n} validation error{'s' if n != 1 else ''}")
+        elif not self._sim_controller.is_running:
+            self._solver_label.setText("Ready")
+
+    def _revalidate_table(self, table: QTableWidget) -> None:
+        """Clear all errors for a table and re-validate all cells."""
+        table_id = id(table)
+        stale_keys = [k for k in self._validation_errors if k[0] == table_id]
+        for k in stale_keys:
+            del self._validation_errors[k]
+        # Re-validate all cells (block signals to avoid re-entrant cellChanged)
+        table.blockSignals(True)
+        for row in range(table.rowCount()):
+            for col in range(table.columnCount()):
+                item = table.item(row, col)
+                if item is None:
+                    continue
+                error = TableDataParser.validate_cell(table, row, col)
+                key = (table_id, row, col)
+                if error:
+                    self._validation_errors[key] = error
+                    item.setBackground(QBrush(QColor("#8B0000")))
+                    item.setForeground(QBrush(QColor("#ffcccc")))
+                    item.setToolTip(error)
+                else:
+                    item.setBackground(QBrush())
+                    item.setForeground(QBrush())
+                    item.setToolTip("")
+        table.blockSignals(False)
+        self._update_validation_status()
+
     # ------------------------------------------------------------------
     # Title and path label
     # ------------------------------------------------------------------
@@ -807,6 +882,11 @@ class MainWindow(QMainWindow):
 
         for table in editable_tables:
             table.blockSignals(False)
+
+        # Clear old validation errors and re-validate all tables fresh
+        self._validation_errors.clear()
+        for table in editable_tables:
+            self._revalidate_table(table)
 
         self._undo_stack.clear()
         self._undo_stack.setClean()
@@ -977,6 +1057,9 @@ class MainWindow(QMainWindow):
                 table.setRowCount(0)
             for table in editable_tables:
                 table.blockSignals(False)
+            # Clear all validation errors for the reset tables
+            self._validation_errors.clear()
+            self._update_validation_status()
             self._undo_stack.clear()
             self._undo_stack.setClean()
         self.current_project_path = None
@@ -1169,9 +1252,10 @@ class MainWindow(QMainWindow):
 
     def _on_run_ended(self) -> None:
         """Re-enable Run action and hide progress bar when a simulation ends."""
-        self._run_action.setEnabled(True)
         self._cancel_action.setEnabled(False)
         self._progress_bar.setVisible(False)
+        # Use _update_validation_status so run stays disabled when errors exist
+        self._update_validation_status()
 
     def _on_progress(self, percent: int, message: str) -> None:
         """Update progress bar and center label from worker progress signal."""
