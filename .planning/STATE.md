@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-14T09:13:36.431Z"
+last_updated: "2026-03-14T09:21:39Z"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 2 — Results
 
 ## Current Position
 
-Phase: 1 of 5 (Foundation)
-Plan: 3 of 5 in current phase
+Phase: 2 of 5 (Results)
+Plan: 1 of 3 in current phase
 Status: In progress
-Last activity: 2026-03-14 - Completed quick task 1: the app stutters a lot
+Last activity: 2026-03-14 - Completed 02-01-PLAN.md — Results backend: layer_stats, ResultSnapshot, annotated map renderer, PDF report engine
 
-Progress: [███░░░░░░░] 12%
+Progress: [████░░░░░░] 16%
 
 ## Performance Metrics
 
@@ -41,6 +41,7 @@ Progress: [███░░░░░░░] 12%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 23 min | 8 min |
+| 02-results | 1 | 3 min | 3 min |
 
 **Recent Trend:**
 - Last 5 plans: 13m, 6m, 4m
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [01-03]: Run/Cancel are QActions in both menu and toolbar — single enabled-state source, no QPushButton duplication
 - [01-03]: _save_project() (Ctrl+S) saves silently to current path; _save_project_as_dialog() always shows dialog — VS Code behavior
 - [01-03]: _maybe_save_changes() is the single guard called from closeEvent, _new_project(), and _load_project_dialog()
+- [02-01]: ResultSnapshot is mutable (not frozen) — frozen=True raises TypeError for numpy arrays which are not hashable
+- [02-01]: plot_temperature_map_annotated() accepts an existing ax rather than creating/saving a figure — enables GUI and PDF to share the same renderer
+- [02-01]: PDF page builders each return a fig for the caller to savefig/close — prevents matplotlib memory accumulation
 
 ### Pending Todos
 
@@ -90,5 +94,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 01-03-PLAN.md — QUndoStack wired to all tables; menus/toolbar/shortcuts built; dirty tracking + unsaved-changes prompt; 28 tests pass
+Stopped at: Completed 02-01-PLAN.md — Results backend: layer_stats, top_n_hottest_cells_for_layer, ResultSnapshot, plot_temperature_map_annotated, generate_pdf_report; 48 tests pass
 Resume file: None

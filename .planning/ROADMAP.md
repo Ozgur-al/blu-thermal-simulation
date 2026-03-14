@@ -46,7 +46,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can click Export PDF and receive a file containing the stack summary, temperature maps, probe history, and key metrics — suitable for handing to a reviewer
   4. User can save a named result snapshot, run a modified simulation, and view an overlay probe plot and side-by-side metric table comparing the two runs
 **Plans:** 4 plans
-- [ ] 02-01-PLAN.md -- Backend foundations: layer_stats, per-layer hotspots, annotated map renderer, ResultSnapshot, PDF export
+- [x] 02-01-PLAN.md -- Backend foundations: layer_stats, per-layer hotspots, annotated map renderer, ResultSnapshot, PDF export
 - [ ] 02-02-PLAN.md -- Results tab UI: structured tables, hotspot click-to-navigate, annotated temperature maps
 - [ ] 02-03-PLAN.md -- Snapshot management, comparison tab, PDF export button wiring
 - [ ] 02-04-PLAN.md -- Human verification checkpoint for all Phase 2 requirements
@@ -91,7 +91,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/4 | In progress | - |
-| 2. Results | 0/4 | Planning complete | - |
+| 2. Results | 1/4 | In progress | - |
 | 3. Simulation Capabilities | 0/TBD | Not started | - |
 | 4. Polish | 0/TBD | Not started | - |
 | 5. Distribution | 0/TBD | Not started | - |
