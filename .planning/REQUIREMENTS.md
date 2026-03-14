@@ -31,8 +31,8 @@
 
 ### Materials & Data
 
-- [ ] **MAT-01**: User can import/export custom material libraries as JSON
-- [ ] **MAT-02**: Material picker distinguishes built-in presets from user-defined materials
+- [x] **MAT-01**: User can import/export custom material libraries as JSON
+- [x] **MAT-02**: Material picker distinguishes built-in presets from user-defined materials
 - [ ] **MAT-03**: Additional analytical validation test cases with comparison plots
 
 ### Visual Polish
@@ -88,8 +88,8 @@
 | SIM-02 | Phase 3 — Simulation Capabilities | Pending |
 | SIM-03 | Phase 3 — Simulation Capabilities | Pending |
 | SIM-04 | Phase 3 — Simulation Capabilities | Pending |
-| MAT-01 | Phase 3 — Simulation Capabilities | Pending |
-| MAT-02 | Phase 3 — Simulation Capabilities | Pending |
+| MAT-01 | Phase 3 — Simulation Capabilities | Complete |
+| MAT-02 | Phase 3 — Simulation Capabilities | Complete |
 | MAT-03 | Phase 3 — Simulation Capabilities | Pending |
 | PLSH-01 | Phase 4 — Polish | Pending |
 | PLSH-02 | Phase 4 — Polish | Pending |

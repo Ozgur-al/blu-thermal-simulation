@@ -31,23 +31,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Phase 2 — Results
+**Current focus:** Phase 3 — Simulation Capabilities
 
 ## Current Position
 
-Phase: 2 of 5 (Results)
-Plan: 4 of 4 in current phase (completed 02-04)
+Phase: 3 of 5 (Simulation Capabilities)
+Plan: 3 of 4 in current phase (completed 03-03)
 Status: In progress
-Last activity: 2026-03-14 - Completed 02-04-PLAN.md — Human verification checkpoint approved; all four RSLT requirements confirmed in live GUI
+Last activity: 2026-03-14 - Completed 03-03-PLAN.md — Material library system with built-in JSON, import/export functions, GUI Type column
 
-Progress: [██████░░░░] 35%
+Progress: [████████░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 9
 - Average duration: 6 min
-- Total execution time: 0.6 hours
+- Total execution time: 0.9 hours
 
 **By Phase:**
 
@@ -99,6 +99,10 @@ Recent decisions affecting current work:
 - [Phase 03-simulation-capabilities]: SweepEngine discards full solver result after stats extraction — memory-safe design prevents large transient array accumulation
 - [Phase 03-simulation-capabilities]: Material mutation via dataclasses.replace() since Material is frozen=True — setattr raises FrozenInstanceError
 - [Phase 03-simulation-capabilities]: SweepResult imports SweepConfig lazily inside from_dict() to avoid circular import
+- [03-03]: import_materials returns a new merged dict — does not mutate either input dict
+- [03-03]: Built-in table rows use Qt.ItemFlag.ItemIsEditable cleared (not clone-on-edit) — avoids undo system entanglement
+- [03-03]: load_builtin_library uses importlib.resources.files for PyInstaller bundle compatibility
+- [03-03]: Type column placed last (col 6) so parse_materials_table cols 0-5 need no change
 
 ### Pending Todos
 
@@ -118,5 +122,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 02-04-PLAN.md — Human verification checkpoint approved; Phase 2 Results complete
+Stopped at: Completed 03-03-PLAN.md — Material library system complete; 106/107 tests pass
 Resume file: None
