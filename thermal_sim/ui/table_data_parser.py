@@ -347,6 +347,83 @@ class TableDataParser:
         return errors
 
     @staticmethod
+    def populate_tables_from_project(project, tables_dict: dict) -> None:
+        """Write a DisplayProject's data into table widgets.
+
+        This is the inverse of build_project_from_tables — it takes a
+        DisplayProject and populates the tables_dict widgets from its data.
+
+        Args:
+            project:     A DisplayProject instance.
+            tables_dict: Keys — "materials", "layers", "sources", "led_arrays", "probes"
+        """
+        mat_rows = [
+            [
+                mat.name,
+                f"{mat.k_in_plane:g}",
+                f"{mat.k_through:g}",
+                f"{mat.density:g}",
+                f"{mat.specific_heat:g}",
+                f"{mat.emissivity:g}",
+            ]
+            for mat in project.materials.values()
+        ]
+        TableDataParser._set_table_rows(tables_dict["materials"], mat_rows)
+
+        layer_rows = [
+            [
+                layer.name,
+                layer.material,
+                f"{layer.thickness:g}",
+                f"{layer.interface_resistance_to_next:g}",
+            ]
+            for layer in project.layers
+        ]
+        TableDataParser._set_table_rows(tables_dict["layers"], layer_rows)
+
+        source_rows = [
+            [
+                source.name,
+                source.layer,
+                f"{source.power_w:g}",
+                source.shape,
+                f"{source.x:g}",
+                f"{source.y:g}",
+                "" if source.width is None else f"{source.width:g}",
+                "" if source.height is None else f"{source.height:g}",
+                "" if source.radius is None else f"{source.radius:g}",
+            ]
+            for source in project.heat_sources
+        ]
+        TableDataParser._set_table_rows(tables_dict["sources"], source_rows)
+
+        led_rows = [
+            [
+                array.name,
+                array.layer,
+                f"{array.center_x:g}",
+                f"{array.center_y:g}",
+                str(array.count_x),
+                str(array.count_y),
+                f"{array.pitch_x:g}",
+                f"{array.pitch_y:g}",
+                f"{array.power_per_led_w:g}",
+                array.footprint_shape,
+                "" if array.led_width is None else f"{array.led_width:g}",
+                "" if array.led_height is None else f"{array.led_height:g}",
+                "" if array.led_radius is None else f"{array.led_radius:g}",
+            ]
+            for array in project.led_arrays
+        ]
+        TableDataParser._set_table_rows(tables_dict["led_arrays"], led_rows)
+
+        probe_rows = [
+            [probe.name, probe.layer, f"{probe.x:g}", f"{probe.y:g}"]
+            for probe in project.probes
+        ]
+        TableDataParser._set_table_rows(tables_dict["probes"], probe_rows)
+
+    @staticmethod
     def remove_selected_row(parent: QWidget, table: QTableWidget) -> None:
         """Remove the currently selected row after a confirmation dialog.
 

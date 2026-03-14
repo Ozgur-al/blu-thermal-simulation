@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QDoubleValidator, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -36,7 +34,6 @@ from thermal_sim.core.material_library import default_materials
 from thermal_sim.core.postprocess import (
     basic_stats,
     basic_stats_transient,
-    layer_average_temperatures,
     probe_temperatures,
     probe_temperatures_over_time,
     top_n_hottest_cells,
@@ -52,21 +49,9 @@ from thermal_sim.io.project_io import load_project, save_project
 from thermal_sim.models.project import DisplayProject
 from thermal_sim.solvers.steady_state import SteadyStateResult, SteadyStateSolver
 from thermal_sim.solvers.transient import TransientResult, TransientSolver
+from thermal_sim.ui.plot_manager import PlotManager
 from thermal_sim.ui.structure_preview import StructurePreviewDialog
 from thermal_sim.ui.table_data_parser import TableDataParser
-
-
-class MplCanvas(FigureCanvasQTAgg):
-    """Simple matplotlib canvas that expands to fill available space."""
-
-    def __init__(self, width: float = 5.0, height: float = 4.0, dpi: int = 100) -> None:
-        self.figure = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = self.figure.add_subplot(111)
-        super().__init__(self.figure)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        # Cached artist references for in-place updates.
-        self._image = None  # imshow artist
-        self._colorbar = None  # colorbar instance
 
 
 class _SimWorker(QObject):
@@ -110,6 +95,7 @@ class MainWindow(QMainWindow):
         self._sim_thread: QThread | None = None
         self._sim_worker: _SimWorker | None = None
         self._sim_mode: str = "steady"
+        self._plot_manager = PlotManager()
 
         self._build_ui()
         self._load_startup_project()
@@ -256,59 +242,44 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         return tab
 
-    def _build_materials_tab(self) -> QWidget:
+    def _build_table_tab(self, headers: list[str], extra_buttons: list | None = None):
+        """Return (QWidget tab, QTableWidget) for a standard add/remove table tab."""
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        self.materials_table = TableDataParser._new_table(
-            ["Name", "k in-plane [W/mK]", "k through [W/mK]", "Density [kg/m\u00b3]", "Specific heat [J/kgK]", "Emissivity"]
-        )
-        layout.addWidget(self.materials_table)
+        table = TableDataParser._new_table(headers)
+        layout.addWidget(table)
         row = QHBoxLayout()
         add_btn = QPushButton("Add")
-        add_btn.clicked.connect(lambda: TableDataParser._add_table_row(self.materials_table))
+        add_btn.clicked.connect(lambda: TableDataParser._add_table_row(table))
         rm_btn = QPushButton("Remove")
-        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, self.materials_table))
-        presets_btn = QPushButton("Load Presets")
-        presets_btn.clicked.connect(self._load_default_materials)
+        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, table))
         row.addWidget(add_btn)
         row.addWidget(rm_btn)
-        row.addWidget(presets_btn)
+        for btn in (extra_buttons or []):
+            row.addWidget(btn)
         row.addStretch()
         layout.addLayout(row)
+        return tab, table
+
+    def _build_materials_tab(self) -> QWidget:
+        presets_btn = QPushButton("Load Presets")
+        presets_btn.clicked.connect(self._load_default_materials)
+        tab, self.materials_table = self._build_table_tab(
+            ["Name", "k in-plane [W/mK]", "k through [W/mK]", "Density [kg/m\u00b3]", "Specific heat [J/kgK]", "Emissivity"],
+            extra_buttons=[presets_btn],
+        )
         return tab
 
     def _build_layers_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        self.layers_table = TableDataParser._new_table(["Name", "Material", "Thickness [m]", "Interface R to next [m\u00b2K/W]"])
-        layout.addWidget(self.layers_table)
-        row = QHBoxLayout()
-        add_btn = QPushButton("Add")
-        add_btn.clicked.connect(lambda: TableDataParser._add_table_row(self.layers_table))
-        rm_btn = QPushButton("Remove")
-        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, self.layers_table))
-        row.addWidget(add_btn)
-        row.addWidget(rm_btn)
-        row.addStretch()
-        layout.addLayout(row)
+        tab, self.layers_table = self._build_table_tab(
+            ["Name", "Material", "Thickness [m]", "Interface R to next [m\u00b2K/W]"]
+        )
         return tab
 
     def _build_sources_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        self.sources_table = TableDataParser._new_table(
+        tab, self.sources_table = self._build_table_tab(
             ["Name", "Layer", "Power [W]", "Shape", "x [m]", "y [m]", "width [m]", "height [m]", "radius [m]"]
         )
-        layout.addWidget(self.sources_table)
-        row = QHBoxLayout()
-        add_btn = QPushButton("Add")
-        add_btn.clicked.connect(lambda: TableDataParser._add_table_row(self.sources_table))
-        rm_btn = QPushButton("Remove")
-        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, self.sources_table))
-        row.addWidget(add_btn)
-        row.addWidget(rm_btn)
-        row.addStretch()
-        layout.addLayout(row)
         return tab
 
     def _build_boundaries_tab(self) -> QWidget:
@@ -331,51 +302,15 @@ class MainWindow(QMainWindow):
         return tab
 
     def _build_led_arrays_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        self.led_arrays_table = TableDataParser._new_table(
-            [
-                "Name",
-                "Layer",
-                "Center x [m]",
-                "Center y [m]",
-                "Count x",
-                "Count y",
-                "Pitch x [m]",
-                "Pitch y [m]",
-                "Power per LED [W]",
-                "LED footprint",
-                "LED width [m]",
-                "LED height [m]",
-                "LED radius [m]",
-            ]
+        tab, self.led_arrays_table = self._build_table_tab(
+            ["Name", "Layer", "Center x [m]", "Center y [m]", "Count x", "Count y",
+             "Pitch x [m]", "Pitch y [m]", "Power per LED [W]",
+             "LED footprint", "LED width [m]", "LED height [m]", "LED radius [m]"]
         )
-        layout.addWidget(self.led_arrays_table)
-        row = QHBoxLayout()
-        add_btn = QPushButton("Add")
-        add_btn.clicked.connect(lambda: TableDataParser._add_table_row(self.led_arrays_table))
-        rm_btn = QPushButton("Remove")
-        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, self.led_arrays_table))
-        row.addWidget(add_btn)
-        row.addWidget(rm_btn)
-        row.addStretch()
-        layout.addLayout(row)
         return tab
 
     def _build_probes_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        self.probes_table = TableDataParser._new_table(["Name", "Layer", "x [m]", "y [m]"])
-        layout.addWidget(self.probes_table)
-        row = QHBoxLayout()
-        add_btn = QPushButton("Add")
-        add_btn.clicked.connect(lambda: TableDataParser._add_table_row(self.probes_table))
-        rm_btn = QPushButton("Remove")
-        rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, self.probes_table))
-        row.addWidget(add_btn)
-        row.addWidget(rm_btn)
-        row.addStretch()
-        layout.addLayout(row)
+        tab, self.probes_table = self._build_table_tab(["Name", "Layer", "x [m]", "y [m]"])
         return tab
 
     def _build_result_tabs(self) -> QTabWidget:
@@ -383,8 +318,7 @@ class MainWindow(QMainWindow):
 
         map_tab = QWidget()
         map_layout = QVBoxLayout(map_tab)
-        self.map_canvas = MplCanvas(width=5.0, height=4.0, dpi=100)
-        map_layout.addWidget(self.map_canvas)
+        map_layout.addWidget(self._plot_manager.map_canvas)
         tabs.addTab(map_tab, "Temperature Map")
 
         profile_tab = QWidget()
@@ -396,14 +330,12 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.profile_point_combo)
         controls.addStretch()
         profile_layout.addLayout(controls)
-        self.profile_canvas = MplCanvas(width=5.0, height=4.0, dpi=100)
-        profile_layout.addWidget(self.profile_canvas)
+        profile_layout.addWidget(self._plot_manager.profile_canvas)
         tabs.addTab(profile_tab, "Layer Profile")
 
         hist_tab = QWidget()
         hist_layout = QVBoxLayout(hist_tab)
-        self.history_canvas = MplCanvas(width=5.0, height=4.0, dpi=100)
-        hist_layout.addWidget(self.history_canvas)
+        hist_layout.addWidget(self._plot_manager.history_canvas)
         tabs.addTab(hist_tab, "Probe History")
 
         summary_tab = QWidget()
@@ -440,9 +372,9 @@ class MainWindow(QMainWindow):
 
     def _draw_empty_states(self) -> None:
         for canvas, msg in [
-            (self.map_canvas, "Temperature map will appear here\nafter running a simulation."),
-            (self.profile_canvas, "Layer profile will appear here\nafter running a simulation."),
-            (self.history_canvas, "Probe history will appear here\nafter running a transient simulation."),
+            (self._plot_manager.map_canvas, "Temperature map will appear here\nafter running a simulation."),
+            (self._plot_manager.profile_canvas, "Layer profile will appear here\nafter running a simulation."),
+            (self._plot_manager.history_canvas, "Probe history will appear here\nafter running a transient simulation."),
         ]:
             ax = canvas.axes
             ax.text(
@@ -484,75 +416,7 @@ class MainWindow(QMainWindow):
         self.total_time_spin.setValue(project.transient.total_time_s)
         self.output_interval_spin.setValue(project.transient.output_interval_s)
 
-        mat_rows = []
-        for mat in project.materials.values():
-            mat_rows.append(
-                [
-                    mat.name,
-                    f"{mat.k_in_plane:g}",
-                    f"{mat.k_through:g}",
-                    f"{mat.density:g}",
-                    f"{mat.specific_heat:g}",
-                    f"{mat.emissivity:g}",
-                ]
-            )
-        TableDataParser._set_table_rows(self.materials_table, mat_rows)
-
-        layer_rows = []
-        for layer in project.layers:
-            layer_rows.append(
-                [
-                    layer.name,
-                    layer.material,
-                    f"{layer.thickness:g}",
-                    f"{layer.interface_resistance_to_next:g}",
-                ]
-            )
-        TableDataParser._set_table_rows(self.layers_table, layer_rows)
-
-        source_rows = []
-        for source in project.heat_sources:
-            source_rows.append(
-                [
-                    source.name,
-                    source.layer,
-                    f"{source.power_w:g}",
-                    source.shape,
-                    f"{source.x:g}",
-                    f"{source.y:g}",
-                    "" if source.width is None else f"{source.width:g}",
-                    "" if source.height is None else f"{source.height:g}",
-                    "" if source.radius is None else f"{source.radius:g}",
-                ]
-            )
-        TableDataParser._set_table_rows(self.sources_table, source_rows)
-
-        led_array_rows = []
-        for array in project.led_arrays:
-            led_array_rows.append(
-                [
-                    array.name,
-                    array.layer,
-                    f"{array.center_x:g}",
-                    f"{array.center_y:g}",
-                    str(array.count_x),
-                    str(array.count_y),
-                    f"{array.pitch_x:g}",
-                    f"{array.pitch_y:g}",
-                    f"{array.power_per_led_w:g}",
-                    array.footprint_shape,
-                    "" if array.led_width is None else f"{array.led_width:g}",
-                    "" if array.led_height is None else f"{array.led_height:g}",
-                    "" if array.led_radius is None else f"{array.led_radius:g}",
-                ]
-            )
-        TableDataParser._set_table_rows(self.led_arrays_table, led_array_rows)
-
-        probe_rows = []
-        for probe in project.probes:
-            probe_rows.append([probe.name, probe.layer, f"{probe.x:g}", f"{probe.y:g}"])
-        TableDataParser._set_table_rows(self.probes_table, probe_rows)
-
+        TableDataParser.populate_tables_from_project(project, self._tables_dict)
         TableDataParser.set_boundary_widgets(self.top_boundary_widgets, project.boundaries.top)
         TableDataParser.set_boundary_widgets(self.bottom_boundary_widgets, project.boundaries.bottom)
         TableDataParser.set_boundary_widgets(self.side_boundary_widgets, project.boundaries.side)
@@ -561,58 +425,59 @@ class MainWindow(QMainWindow):
         self._update_window_title(project.name)
 
     def _load_default_materials(self) -> None:
-        rows = []
-        for mat in default_materials().values():
-            rows.append(
-                [
-                    mat.name,
-                    f"{mat.k_in_plane:g}",
-                    f"{mat.k_through:g}",
-                    f"{mat.density:g}",
-                    f"{mat.specific_heat:g}",
-                    f"{mat.emissivity:g}",
-                ]
-            )
+        rows = [
+            [
+                mat.name,
+                f"{mat.k_in_plane:g}",
+                f"{mat.k_through:g}",
+                f"{mat.density:g}",
+                f"{mat.specific_heat:g}",
+                f"{mat.emissivity:g}",
+            ]
+            for mat in default_materials().values()
+        ]
         TableDataParser._set_table_rows(self.materials_table, rows)
+
+    @property
+    def _tables_dict(self) -> dict:
+        return {
+            "materials": self.materials_table,
+            "layers": self.layers_table,
+            "sources": self.sources_table,
+            "led_arrays": self.led_arrays_table,
+            "probes": self.probes_table,
+        }
+
+    @property
+    def _spinboxes_dict(self) -> dict:
+        return {
+            "name": self.project_name_edit,
+            "width": self.width_spin,
+            "height": self.height_spin,
+            "nx": self.nx_spin,
+            "ny": self.ny_spin,
+            "initial_temp": self.initial_temp_spin,
+            "dt": self.dt_spin,
+            "total_time": self.total_time_spin,
+            "output_interval": self.output_interval_spin,
+        }
+
+    @property
+    def _boundary_widgets_dict(self) -> dict:
+        return {
+            "top": self.top_boundary_widgets,
+            "bottom": self.bottom_boundary_widgets,
+            "side": self.side_boundary_widgets,
+        }
 
     def _build_project_from_ui(self) -> DisplayProject:
         return TableDataParser.build_project_from_tables(
-            tables_dict={
-                "materials": self.materials_table,
-                "layers": self.layers_table,
-                "sources": self.sources_table,
-                "led_arrays": self.led_arrays_table,
-                "probes": self.probes_table,
-            },
-            spinboxes_dict={
-                "name": self.project_name_edit,
-                "width": self.width_spin,
-                "height": self.height_spin,
-                "nx": self.nx_spin,
-                "ny": self.ny_spin,
-                "initial_temp": self.initial_temp_spin,
-                "dt": self.dt_spin,
-                "total_time": self.total_time_spin,
-                "output_interval": self.output_interval_spin,
-            },
-            boundary_widgets_dict={
-                "top": self.top_boundary_widgets,
-                "bottom": self.bottom_boundary_widgets,
-                "side": self.side_boundary_widgets,
-            },
+            self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
         )
 
     def _validate_project(self) -> list[str]:
         """Delegate to TableDataParser.validate_tables()."""
-        return TableDataParser.validate_tables(
-            tables_dict={
-                "materials": self.materials_table,
-                "layers": self.layers_table,
-                "sources": self.sources_table,
-                "led_arrays": self.led_arrays_table,
-                "probes": self.probes_table,
-            }
-        )
+        return TableDataParser.validate_tables(self._tables_dict)
 
     def _run_simulation(self) -> None:
         errors = self._validate_project()
@@ -644,12 +509,13 @@ class MainWindow(QMainWindow):
         self._sim_thread.start()
 
     def _on_sim_finished(self, result: object) -> None:
-        # Invalidate cached map image so next _plot_map rebuilds for the new geometry.
-        self.map_canvas._image = None
-        if self.map_canvas._colorbar is not None:
-            self.map_canvas._colorbar.remove()
-            self.map_canvas._colorbar = None
-        self.map_canvas.axes.clear()
+        # Invalidate cached map image so next plot_temperature_map rebuilds for the new geometry.
+        map_canvas = self._plot_manager.map_canvas
+        map_canvas._image = None
+        if map_canvas._colorbar is not None:
+            map_canvas._colorbar.remove()
+            map_canvas._colorbar = None
+        map_canvas.axes.clear()
 
         project = self.last_project
         top_n = self.top_n_spin.value()
@@ -663,7 +529,7 @@ class MainWindow(QMainWindow):
                 hottest = top_n_hottest_cells(result, n=top_n)
                 final_map = result.temperatures_c
                 layer_names = result.layer_names
-                self._plot_history(None, {})
+                self._plot_manager.plot_probe_history(None, {})
             else:
                 self.last_transient_result = result
                 self.last_steady_result = None
@@ -675,15 +541,18 @@ class MainWindow(QMainWindow):
                 hottest = top_n_hottest_cells_transient(result, n=top_n)
                 final_map = result.final_temperatures_c
                 layer_names = result.layer_names
-                self._plot_history(result.times_s, self.last_probe_history)
+                self._plot_manager.plot_probe_history(result.times_s, self.last_probe_history)
         except Exception as exc:  # noqa: BLE001
             self._show_error("Post-processing failed", self._friendly_error(exc))
             return
 
         self._plot_map(final_map, layer_names)
         self._plot_profile(final_map, layer_names)
-        self._refresh_summary(stats.min_c, stats.avg_c, stats.max_c, final_map, layer_names, hottest)
-        self._fill_probe_table(self.last_probe_values)
+        self._plot_manager.refresh_summary(
+            self.stats_label, self.hot_table, self.summary_text,
+            stats.min_c, stats.avg_c, stats.max_c, final_map, layer_names, hottest,
+        )
+        self._plot_manager.fill_probe_table(self.probe_table, self.last_probe_values)
         self.statusBar().showMessage(f"Simulation complete ({self._sim_mode}).")
 
     def _on_sim_error(self, message: str) -> None:
@@ -704,104 +573,23 @@ class MainWindow(QMainWindow):
             return f"Referenced item not found: {msg}"
         return msg
 
-    def _refresh_summary(
-        self,
-        min_c: float,
-        avg_c: float,
-        max_c: float,
-        final_map_c: np.ndarray,
-        layer_names: list[str],
-        hottest: list[dict],
-    ) -> None:
-        self.stats_label.setText(f"Tmin / Tavg / Tmax [\u00b0C]: {min_c:.2f} / {avg_c:.2f} / {max_c:.2f}")
-        TableDataParser._set_table_rows(
-            self.hot_table,
-            [
-                [h["layer"], f"{h['temperature_c']:.2f}", f"{h['x_m']:.5f}", f"{h['y_m']:.5f}"]
-                for h in hottest
-            ],
-        )
-        averages = layer_average_temperatures(final_map_c, layer_names)
-        lines = ["Layer averages:"]
-        for name, temp in averages.items():
-            lines.append(f"- {name}: {temp:.2f} C")
-        lines.append("")
-        lines.append("Layer-to-layer drops:")
-        for i in range(len(layer_names) - 1):
-            drop = averages[layer_names[i + 1]] - averages[layer_names[i]]
-            lines.append(f"- {layer_names[i]} -> {layer_names[i + 1]}: {drop:+.2f} C")
-        self.summary_text.setPlainText("\n".join(lines))
-
     def _plot_map(self, final_map_c: np.ndarray, layer_names: list[str]) -> None:
-        layer_name = self.map_layer_combo.currentText()
-        layer_idx = layer_names.index(layer_name) if layer_name in layer_names else len(layer_names) - 1
-        data = final_map_c[layer_idx]
-        extent = [0.0, self.width_spin.value(), 0.0, self.height_spin.value()]
-        ax = self.map_canvas.axes
-
-        if self.map_canvas._image is not None:
-            # Update existing image data and colorbar range in-place.
-            self.map_canvas._image.set_data(data)
-            self.map_canvas._image.set_extent(extent)
-            self.map_canvas._image.set_clim(vmin=data.min(), vmax=data.max())
-            ax.set_title(f"Temperature Map - {layer_names[layer_idx]}")
-        else:
-            # First plot — create image, colorbar, and layout.
-            ax.clear()
-            im = ax.imshow(data, origin="lower", extent=extent, aspect="auto", cmap="inferno")
-            ax.set_title(f"Temperature Map - {layer_names[layer_idx]}")
-            ax.set_xlabel("x [m]")
-            ax.set_ylabel("y [m]")
-            self.map_canvas._colorbar = self.map_canvas.figure.colorbar(
-                im, ax=ax, label="Temperature [\u00b0C]"
-            )
-            self.map_canvas._image = im
-            self.map_canvas.figure.tight_layout()
-
-        self.map_canvas.draw()
+        """Thin dispatcher — reads widget state and delegates to PlotManager."""
+        self._plot_manager.plot_temperature_map(
+            final_map_c, layer_names,
+            layer_name=self.map_layer_combo.currentText(),
+            width_m=self.width_spin.value(),
+            height_m=self.height_spin.value(),
+        )
 
     def _plot_profile(self, final_map_c: np.ndarray, layer_names: list[str]) -> None:
+        """Thin dispatcher — reads widget state and delegates to PlotManager."""
         x_m, y_m = self._selected_profile_point()
-        nx = final_map_c.shape[2]
-        ny = final_map_c.shape[1]
-        ix = max(0, min(nx - 1, int(np.floor((x_m / max(self.width_spin.value(), 1e-12)) * nx))))
-        iy = max(0, min(ny - 1, int(np.floor((y_m / max(self.height_spin.value(), 1e-12)) * ny))))
-        vals = final_map_c[:, iy, ix]
-        ax = self.profile_canvas.axes
-        ax.clear()
-        ax.plot(vals, np.arange(len(layer_names)), marker="o")
-        ax.set_yticks(np.arange(len(layer_names)))
-        ax.set_yticklabels(layer_names)
-        ax.set_xlabel("Temperature [\u00b0C]")
-        ax.set_ylabel("Layer")
-        ax.set_title(f"Layer Profile @ x={x_m:.4f} m, y={y_m:.4f} m")
-        ax.grid(True, alpha=0.3)
-        self.profile_canvas.figure.tight_layout()
-        self.profile_canvas.draw()
-
-    def _plot_history(self, times_s: np.ndarray | None, probe_history: dict[str, np.ndarray]) -> None:
-        ax = self.history_canvas.axes
-        ax.clear()
-        if times_s is None or not probe_history:
-            ax.text(
-                0.5,
-                0.5,
-                "No probe history available.\nRun in transient mode with probes defined to see time-series data.",
-                ha="center",
-                va="center",
-                transform=ax.transAxes,
-            )
-            ax.set_axis_off()
-        else:
-            for name, values in probe_history.items():
-                ax.plot(times_s, values, label=name)
-            ax.set_xlabel("Time [s]")
-            ax.set_ylabel("Temperature [\u00b0C]")
-            ax.set_title("Probe Temperatures vs Time")
-            ax.grid(True, alpha=0.25)
-            ax.legend(loc="best")
-        self.history_canvas.figure.tight_layout()
-        self.history_canvas.draw()
+        self._plot_manager.plot_layer_profile(
+            final_map_c, layer_names, x_m, y_m,
+            width_m=self.width_spin.value(),
+            height_m=self.height_spin.value(),
+        )
 
     def _refresh_map_and_profile(self) -> None:
         if self.last_steady_result is not None:
@@ -847,7 +635,7 @@ class MainWindow(QMainWindow):
             self.profile_point_combo.setCurrentIndex(idx)
 
     def _fill_probe_table(self, probe_values: dict[str, float]) -> None:
-        TableDataParser._set_table_rows(self.probe_table, [[k, f"{v:.2f}"] for k, v in probe_values.items()])
+        self._plot_manager.fill_probe_table(self.probe_table, probe_values)
 
     def _load_project_dialog(self) -> None:
         path_str, _ = QFileDialog.getOpenFileName(self, "Open Project", str(Path.cwd()), "JSON (*.json)")
