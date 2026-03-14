@@ -6,8 +6,14 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import (
+    QDoubleValidator,
+    QKeySequence,
+    QAction,
+    QUndoStack,
+    QUndoCommand,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -57,6 +63,43 @@ from thermal_sim.ui.structure_preview import StructurePreviewDialog
 from thermal_sim.ui.table_data_parser import TableDataParser
 
 
+class _CellEditCommand(QUndoCommand):
+    """Undoable command for a single table cell edit."""
+
+    def __init__(
+        self,
+        table,
+        row: int,
+        col: int,
+        old_val: str,
+        new_val: str,
+        main_window: "MainWindow",
+    ) -> None:
+        header = table.horizontalHeaderItem(col)
+        label = header.text() if header else f"col {col}"
+        super().__init__(f"Edit {label}")
+        self._table = table
+        self._row = row
+        self._col = col
+        self._old = old_val
+        self._new = new_val
+        self._mw = main_window
+
+    def undo(self) -> None:
+        item = self._table.item(self._row, self._col)
+        if item is not None:
+            self._mw._undoing = True
+            item.setText(self._old)
+            self._mw._undoing = False
+
+    def redo(self) -> None:
+        item = self._table.item(self._row, self._col)
+        if item is not None:
+            self._mw._undoing = True
+            item.setText(self._new)
+            self._mw._undoing = False
+
+
 class MainWindow(QMainWindow):
     """Main engineering window."""
 
@@ -78,9 +121,29 @@ class MainWindow(QMainWindow):
         self._plot_manager = PlotManager()
         self._sim_controller = SimulationController(self)
 
+        # Undo/redo stack
+        self._undo_stack = QUndoStack(self)
+        self._undo_stack.setUndoLimit(100)
+        self._undoing: bool = False
+
+        # Store pre-edit values: (id(table), row, col) -> text
+        self._pre_edit_values: dict[tuple[int, int, int], str] = {}
+
+        # Persistent output directory
+        settings = QSettings("ThermalSim", "ThermalSimulator")
+        self._output_dir = Path(settings.value("output_dir", str(Path.cwd() / "outputs")))
+
         self._build_ui()
+        self._build_menus()
+        self._build_toolbar()
         self._connect_controller_signals()
+        self._undo_stack.cleanChanged.connect(self._update_title)
+        self._undo_stack.cleanChanged.connect(self._update_path_label)
         self._load_startup_project()
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -119,10 +182,76 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(self._progress_bar, stretch=1)
         sb.addPermanentWidget(self._run_info_label, stretch=1)
 
-        QShortcut(QKeySequence.StandardKey.Open, self, self._load_project_dialog)
-        QShortcut(QKeySequence.StandardKey.Save, self, self._save_project_dialog)
-        QShortcut(QKeySequence("Ctrl+R"), self, self._run_simulation)
         self._draw_empty_states()
+
+    def _build_menus(self) -> None:
+        """Create the menu bar with File, Edit, and Run menus."""
+        # File menu
+        file_menu = self.menuBar().addMenu("&File")
+
+        new_action = QAction("&New Project", self)
+        new_action.setShortcut(QKeySequence.StandardKey.New)
+        new_action.triggered.connect(self._new_project)
+        file_menu.addAction(new_action)
+
+        open_action = QAction("&Open Project...", self)
+        open_action.setShortcut(QKeySequence.StandardKey.Open)
+        open_action.triggered.connect(self._load_project_dialog)
+        file_menu.addAction(open_action)
+
+        file_menu.addSeparator()
+
+        self._save_action = QAction("&Save Project", self)
+        self._save_action.setShortcut(QKeySequence.StandardKey.Save)
+        self._save_action.triggered.connect(self._save_project)
+        file_menu.addAction(self._save_action)
+
+        save_as_action = QAction("Save Project &As...", self)
+        save_as_action.triggered.connect(self._save_project_as_dialog)
+        file_menu.addAction(save_as_action)
+
+        # Edit menu (using QUndoStack's built-in actions)
+        edit_menu = self.menuBar().addMenu("&Edit")
+        undo_action = self._undo_stack.createUndoAction(self, "&Undo")
+        undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        edit_menu.addAction(undo_action)
+        redo_action = self._undo_stack.createRedoAction(self, "&Redo")
+        redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        edit_menu.addAction(redo_action)
+
+        # Run menu
+        run_menu = self.menuBar().addMenu("&Run")
+
+        self._run_action = QAction("&Run Simulation", self)
+        self._run_action.setShortcut(QKeySequence("F5"))
+        self._run_action.triggered.connect(self._run_simulation)
+        run_menu.addAction(self._run_action)
+
+        self._cancel_action = QAction("&Cancel", self)
+        self._cancel_action.setShortcut(QKeySequence("Escape"))
+        self._cancel_action.setEnabled(False)
+        self._cancel_action.triggered.connect(self._sim_controller.cancel)
+        run_menu.addAction(self._cancel_action)
+
+        run_menu.addSeparator()
+
+        set_output_action = QAction("Set &Output Directory...", self)
+        set_output_action.triggered.connect(self._set_output_directory)
+        run_menu.addAction(set_output_action)
+
+        export_csv_action = QAction("&Export CSV", self)
+        export_csv_action.triggered.connect(self._export_csv_dialog)
+        run_menu.addAction(export_csv_action)
+
+    def _build_toolbar(self) -> None:
+        """Create the main toolbar with mode dropdown and run/cancel actions."""
+        toolbar = self.addToolBar("Main")
+        toolbar.setMovable(False)
+        toolbar.addWidget(QLabel(" Mode: "))
+        toolbar.addWidget(self.mode_combo)
+        toolbar.addSeparator()
+        toolbar.addAction(self._run_action)
+        toolbar.addAction(self._cancel_action)
 
     def _build_top_controls(self) -> QWidget:
         panel = QWidget()
@@ -130,14 +259,16 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(2)
 
-        # Row 1: simulation controls
-        row1 = QHBoxLayout()
-        row1.setSpacing(4)
-
+        # Mode combo is created here so _build_toolbar() can reference it
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["steady", "transient"])
         self.mode_combo.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.mode_combo.setToolTip("Steady-state solves for equilibrium; transient simulates over time")
+
+        # Row 1: view controls
+        row1 = QHBoxLayout()
+        row1.setSpacing(4)
+
         self.top_n_spin = QSpinBox()
         self.top_n_spin.setRange(1, 100)
         self.top_n_spin.setValue(10)
@@ -147,43 +278,20 @@ class MainWindow(QMainWindow):
         self.map_layer_combo.setToolTip("Layer shown in the temperature map")
         self.map_layer_combo.currentTextChanged.connect(self._refresh_map_and_profile)
 
-        self._run_btn = QPushButton("Run Simulation")
-        self._run_btn.setObjectName("runButton")
-        self._run_btn.setToolTip("Run simulation (Ctrl+R)")
-        self._run_btn.clicked.connect(self._run_simulation)
-
-        row1.addWidget(QLabel("Mode"))
-        row1.addWidget(self.mode_combo)
         row1.addWidget(QLabel("Top-N"))
         row1.addWidget(self.top_n_spin)
         row1.addWidget(QLabel("Layer"))
         row1.addWidget(self.map_layer_combo)
-        row1.addWidget(self._run_btn)
+        row1.addStretch()
 
-        # Row 2: I/O and preview
+        # Row 2: preview
         row2 = QHBoxLayout()
         row2.setSpacing(4)
 
-        load_btn = QPushButton("Load JSON")
-        load_btn.setToolTip("Open project JSON (Ctrl+O)")
-        load_btn.clicked.connect(self._load_project_dialog)
-        save_btn = QPushButton("Save JSON")
-        save_btn.setToolTip("Save project to JSON (Ctrl+S)")
-        save_btn.clicked.connect(self._save_project_dialog)
-        export_map_btn = QPushButton("Export Map CSV")
-        export_map_btn.setToolTip("Export temperature map as CSV")
-        export_map_btn.clicked.connect(self._export_map_csv_dialog)
-        export_probe_btn = QPushButton("Export Probe CSV")
-        export_probe_btn.setToolTip("Export probe data as CSV")
-        export_probe_btn.clicked.connect(self._export_probe_csv_dialog)
         preview_btn = QPushButton("Structure Preview")
         preview_btn.setToolTip("Visual preview of layer stack and source layout")
         preview_btn.clicked.connect(self._open_structure_preview)
 
-        row2.addWidget(load_btn)
-        row2.addWidget(save_btn)
-        row2.addWidget(export_map_btn)
-        row2.addWidget(export_probe_btn)
         row2.addWidget(preview_btn)
         row2.addStretch()
 
@@ -247,7 +355,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(table)
         row = QHBoxLayout()
         add_btn = QPushButton("Add")
-        add_btn.clicked.connect(lambda: TableDataParser._add_table_row(table))
+        add_btn.clicked.connect(lambda: self._add_table_row_undoable(table))
         rm_btn = QPushButton("Remove")
         rm_btn.clicked.connect(lambda: TableDataParser.remove_selected_row(self, table))
         row.addWidget(add_btn)
@@ -265,18 +373,21 @@ class MainWindow(QMainWindow):
             ["Name", "k in-plane [W/mK]", "k through [W/mK]", "Density [kg/m\u00b3]", "Specific heat [J/kgK]", "Emissivity"],
             extra_buttons=[presets_btn],
         )
+        self._wire_table_undo(self.materials_table)
         return tab
 
     def _build_layers_tab(self) -> QWidget:
         tab, self.layers_table = self._build_table_tab(
             ["Name", "Material", "Thickness [m]", "Interface R to next [m\u00b2K/W]"]
         )
+        self._wire_table_undo(self.layers_table)
         return tab
 
     def _build_sources_tab(self) -> QWidget:
         tab, self.sources_table = self._build_table_tab(
             ["Name", "Layer", "Power [W]", "Shape", "x [m]", "y [m]", "width [m]", "height [m]", "radius [m]"]
         )
+        self._wire_table_undo(self.sources_table)
         return tab
 
     def _build_boundaries_tab(self) -> QWidget:
@@ -304,10 +415,12 @@ class MainWindow(QMainWindow):
              "Pitch x [m]", "Pitch y [m]", "Power per LED [W]",
              "LED footprint", "LED width [m]", "LED height [m]", "LED radius [m]"]
         )
+        self._wire_table_undo(self.led_arrays_table)
         return tab
 
     def _build_probes_tab(self) -> QWidget:
         tab, self.probes_table = self._build_table_tab(["Name", "Layer", "x [m]", "y [m]"])
+        self._wire_table_undo(self.probes_table)
         return tab
 
     def _build_result_tabs(self) -> QTabWidget:
@@ -382,12 +495,76 @@ class MainWindow(QMainWindow):
             ax.set_axis_off()
             canvas.draw()
 
-    def _update_window_title(self, project_name: str = "") -> None:
+    # ------------------------------------------------------------------
+    # Undo/redo wiring
+    # ------------------------------------------------------------------
+
+    def _wire_table_undo(self, table) -> None:
+        """Connect a table widget to the undo system."""
+        table.currentCellChanged.connect(
+            lambda cur_row, cur_col, _prev_row, _prev_col, t=table:
+                self._capture_old_value(t, cur_row, cur_col)
+        )
+        table.cellChanged.connect(
+            lambda row, col, t=table: self._on_cell_changed(t, row, col)
+        )
+
+    def _capture_old_value(self, table, row: int, col: int) -> None:
+        """Capture cell text before the user begins editing."""
+        if row < 0 or col < 0:
+            return
+        item = table.item(row, col)
+        if item is not None:
+            self._pre_edit_values[(id(table), row, col)] = item.text()
+
+    def _on_cell_changed(self, table, row: int, col: int) -> None:
+        """Push an undo command when a cell's text changes."""
+        if self._undoing:
+            return
+        item = table.item(row, col)
+        if item is None:
+            return
+        new_val = item.text()
+        old_val = self._pre_edit_values.get((id(table), row, col), "")
+        if old_val == new_val:
+            return
+        # Update stored value
+        self._pre_edit_values[(id(table), row, col)] = new_val
+        cmd = _CellEditCommand(table, row, col, old_val, new_val, self)
+        self._undo_stack.push(cmd)
+
+    def _add_table_row_undoable(self, table) -> None:
+        """Add a table row, wrapped in an undo macro."""
+        self._undo_stack.beginMacro("Add row")
+        TableDataParser._add_table_row(table)
+        self._undo_stack.endMacro()
+
+    # ------------------------------------------------------------------
+    # Title and path label
+    # ------------------------------------------------------------------
+
+    def _update_title(self) -> None:
+        """Update window title, showing asterisk when there are unsaved changes."""
         base = "Thermal Simulator"
-        if project_name:
-            self.setWindowTitle(f"{project_name} \u2014 {base}")
+        if self.current_project_path:
+            base = f"{self.current_project_path.name} - Thermal Simulator"
+        if not self._undo_stack.isClean():
+            base = f"* {base}"
+        self.setWindowTitle(base)
+
+    def _update_path_label(self) -> None:
+        """Update the left status bar zone with the current file path."""
+        if self.current_project_path is not None:
+            path_text = str(self.current_project_path)
         else:
-            self.setWindowTitle(base)
+            path_text = "No file"
+        if not self._undo_stack.isClean():
+            path_text = f"* {path_text}"
+        self._path_label.setText(path_text)
+
+    # ------------------------------------------------------------------
+    # Project load/save
+    # ------------------------------------------------------------------
 
     def _load_startup_project(self) -> None:
         default_path = Path("examples/steady_uniform_stack.json")
@@ -397,12 +574,24 @@ class MainWindow(QMainWindow):
                 self._populate_ui_from_project(project)
                 self.current_project_path = default_path
                 self._update_path_label()
+                self._update_title()
                 return
             except Exception:  # noqa: BLE001
                 pass
         self._load_default_materials()
 
     def _populate_ui_from_project(self, project: DisplayProject) -> None:
+        # Block signals on all editable tables to prevent spurious undo commands
+        editable_tables = [
+            self.materials_table,
+            self.layers_table,
+            self.sources_table,
+            self.led_arrays_table,
+            self.probes_table,
+        ]
+        for table in editable_tables:
+            table.blockSignals(True)
+
         self.project_name_edit.setText(project.name)
         self.width_spin.setValue(project.width)
         self.height_spin.setValue(project.height)
@@ -419,7 +608,14 @@ class MainWindow(QMainWindow):
         TableDataParser.set_boundary_widgets(self.side_boundary_widgets, project.boundaries.side)
         self._refresh_layer_choices(project)
         self._refresh_profile_choices(project)
-        self._update_window_title(project.name)
+
+        for table in editable_tables:
+            table.blockSignals(False)
+
+        self._undo_stack.clear()
+        self._undo_stack.setClean()
+        self._update_title()
+        self._update_path_label()
 
     def _load_default_materials(self) -> None:
         rows = [
@@ -435,46 +631,205 @@ class MainWindow(QMainWindow):
         ]
         TableDataParser._set_table_rows(self.materials_table, rows)
 
-    @property
-    def _tables_dict(self) -> dict:
-        return {
-            "materials": self.materials_table,
-            "layers": self.layers_table,
-            "sources": self.sources_table,
-            "led_arrays": self.led_arrays_table,
-            "probes": self.probes_table,
-        }
+    def _new_project(self) -> None:
+        """Create a new blank project, prompting to save if there are unsaved changes."""
+        if not self._maybe_save_changes():
+            return
+        # Build a minimal default project
+        from thermal_sim.models.project import DisplayProject
+        try:
+            default = DisplayProject.default()
+        except AttributeError:
+            # Fall back to loading default materials if no .default() classmethod
+            default = None
+        if default is not None:
+            self._populate_ui_from_project(default)
+        else:
+            # Reset tables manually
+            editable_tables = [
+                self.materials_table,
+                self.layers_table,
+                self.sources_table,
+                self.led_arrays_table,
+                self.probes_table,
+            ]
+            for table in editable_tables:
+                table.blockSignals(True)
+            for table in editable_tables:
+                table.setRowCount(0)
+            for table in editable_tables:
+                table.blockSignals(False)
+            self._undo_stack.clear()
+            self._undo_stack.setClean()
+        self.current_project_path = None
+        self._update_title()
+        self._update_path_label()
 
-    @property
-    def _spinboxes_dict(self) -> dict:
-        return {
-            "name": self.project_name_edit,
-            "width": self.width_spin,
-            "height": self.height_spin,
-            "nx": self.nx_spin,
-            "ny": self.ny_spin,
-            "initial_temp": self.initial_temp_spin,
-            "dt": self.dt_spin,
-            "total_time": self.total_time_spin,
-            "output_interval": self.output_interval_spin,
-        }
+    def _load_project_dialog(self) -> None:
+        if not self._maybe_save_changes():
+            return
+        path_str, _ = QFileDialog.getOpenFileName(self, "Open Project", str(Path.cwd()), "JSON (*.json)")
+        if not path_str:
+            return
+        try:
+            path = Path(path_str)
+            project = load_project(path)
+            self._populate_ui_from_project(project)
+            self.current_project_path = path
+            self._update_path_label()
+            self._update_title()
+        except Exception as exc:  # noqa: BLE001
+            self._show_error("Load failed", str(exc))
 
-    @property
-    def _boundary_widgets_dict(self) -> dict:
-        return {
-            "top": self.top_boundary_widgets,
-            "bottom": self.bottom_boundary_widgets,
-            "side": self.side_boundary_widgets,
-        }
+    def _save_project(self) -> None:
+        """Save to current path; fall through to Save As if no path is set."""
+        if self.current_project_path is None:
+            self._save_project_as_dialog()
+            return
+        try:
+            project = self._build_project_from_ui()
+        except Exception as exc:  # noqa: BLE001
+            self._show_error("Invalid project", str(exc))
+            return
+        try:
+            save_project(project, self.current_project_path)
+            self._undo_stack.setClean()
+            self._update_title()
+            self._update_path_label()
+        except Exception as exc:  # noqa: BLE001
+            self._show_error("Save failed", str(exc))
 
-    def _build_project_from_ui(self) -> DisplayProject:
-        return TableDataParser.build_project_from_tables(
-            self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
+    def _save_project_as_dialog(self) -> None:
+        """Always show a Save As dialog."""
+        try:
+            project = self._build_project_from_ui()
+        except Exception as exc:  # noqa: BLE001
+            self._show_error("Invalid project", str(exc))
+            return
+        start = self.current_project_path or Path.cwd() / "project.json"
+        path_str, _ = QFileDialog.getSaveFileName(self, "Save Project As", str(start), "JSON (*.json)")
+        if not path_str:
+            return
+        try:
+            path = Path(path_str)
+            save_project(project, path)
+            self.current_project_path = path
+            self._undo_stack.setClean()
+            self._update_title()
+            self._update_path_label()
+        except Exception as exc:  # noqa: BLE001
+            self._show_error("Save failed", str(exc))
+
+    # Keep old name as alias so any code paths from Plan 02 still work
+    def _save_project_dialog(self) -> None:
+        self._save_project_as_dialog()
+
+    def _maybe_save_changes(self) -> bool:
+        """Return True if it is safe to proceed, False if the user cancelled."""
+        if self._undo_stack.isClean():
+            return True
+        reply = QMessageBox.question(
+            self,
+            "Unsaved Changes",
+            "You have unsaved changes. Save before continuing?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
         )
+        if reply == QMessageBox.StandardButton.Save:
+            self._save_project()
+            return self._undo_stack.isClean()  # False if save was itself cancelled
+        if reply == QMessageBox.StandardButton.Discard:
+            return True
+        return False  # Cancel
 
-    def _validate_project(self) -> list[str]:
-        """Delegate to TableDataParser.validate_tables()."""
-        return TableDataParser.validate_tables(self._tables_dict)
+    # ------------------------------------------------------------------
+    # Output directory + CSV export
+    # ------------------------------------------------------------------
+
+    def _set_output_directory(self) -> None:
+        path_str = QFileDialog.getExistingDirectory(
+            self, "Set Output Directory", str(self._output_dir)
+        )
+        if path_str:
+            self._output_dir = Path(path_str)
+            settings = QSettings("ThermalSim", "ThermalSimulator")
+            settings.setValue("output_dir", str(self._output_dir))
+            self._solver_label.setText(f"Output: {self._output_dir}")
+
+    def _export_csv_dialog(self) -> None:
+        """Export all available result CSVs to the configured output directory."""
+        if self.last_steady_result is None and self.last_transient_result is None:
+            self._show_error("No result", "Run a simulation first.")
+            return
+        output_dir = self._output_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        if self.last_steady_result is not None:
+            export_temperature_map(
+                self.last_steady_result, output_dir / "temperature_map.csv"
+            )
+            if self.last_probe_values:
+                export_probe_temperatures(
+                    self.last_probe_values, output_dir / "probe_temperatures.csv"
+                )
+        else:
+            result = self.last_transient_result
+            assert result is not None
+            export_temperature_map_array(
+                result.final_temperatures_c,
+                result.layer_names,
+                result.dx,
+                result.dy,
+                output_dir / "temperature_map.csv",
+            )
+            if self.last_probe_history:
+                export_probe_temperatures_vs_time(
+                    result.times_s,
+                    self.last_probe_history,
+                    output_dir / "probe_temperatures_vs_time.csv",
+                )
+        self._solver_label.setText(f"Exported to {output_dir}")
+
+    # Keep individual export dialogs for backward compatibility
+    def _export_map_csv_dialog(self) -> None:
+        if self.last_steady_result is None and self.last_transient_result is None:
+            self._show_error("No results to export", "Run a simulation first, then export the temperature map.")
+            return
+        path_str, _ = QFileDialog.getSaveFileName(self, "Export Map CSV", "temperature_map.csv", "CSV (*.csv)")
+        if not path_str:
+            return
+        path = Path(path_str)
+        if self.last_steady_result is not None:
+            export_temperature_map(self.last_steady_result, path)
+        else:
+            assert self.last_transient_result is not None
+            export_temperature_map_array(
+                temperature_map_c=self.last_transient_result.final_temperatures_c,
+                layer_names=self.last_transient_result.layer_names,
+                dx=self.last_transient_result.dx,
+                dy=self.last_transient_result.dy,
+                output_path=path,
+            )
+        self._solver_label.setText(f"Exported {path.name}")
+
+    def _export_probe_csv_dialog(self) -> None:
+        if self.last_steady_result is None and self.last_transient_result is None:
+            self._show_error("No results to export", "Run a simulation first, then export probe data.")
+            return
+        path_str, _ = QFileDialog.getSaveFileName(self, "Export Probe CSV", "probe_data.csv", "CSV (*.csv)")
+        if not path_str:
+            return
+        path = Path(path_str)
+        if self.last_steady_result is not None:
+            export_probe_temperatures(self.last_probe_values, path)
+        else:
+            assert self.last_transient_result is not None
+            export_probe_temperatures_vs_time(self.last_transient_result.times_s, self.last_probe_history, path)
+        self._solver_label.setText(f"Exported {path.name}")
+
+    # ------------------------------------------------------------------
+    # Simulation
+    # ------------------------------------------------------------------
 
     def _connect_controller_signals(self) -> None:
         """Wire SimulationController signals to MainWindow slots."""
@@ -486,17 +841,17 @@ class MainWindow(QMainWindow):
         c.run_error.connect(self._on_sim_error)
 
     def _on_run_started(self) -> None:
-        """Disable Run button and show progress bar when a simulation starts."""
-        self._run_btn.setEnabled(False)
-        self._run_btn.setText("Running\u2026")
+        """Disable Run action and show progress bar when a simulation starts."""
+        self._run_action.setEnabled(False)
+        self._cancel_action.setEnabled(True)
         self._progress_bar.setValue(0)
         self._progress_bar.setVisible(True)
         self._solver_label.setText("Running\u2026")
 
     def _on_run_ended(self) -> None:
-        """Re-enable Run button and hide progress bar when a simulation ends."""
-        self._run_btn.setEnabled(True)
-        self._run_btn.setText("Run Simulation")
+        """Re-enable Run action and hide progress bar when a simulation ends."""
+        self._run_action.setEnabled(True)
+        self._cancel_action.setEnabled(False)
         self._progress_bar.setVisible(False)
 
     def _on_progress(self, percent: int, message: str) -> None:
@@ -592,6 +947,10 @@ class MainWindow(QMainWindow):
             return f"Referenced item not found: {msg}"
         return msg
 
+    # ------------------------------------------------------------------
+    # Plotting helpers
+    # ------------------------------------------------------------------
+
     def _plot_map(self, final_map_c: np.ndarray, layer_names: list[str]) -> None:
         """Thin dispatcher — reads widget state and delegates to PlotManager."""
         self._plot_manager.plot_temperature_map(
@@ -656,44 +1015,9 @@ class MainWindow(QMainWindow):
     def _fill_probe_table(self, probe_values: dict[str, float]) -> None:
         self._plot_manager.fill_probe_table(self.probe_table, probe_values)
 
-    def _update_path_label(self) -> None:
-        """Update the left status bar zone with the current file path."""
-        if self.current_project_path is not None:
-            self._path_label.setText(str(self.current_project_path))
-        else:
-            self._path_label.setText("No file")
-
-    def _load_project_dialog(self) -> None:
-        path_str, _ = QFileDialog.getOpenFileName(self, "Open Project", str(Path.cwd()), "JSON (*.json)")
-        if not path_str:
-            return
-        try:
-            path = Path(path_str)
-            project = load_project(path)
-            self._populate_ui_from_project(project)
-            self.current_project_path = path
-            self._update_path_label()
-        except Exception as exc:  # noqa: BLE001
-            self._show_error("Load failed", str(exc))
-
-    def _save_project_dialog(self) -> None:
-        try:
-            project = self._build_project_from_ui()
-        except Exception as exc:  # noqa: BLE001
-            self._show_error("Invalid project", str(exc))
-            return
-        start = self.current_project_path or Path.cwd() / "project.json"
-        path_str, _ = QFileDialog.getSaveFileName(self, "Save Project", str(start), "JSON (*.json)")
-        if not path_str:
-            return
-        try:
-            path = Path(path_str)
-            save_project(project, path)
-            self.current_project_path = path
-            self._update_window_title(project.name)
-            self._update_path_label()
-        except Exception as exc:  # noqa: BLE001
-            self._show_error("Save failed", str(exc))
+    # ------------------------------------------------------------------
+    # Structure preview
+    # ------------------------------------------------------------------
 
     def _open_structure_preview(self) -> None:
         try:
@@ -712,41 +1036,73 @@ class MainWindow(QMainWindow):
         if window in self._preview_windows:
             self._preview_windows.remove(window)
 
-    def _export_map_csv_dialog(self) -> None:
-        if self.last_steady_result is None and self.last_transient_result is None:
-            self._show_error("No results to export", "Run a simulation first, then export the temperature map.")
-            return
-        path_str, _ = QFileDialog.getSaveFileName(self, "Export Map CSV", "temperature_map.csv", "CSV (*.csv)")
-        if not path_str:
-            return
-        path = Path(path_str)
-        if self.last_steady_result is not None:
-            export_temperature_map(self.last_steady_result, path)
-        else:
-            assert self.last_transient_result is not None
-            export_temperature_map_array(
-                temperature_map_c=self.last_transient_result.final_temperatures_c,
-                layer_names=self.last_transient_result.layer_names,
-                dx=self.last_transient_result.dx,
-                dy=self.last_transient_result.dy,
-                output_path=path,
-            )
-        self._solver_label.setText(f"Exported {path.name}")
+    # ------------------------------------------------------------------
+    # Project model helpers
+    # ------------------------------------------------------------------
 
-    def _export_probe_csv_dialog(self) -> None:
-        if self.last_steady_result is None and self.last_transient_result is None:
-            self._show_error("No results to export", "Run a simulation first, then export probe data.")
-            return
-        path_str, _ = QFileDialog.getSaveFileName(self, "Export Probe CSV", "probe_data.csv", "CSV (*.csv)")
-        if not path_str:
-            return
-        path = Path(path_str)
-        if self.last_steady_result is not None:
-            export_probe_temperatures(self.last_probe_values, path)
+    @property
+    def _tables_dict(self) -> dict:
+        return {
+            "materials": self.materials_table,
+            "layers": self.layers_table,
+            "sources": self.sources_table,
+            "led_arrays": self.led_arrays_table,
+            "probes": self.probes_table,
+        }
+
+    @property
+    def _spinboxes_dict(self) -> dict:
+        return {
+            "name": self.project_name_edit,
+            "width": self.width_spin,
+            "height": self.height_spin,
+            "nx": self.nx_spin,
+            "ny": self.ny_spin,
+            "initial_temp": self.initial_temp_spin,
+            "dt": self.dt_spin,
+            "total_time": self.total_time_spin,
+            "output_interval": self.output_interval_spin,
+        }
+
+    @property
+    def _boundary_widgets_dict(self) -> dict:
+        return {
+            "top": self.top_boundary_widgets,
+            "bottom": self.bottom_boundary_widgets,
+            "side": self.side_boundary_widgets,
+        }
+
+    def _build_project_from_ui(self) -> DisplayProject:
+        return TableDataParser.build_project_from_tables(
+            self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
+        )
+
+    def _validate_project(self) -> list[str]:
+        """Delegate to TableDataParser.validate_tables()."""
+        return TableDataParser.validate_tables(self._tables_dict)
+
+    # ------------------------------------------------------------------
+    # Window lifecycle
+    # ------------------------------------------------------------------
+
+    def closeEvent(self, event) -> None:
+        """Prompt to save unsaved changes before closing."""
+        if self._maybe_save_changes():
+            event.accept()
         else:
-            assert self.last_transient_result is not None
-            export_probe_temperatures_vs_time(self.last_transient_result.times_s, self.last_probe_history, path)
-        self._solver_label.setText(f"Exported {path.name}")
+            event.ignore()
+
+    def keyPressEvent(self, event) -> None:
+        """Intercept Escape to cancel a running simulation."""
+        if event.key() == Qt.Key.Key_Escape and self._sim_controller.is_running:
+            self._sim_controller.cancel()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
 
     def _show_error(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)
