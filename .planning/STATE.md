@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-14T14:47:14.413Z"
+last_updated: "2026-03-14T23:27:53.811Z"
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 18
-  completed_plans: 18
+  total_plans: 21
+  completed_plans: 19
 ---
 
 ---
@@ -31,14 +31,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Phase 4 — Polish
+**Current focus:** Phase 5 — Distribution
 
 ## Current Position
 
-Phase: 4 of 4 (Polish) — COMPLETE
-Plan: 3 of 3 in current phase (completed 04-03)
-Status: Phase 4 complete
-Last activity: 2026-03-14 - Completed 04-03-PLAN.md — per-cell inline validation, run button disable, error count in status bar (PLSH-03 satisfied)
+Phase: 5 of 5 (Distribution) — in progress
+Plan: 1 of 3 in current phase (completed 05-01)
+Status: Phase 5 in progress
+Last activity: 2026-03-15 - Completed 05-01-PLAN.md — paths.py centralized path resolution, migrated material_library + main_window, gui.py rewrite with splash screen and crash handler (DIST-03 satisfied)
 
 Progress: [██████████] 100%
 
@@ -65,6 +65,7 @@ Progress: [██████████] 100%
 | Phase 04-polish P01 | 2 | 2 tasks | 5 files |
 | Phase 04-polish P02 | 5 | 1 task | 1 file |
 | Phase 04-polish P03 | 2 | 2 tasks | 2 files |
+| Phase 05-distribution P01 | 3 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -104,7 +105,7 @@ Recent decisions affecting current work:
 - [Phase 03-simulation-capabilities]: SweepResult imports SweepConfig lazily inside from_dict() to avoid circular import
 - [03-03]: import_materials returns a new merged dict — does not mutate either input dict
 - [03-03]: Built-in table rows use Qt.ItemFlag.ItemIsEditable cleared (not clone-on-edit) — avoids undo system entanglement
-- [03-03]: load_builtin_library uses importlib.resources.files for PyInstaller bundle compatibility
+- [03-03]: load_builtin_library uses importlib.resources.files for PyInstaller bundle compatibility (superseded by 05-01 migration to paths.py)
 - [03-03]: Type column placed last (col 6) so parse_materials_table cols 0-5 need no change
 - [03-01]: power_at_time falls back to power_w when profile_end <= 0 (single-breakpoint edge case)
 - [03-01]: First breakpoint enforced at time_s=0 in __post_init__ to prevent looping discontinuities
@@ -128,6 +129,10 @@ Recent decisions affecting current work:
 - [04-03]: validate_cell() uses exact lowercased header matching — avoids false positives and is consistent with actual headers in _build_*_tab() methods
 - [04-03]: _remove_table_row() wrapper added rather than patching TableDataParser.remove_selected_row() — keeps static helper stateless and pure
 - [04-03]: _on_run_ended() delegates to _update_validation_status() — single source of truth for run button enabled state
+- [05-01]: paths.py uses Path(__file__).resolve().parent.parent.parent (3 levels up) as dev root — exact package depth from thermal_sim/core/paths.py
+- [05-01]: SystemExit re-raised in gui.py crash handler — normal app.exec() exit must not be treated as a crash
+- [05-01]: Splash QPainter-drawn at runtime — no external asset file; matches theme colors (#212121 bg, #FFB300 amber)
+- [05-01]: gui.py top-level imports limited to sys, traceback, paths — crash handler can show dialog even if PySide6 import partially fails
 
 ### Pending Todos
 
@@ -146,6 +151,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14
-Stopped at: Completed 04-03-PLAN.md — inline cell validation, run button disable, error count in status bar; 111 tests pass
+Last session: 2026-03-15
+Stopped at: Completed 05-01-PLAN.md — paths.py, material_library migration, main_window migration, gui.py splash+crash handler; 122 tests pass
 Resume file: None
