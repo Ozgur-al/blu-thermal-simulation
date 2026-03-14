@@ -7,7 +7,7 @@
 
 ### GUI Foundation
 
-- [ ] **GUI-01**: MainWindow refactored into SimulationController, TableDataParser, and PlotManager
+- [x] **GUI-01**: MainWindow refactored into SimulationController, TableDataParser, and PlotManager
 - [x] **GUI-02**: User can undo/redo any project edit via Ctrl+Z/Ctrl+Y
 - [x] **GUI-03**: User can run simulation with visible progress bar and cancel button
 - [x] **GUI-04**: Status bar shows file path, modified indicator, last run time, and solver state
@@ -73,7 +73,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GUI-01 | Phase 1 — Foundation | In Progress (TableDataParser+PlotManager+SimulationController done) |
+| GUI-01 | Phase 1 — Foundation | Complete (01-01, 01-02) |
 | GUI-02 | Phase 1 — Foundation | Complete (01-03) |
 | GUI-03 | Phase 1 — Foundation | Complete (01-02) |
 | GUI-04 | Phase 1 — Foundation | Complete (01-02) |
@@ -105,4 +105,4 @@
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after 01-03 completion (GUI-02, GUI-05, GUI-06, GUI-07 complete)*
+*Last updated: 2026-03-14 after Phase 1 completion (all GUI-01 through GUI-07 complete)*
