@@ -14,6 +14,56 @@ from thermal_sim.solvers.steady_state import SteadyStateSolver
 from thermal_sim.solvers.transient import TransientSolver
 
 
+# ---------------------------------------------------------------------------
+# _SweepWorker
+# ---------------------------------------------------------------------------
+
+class _SweepWorker(QObject):
+    """Runs SweepEngine in a background thread.
+
+    Signals
+    -------
+    finished : Signal(object)
+        Emitted with the SweepResult when the sweep completes.
+    error : Signal(str)
+        Emitted with an error message string if an exception occurs.
+    progress : Signal(int, str)
+        Emitted after each completed run with (percent 0-100, "Run N of M").
+    """
+
+    finished = Signal(object)
+    error = Signal(str)
+    progress = Signal(int, str)
+
+    def __init__(self, project: DisplayProject, config: object) -> None:
+        super().__init__()
+        self._project = project
+        self._config = config
+        self._cancel_requested = False
+
+    def request_cancel(self) -> None:
+        """Set the cancel flag (for future cooperative cancellation)."""
+        self._cancel_requested = True
+
+    def run(self) -> None:
+        """Entry point called by QThread.started signal."""
+        from thermal_sim.core.sweep_engine import SweepEngine
+
+        try:
+            result = SweepEngine().run(
+                self._project,
+                self._config,
+                on_progress=self._on_progress,
+            )
+            self.finished.emit(result)
+        except Exception as exc:  # noqa: BLE001
+            self.error.emit(str(exc))
+
+    def _on_progress(self, run_n: int, total: int) -> None:
+        pct = int(100 * run_n / max(total, 1))
+        self.progress.emit(pct, f"Run {run_n} of {total}")
+
+
 class _SimWorker(QObject):
     """Runs the solver in a background thread.
 
@@ -82,6 +132,8 @@ class SimulationController(QObject):
         Emitted just before the background thread is started.
     run_ended : Signal()
         Emitted after a run completes (success, error, or cancel).
+    sweep_finished : Signal(object)
+        Emitted with a SweepResult after a successful parametric sweep.
     """
 
     progress_updated = Signal(int, str)
@@ -89,11 +141,14 @@ class SimulationController(QObject):
     run_error = Signal(str)
     run_started = Signal()
     run_ended = Signal()
+    sweep_finished = Signal(object)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._thread: QThread | None = None
         self._worker: _SimWorker | None = None
+        self._sweep_thread: QThread | None = None
+        self._sweep_worker: _SweepWorker | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -138,6 +193,38 @@ class SimulationController(QObject):
         self.run_started.emit()
         self._thread.start()
 
+    def start_sweep(self, project: DisplayProject, config: object) -> None:
+        """Start a parametric sweep in a background thread.
+
+        If a run or sweep is already in progress, this call is silently ignored.
+
+        Parameters
+        ----------
+        project:
+            The base project to sweep over.
+        config:
+            A SweepConfig describing the parameter path, values, and mode.
+        """
+        if self.is_running or (
+            self._sweep_thread is not None and self._sweep_thread.isRunning()
+        ):
+            return
+
+        self._sweep_worker = _SweepWorker(project, config)
+        self._sweep_thread = QThread()
+        self._sweep_worker.moveToThread(self._sweep_thread)
+
+        self._sweep_thread.started.connect(self._sweep_worker.run)
+        self._sweep_worker.progress.connect(self.progress_updated)
+        self._sweep_worker.finished.connect(self._on_sweep_finished)
+        self._sweep_worker.error.connect(self._on_sweep_error)
+        self._sweep_worker.finished.connect(self._sweep_thread.quit)
+        self._sweep_worker.error.connect(self._sweep_thread.quit)
+        self._sweep_thread.finished.connect(self._cleanup_sweep)
+
+        self.run_started.emit()
+        self._sweep_thread.start()
+
     def cancel(self) -> None:
         """Request cooperative cancellation of the current run.
 
@@ -145,6 +232,8 @@ class SimulationController(QObject):
         """
         if self._worker is not None:
             self._worker.request_cancel()
+        if self._sweep_worker is not None:
+            self._sweep_worker.request_cancel()
 
     # ------------------------------------------------------------------
     # Private slots
@@ -166,3 +255,20 @@ class SimulationController(QObject):
         if self._thread is not None:
             self._thread.deleteLater()
             self._thread = None
+
+    def _on_sweep_finished(self, result: object) -> None:
+        self.sweep_finished.emit(result)
+        self.run_ended.emit()
+
+    def _on_sweep_error(self, message: str) -> None:
+        self.run_error.emit(message)
+        self.run_ended.emit()
+
+    def _cleanup_sweep(self) -> None:
+        """Release sweep worker and thread objects after the thread stops."""
+        if self._sweep_worker is not None:
+            self._sweep_worker.deleteLater()
+            self._sweep_worker = None
+        if self._sweep_thread is not None:
+            self._sweep_thread.deleteLater()
+            self._sweep_thread = None
