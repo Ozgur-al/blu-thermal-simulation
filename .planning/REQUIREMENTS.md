@@ -20,7 +20,7 @@
 - [x] **RSLT-01**: Structured results summary table showing T_max/T_avg/T_min per layer and hotspot rank
 - [x] **RSLT-02**: Top-N hotspot locations annotated directly on temperature map plots
 - [x] **RSLT-03**: User can export PDF engineering report with stack summary, temperature maps, probe data, and key metrics
-- [ ] **RSLT-04**: User can save named result snapshots and compare 2+ runs with overlay probe plots and side-by-side metric tables
+- [x] **RSLT-04**: User can save named result snapshots and compare 2+ runs with overlay probe plots and side-by-side metric tables
 
 ### Simulation Capabilities
 
@@ -83,7 +83,7 @@
 | RSLT-01 | Phase 2 — Results | Complete (02-01) |
 | RSLT-02 | Phase 2 — Results | Complete (02-01) |
 | RSLT-03 | Phase 2 — Results | Complete (02-01) |
-| RSLT-04 | Phase 2 — Results | Pending |
+| RSLT-04 | Phase 2 — Results | Complete (02-03) |
 | SIM-01 | Phase 3 — Simulation Capabilities | Pending |
 | SIM-02 | Phase 3 — Simulation Capabilities | Pending |
 | SIM-03 | Phase 3 — Simulation Capabilities | Pending |
@@ -105,4 +105,4 @@
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after Phase 1 completion (all GUI-01 through GUI-07 complete)*
+*Last updated: 2026-03-14 after Phase 2 Plan 03 completion (RSLT-03, RSLT-04 complete)*

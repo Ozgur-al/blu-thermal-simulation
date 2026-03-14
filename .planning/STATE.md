@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 2 of 5 (Results)
-Plan: 2 of 3 in current phase (completed 02-02)
+Plan: 3 of 3 in current phase (completed 02-03)
 Status: In progress
-Last activity: 2026-03-14 - Completed 02-02-PLAN.md — Results tab with structured tables, annotated map rendering, hotspot navigation
+Last activity: 2026-03-14 - Completed 02-03-PLAN.md — Snapshot comparison, PDF export, ComparisonWidget with metric table and probe overlay
 
-Progress: [████░░░░░░] 25%
+Progress: [█████░░░░░] 28%
 
 ## Performance Metrics
 
@@ -41,7 +41,7 @@ Progress: [████░░░░░░] 25%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 23 min | 8 min |
-| 02-results | 2 | 6 min | 3 min |
+| 02-results | 3 | 10 min | 3 min |
 
 **Recent Trend:**
 - Last 5 plans: 13m, 6m, 4m, 3m, 3m
@@ -78,6 +78,9 @@ Recent decisions affecting current work:
 - [02-02]: result_tabs stored as self.result_tabs (not local) so _on_hotspot_navigate can switch tabs
 - [02-02]: Old Summary tab retained for backward compatibility; Results tab is additive, not a replacement
 - [02-02]: _plot_map() always does ax.clear() + fresh colorbar — simpler than in-place update when annotations change
+- [02-03]: ComparisonWidget imports MplCanvas from plot_manager with defensive fallback for forward compatibility
+- [02-03]: probe_values for transient snapshots stores full time-series arrays (not just final scalar)
+- [02-03]: Steady-state probes in comparison rendered as horizontal axhline rather than skipped
 
 ### Pending Todos
 
@@ -97,5 +100,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Completed 02-02-PLAN.md — Results tab with structured tables, annotated map rendering, hotspot navigation; 48 tests pass
+Stopped at: Completed 02-03-PLAN.md — Snapshot comparison, PDF export, ComparisonWidget; 48 tests pass
 Resume file: None
