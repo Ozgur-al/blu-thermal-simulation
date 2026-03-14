@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -60,6 +62,9 @@ from thermal_sim.io.project_io import load_project, save_project
 from thermal_sim.models.project import DisplayProject
 from thermal_sim.solvers.steady_state import SteadyStateResult, SteadyStateSolver
 from thermal_sim.solvers.transient import TransientResult, TransientSolver
+from thermal_sim.io.pdf_export import generate_pdf_report
+from thermal_sim.models.snapshot import ResultSnapshot
+from thermal_sim.ui.comparison_tab import ComparisonWidget
 from thermal_sim.ui.plot_manager import PlotManager
 from thermal_sim.ui.results_tab import ResultsSummaryWidget
 from thermal_sim.ui.simulation_controller import SimulationController
@@ -129,6 +134,9 @@ class MainWindow(QMainWindow):
         self._selected_hotspot_rank: int | None = None
         self._last_final_map: np.ndarray | None = None
         self._last_layer_names: list[str] | None = None
+
+        # Snapshot management ------------------------------------------------
+        self._snapshots: list[ResultSnapshot] = []
 
         # Undo/redo stack
         self._undo_stack = QUndoStack(self)
@@ -293,7 +301,7 @@ class MainWindow(QMainWindow):
         row1.addWidget(self.map_layer_combo)
         row1.addStretch()
 
-        # Row 2: preview
+        # Row 2: preview + snapshot/export buttons
         row2 = QHBoxLayout()
         row2.setSpacing(4)
 
@@ -301,7 +309,19 @@ class MainWindow(QMainWindow):
         preview_btn.setToolTip("Visual preview of layer stack and source layout")
         preview_btn.clicked.connect(self._open_structure_preview)
 
+        self._save_snapshot_btn = QPushButton("Save Snapshot")
+        self._save_snapshot_btn.setToolTip("Name and store the current result in memory (max 4)")
+        self._save_snapshot_btn.setEnabled(False)
+        self._save_snapshot_btn.clicked.connect(self._save_snapshot)
+
+        self._export_pdf_btn = QPushButton("Export PDF")
+        self._export_pdf_btn.setToolTip("Export a multi-page PDF report for the current result")
+        self._export_pdf_btn.setEnabled(False)
+        self._export_pdf_btn.clicked.connect(self._export_pdf)
+
         row2.addWidget(preview_btn)
+        row2.addWidget(self._save_snapshot_btn)
+        row2.addWidget(self._export_pdf_btn)
         row2.addStretch()
 
         outer.addLayout(row1)
@@ -476,6 +496,10 @@ class MainWindow(QMainWindow):
         self._results_widget = ResultsSummaryWidget()
         self._results_widget.hotspot_clicked.connect(self._on_hotspot_navigate)
         self.result_tabs.addTab(self._results_widget, "Results")
+
+        # Comparison tab: snapshot management and side-by-side analysis
+        self._comparison_widget = ComparisonWidget()
+        self.result_tabs.addTab(self._comparison_widget, "Comparison")
 
         return self.result_tabs
 
@@ -957,6 +981,10 @@ class MainWindow(QMainWindow):
         )
         self.result_tabs.setCurrentWidget(self._results_widget)
 
+        # Enable snapshot and PDF export buttons now that a result is available.
+        self._save_snapshot_btn.setEnabled(True)
+        self._export_pdf_btn.setEnabled(True)
+
         # Update three-zone status bar with run metrics.
         n_layers = len(layer_names)
         self._solver_label.setText(f"Complete ({self._sim_mode})")
@@ -968,6 +996,83 @@ class MainWindow(QMainWindow):
     def _on_sim_error(self, message: str) -> None:
         self._solver_label.setText("Error")
         self._show_error("Simulation failed", message)
+
+    # ------------------------------------------------------------------
+    # Snapshot management
+    # ------------------------------------------------------------------
+
+    def _build_snapshot(self, name: str) -> ResultSnapshot:
+        """Capture the current simulation result as a named snapshot."""
+        project = self.last_project
+        if self.last_steady_result is not None:
+            result = self.last_steady_result
+            final_map = result.temperatures_c
+            temps_time = None
+            times = None
+            probe_values: dict = dict(self.last_probe_values)
+        else:
+            result = self.last_transient_result
+            final_map = result.final_temperatures_c
+            temps_time = result.temperatures_time_c.copy() if hasattr(result, "temperatures_time_c") and result.temperatures_time_c is not None else None
+            times = result.times_s.copy() if result.times_s is not None else None
+            probe_values = {k: v.copy() for k, v in self.last_probe_history.items()}
+
+        stats = layer_stats(final_map, result.layer_names)
+        if self.last_steady_result is not None:
+            hotspots = top_n_hottest_cells(self.last_steady_result, n=10)
+        else:
+            hotspots = top_n_hottest_cells_transient(self.last_transient_result, n=10)
+
+        return ResultSnapshot(
+            name=name,
+            mode=self._sim_mode,
+            project_name=project.name,
+            simulation_date=datetime.now().isoformat(timespec="seconds"),
+            layer_names=list(result.layer_names),
+            final_temperatures_c=final_map.copy(),
+            temperatures_time_c=temps_time,
+            times_s=times,
+            layer_stats=stats,
+            hotspots=hotspots,
+            probe_values=probe_values,
+            dx=result.dx,
+            dy=result.dy,
+            width_m=project.width,
+            height_m=project.height,
+            probes=list(project.probes),
+        )
+
+    def _save_snapshot(self) -> None:
+        """Prompt for a name, create a snapshot, and add it to the comparison list."""
+        if self.last_steady_result is None and self.last_transient_result is None:
+            return
+        name, ok = QInputDialog.getText(self, "Save Snapshot", "Snapshot name:")
+        if not ok or not name.strip():
+            return
+        if len(self._snapshots) >= 4:
+            self._snapshots.pop(0)  # Evict oldest
+        snapshot = self._build_snapshot(name.strip())
+        self._snapshots.append(snapshot)
+        self._comparison_widget.set_snapshots(self._snapshots)
+        self.statusBar().showMessage(
+            f"Snapshot '{name.strip()}' saved ({len(self._snapshots)}/4)."
+        )
+
+    def _export_pdf(self) -> None:
+        """Export a multi-page PDF report for the current simulation result."""
+        if self.last_steady_result is None and self.last_transient_result is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export PDF Report", "", "PDF Files (*.pdf)"
+        )
+        if not path:
+            return
+        try:
+            snapshot = self._build_snapshot("export")
+            generate_pdf_report(snapshot, path)
+            self.statusBar().showMessage(f"PDF exported to {path}")
+        except Exception as exc:  # noqa: BLE001
+            self._show_error("PDF export failed", str(exc))
 
     @staticmethod
     def _friendly_error(exc: Exception) -> str:
