@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
+
+import numpy as np
 
 ShapeType = Literal["full", "rectangle", "circle"]
 LedFootprintType = Literal["rectangle", "circle"]
+
+
+@dataclass
+class PowerBreakpoint:
+    """A (time, power) breakpoint for a piecewise-linear power profile."""
+
+    time_s: float
+    power_w: float
+
+    def to_dict(self) -> dict:
+        return {"time_s": self.time_s, "power_w": self.power_w}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PowerBreakpoint":
+        return cls(time_s=float(data["time_s"]), power_w=float(data["power_w"]))
 
 
 @dataclass
@@ -22,6 +39,7 @@ class HeatSource:
     width: float | None = None
     height: float | None = None
     radius: float | None = None
+    power_profile: list[PowerBreakpoint] | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -40,6 +58,21 @@ class HeatSource:
         if self.shape == "circle":
             if self.radius is None or self.radius <= 0.0:
                 raise ValueError("Circle source needs radius > 0.")
+        if self.power_profile is not None and len(self.power_profile) > 0:
+            if self.power_profile[0].time_s != 0.0:
+                raise ValueError("First power profile breakpoint must have time_s=0.")
+
+    def power_at_time(self, t: float) -> float:
+        """Return power (W) at time t, using profile if present (loops)."""
+        if not self.power_profile or len(self.power_profile) < 2:
+            return self.power_w
+        profile_end = self.power_profile[-1].time_s
+        if profile_end <= 0.0:
+            return self.power_w
+        t_wrapped = t % profile_end
+        times = [bp.time_s for bp in self.power_profile]
+        powers = [bp.power_w for bp in self.power_profile]
+        return float(np.interp(t_wrapped, times, powers))
 
     def to_dict(self) -> dict:
         return {
@@ -52,10 +85,21 @@ class HeatSource:
             "width": self.width,
             "height": self.height,
             "radius": self.radius,
+            "power_profile": (
+                [bp.to_dict() for bp in self.power_profile]
+                if self.power_profile is not None
+                else None
+            ),
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "HeatSource":
+        raw_profile = data.get("power_profile")
+        profile = (
+            [PowerBreakpoint.from_dict(bp) for bp in raw_profile]
+            if raw_profile is not None
+            else None
+        )
         return cls(
             name=data["name"],
             layer=data["layer"],
@@ -66,6 +110,7 @@ class HeatSource:
             width=None if data.get("width") is None else float(data["width"]),
             height=None if data.get("height") is None else float(data["height"]),
             radius=None if data.get("radius") is None else float(data["radius"]),
+            power_profile=profile,
         )
 
 
