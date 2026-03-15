@@ -128,7 +128,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(f"Thermal Simulator v{APP_VERSION}")
+        self.setWindowTitle(f"Display Thermal Simulator v{APP_VERSION}")
         self.resize(1500, 900)
         self.setMinimumSize(800, 500)
 
@@ -885,9 +885,9 @@ class MainWindow(QMainWindow):
 
     def _update_title(self) -> None:
         """Update window title, showing asterisk when there are unsaved changes."""
-        base = f"Thermal Simulator v{APP_VERSION}"
+        base = f"Display Thermal Simulator v{APP_VERSION}"
         if self.current_project_path:
-            base = f"{self.current_project_path.name} - Thermal Simulator v{APP_VERSION}"
+            base = f"{self.current_project_path.name} - Display Thermal Simulator v{APP_VERSION}"
         if not self._undo_stack.isClean():
             base = f"* {base}"
         self.setWindowTitle(base)

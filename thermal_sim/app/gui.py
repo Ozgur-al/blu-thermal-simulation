@@ -60,7 +60,7 @@ def _run_app() -> None:
     painter.drawText(
         pixmap.rect().adjusted(0, -30, 0, 0),
         Qt.AlignmentFlag.AlignCenter,
-        "Thermal Simulator",
+        "Display Thermal Simulator",
     )
 
     # Version line below title
@@ -128,7 +128,7 @@ def main() -> None:
             _app = QApplication.instance() or QApplication([])
             QMessageBox.critical(
                 None,
-                "Thermal Simulator — Fatal Error",
+                "Display Thermal Simulator — Fatal Error",
                 f"An unexpected error occurred.\n\n{tb[:800]}\n\nSee crash.log for full details.",
             )
         except Exception:  # noqa: BLE001
