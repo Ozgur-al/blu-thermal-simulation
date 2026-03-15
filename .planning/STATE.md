@@ -70,14 +70,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Phase 5 — Distribution
+**Current focus:** Phase 6 — Fix LED Array Generation and Display Stack for DLED/ELED
 
 ## Current Position
 
-Phase: 5 of 5 (Distribution) — in progress
-Plan: 2 of 3 in current phase (completed 05-02)
-Status: Phase 5 in progress
-Last activity: 2026-03-15 - Completed 05-02-PLAN.md — ThermalSim.spec + build.py 5-step pipeline; verified 110 MB onedir bundle launches on build machine (DIST-01, DIST-02 satisfied)
+Phase: 6 of 6 — in progress
+Plan: 2 of 2 in current phase (completed 06-02)
+Status: Phase 6 in progress
+Last activity: 2026-03-15 - Completed 06-02-PLAN.md — Architecture dropdown (Custom/DLED/ELED), QStackedWidget LED tab with DLED/ELED/Custom panels, template application wiring, _build_project_from_ui branching
 
 Progress: [██████████] 100%
 
@@ -107,6 +107,7 @@ Progress: [██████████] 100%
 | Phase 05-distribution P01 | 3 | 2 tasks | 5 files |
 | Phase 05-distribution P02 | 3 | 2 tasks | 3 files |
 | Phase 06 P01 | 5 | 2 tasks | 4 files |
+| Phase 06 P02 | 10 | 2 tasks | 1 file |
 
 ## Accumulated Context
 
@@ -181,6 +182,10 @@ Recent decisions affecting current work:
 - [Phase 06]: mode='custom' is the default for backward compat — old JSON files load without changes
 - [Phase 06]: stack_templates uses _filter_materials() helper — templates only ship materials they actually use
 - [Phase 06]: Both stack templates use load_builtin_library() (importlib.resources path) for PyInstaller compat
+- [06-02]: QStackedWidget index 0=Custom, 1=DLED, 2=ELED — maps from arch_combo text via dict lookup
+- [06-02]: _apply_template calls _populate_ui_from_project first then re-seeds arch spinboxes — avoids duplicating populate logic
+- [06-02]: _build_led_arrays_from_arch_panel uses layer='LED Board' for DLED and layer='LGP' for ELED — matches template layer names
+- [06-02]: Loading a project from disk always resets architecture to Custom with signals blocked
 
 ### Pending Todos
 
@@ -204,5 +209,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-15
-Stopped at: Completed 06-01-PLAN.md — extended LEDArray with grid/edge/custom modes and zone power; created stack_templates with dled_template and eled_template; 154 tests passing
+Stopped at: Completed 06-02-PLAN.md — architecture dropdown (Custom/DLED/ELED), QStackedWidget LED tab, DLED/ELED spinbox panels, template application, _build_project_from_ui branching; 154 tests passing
 Resume file: None
