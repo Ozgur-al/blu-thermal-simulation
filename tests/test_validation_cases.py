@@ -2,6 +2,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from thermal_sim.models.boundary import BoundaryConditions, SurfaceBoundary
 from thermal_sim.models.heat_source import HeatSource, PowerBreakpoint
@@ -10,6 +11,7 @@ from thermal_sim.models.material import Material
 from thermal_sim.models.project import DisplayProject, MeshConfig, TransientConfig
 from thermal_sim.solvers.steady_state import SteadyStateSolver
 from thermal_sim.solvers.transient import TransientSolver
+from thermal_sim.io.project_io import load_project
 from thermal_sim.visualization.plotting import (
     plot_validation_comparison,
     plot_validation_transient_comparison,
@@ -619,3 +621,250 @@ def generate_all_validation_plots(output_dir: Path | str = Path("outputs/validat
     print(f"  benchmark_A_three_layer.png")
     print(f"  benchmark_B_rc_square_wave.png")
     print(f"  benchmark_C_lateral_spreading.png")
+
+
+# ---------------------------------------------------------------------------
+# Z-refinement validation tests (RED targets for Plan 02)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(reason="ZREF-05: requires Plan 02 z-refinement in network builder", strict=False)
+def test_zref05_single_layer_nz5_matches_1d_analytical() -> None:
+    """ZREF-05: single layer with nz=5 must match 1D analytical tridiagonal solution.
+
+    Verifies that when a single layer is split into 5 z-sublayers the solver
+    produces node temperatures that match the exact 5-node finite-difference
+    solution for a slab with distributed heat generation and convection on both faces.
+    """
+    width = 0.10
+    height = 0.10
+    area = width * height  # 0.01 m^2
+    thickness = 0.005      # 5 mm
+    nz = 5
+    dz = thickness / nz    # 0.001 m per sub-layer
+    k = 2.0
+    density = 1000.0
+    cp = 900.0
+    h_top = 10.0
+    h_bot = 5.0
+    T_amb = 25.0
+    Q_total = 3.0          # W, distributed across layer
+
+    mat = Material("M", k_in_plane=k, k_through=k, density=density, specific_heat=cp, emissivity=0.9)
+    project = DisplayProject(
+        name="ZREF05",
+        width=width,
+        height=height,
+        materials={"M": mat},
+        layers=[Layer(name="L", material="M", thickness=thickness, nz=nz)],
+        heat_sources=[HeatSource(name="Q", layer="L", power_w=Q_total, shape="full", z_position="distributed")],
+        boundaries=BoundaryConditions(
+            top=SurfaceBoundary(ambient_c=T_amb, convection_h=h_top, include_radiation=False),
+            bottom=SurfaceBoundary(ambient_c=T_amb, convection_h=h_bot, include_radiation=False),
+            side=SurfaceBoundary(ambient_c=T_amb, convection_h=0.0, include_radiation=False),
+        ),
+        mesh=MeshConfig(nx=1, ny=1),
+    )
+
+    result = SteadyStateSolver().solve(project)
+
+    # --- 5-node analytical solution ---
+    # G_intra: conductance between adjacent interior nodes (k*area/dz)
+    G_intra = k * area / dz
+    # G_bot: bottom surface BC (half dz conduction + convection in series)
+    G_bot = 1.0 / (dz / (2.0 * k * area) + 1.0 / (h_bot * area))
+    # G_top: top surface BC (half dz conduction + convection in series)
+    G_top = 1.0 / (dz / (2.0 * k * area) + 1.0 / (h_top * area))
+    # Heat per node: uniform distribution
+    q_node = Q_total / nz  # 0.6 W per node
+
+    # Build 5x5 system (nodes 0=bottom, 4=top)
+    A = np.zeros((nz, nz))
+    rhs = np.zeros(nz)
+
+    # Node 0 (bottom): G_bot + G_intra on diagonal, -G_intra off-diagonal
+    A[0, 0] = G_bot + G_intra
+    A[0, 1] = -G_intra
+    rhs[0] = q_node + G_bot * T_amb
+
+    # Interior nodes 1..3
+    for i in range(1, nz - 1):
+        A[i, i - 1] = -G_intra
+        A[i, i] = 2.0 * G_intra
+        A[i, i + 1] = -G_intra
+        rhs[i] = q_node
+
+    # Node 4 (top): G_top + G_intra on diagonal
+    A[nz - 1, nz - 2] = -G_intra
+    A[nz - 1, nz - 1] = G_top + G_intra
+    rhs[nz - 1] = q_node + G_top * T_amb
+
+    T_expected = np.linalg.solve(A, rhs)
+
+    # Assertions
+    assert result.temperatures_c.shape == (nz, 1, 1), (
+        f"Expected shape ({nz}, 1, 1), got {result.temperatures_c.shape}"
+    )
+    assert result.nz_per_layer == [nz], (
+        f"Expected nz_per_layer=[{nz}], got {result.nz_per_layer}"
+    )
+    assert result.z_offsets == [0, nz], (
+        f"Expected z_offsets=[0, {nz}], got {result.z_offsets}"
+    )
+    for z_idx in range(nz):
+        t_sim = float(result.temperatures_c[z_idx, 0, 0])
+        t_anal = float(T_expected[z_idx])
+        assert math.isclose(t_sim, t_anal, rel_tol=1e-9, abs_tol=1e-9), (
+            f"z_idx={z_idx}: numerical {t_sim:.6f} C, expected {t_anal:.6f} C"
+        )
+
+
+@pytest.mark.xfail(reason="ZREF-03: requires Plan 02 z-refinement in network builder", strict=False)
+def test_zref03_interface_resistance_applies_at_layer_boundary() -> None:
+    """ZREF-03: interface resistance must apply only at true layer boundaries, not within layers.
+
+    Two layers each with nz=3.  A nonzero interface_resistance_to_next on the
+    bottom layer creates a temperature jump ONLY at the inter-layer boundary
+    (between node 2 and node 3).  Within-layer node pairs have pure conduction
+    links.  Verified against the 6-node tridiagonal analytical solution.
+    """
+    width = 0.10
+    height = 0.10
+    area = width * height        # 0.01 m^2
+    thickness = 0.003            # 3 mm per layer
+    nz = 3
+    dz = thickness / nz          # 0.001 m
+    k = 2.0
+    density = 1000.0
+    cp = 900.0
+    R_interface = 0.002          # m^2*K/W
+    h_top = 10.0
+    h_bot = 0.0                  # adiabatic bottom
+    T_amb = 25.0
+    Q_total = 2.0                # W, at bottom of bottom layer
+
+    mat = Material("M", k_in_plane=k, k_through=k, density=density, specific_heat=cp, emissivity=0.9)
+    project = DisplayProject(
+        name="ZREF03",
+        width=width,
+        height=height,
+        materials={"M": mat},
+        layers=[
+            Layer(name="Bottom", material="M", thickness=thickness, nz=nz,
+                  interface_resistance_to_next=R_interface),
+            Layer(name="Top", material="M", thickness=thickness, nz=nz),
+        ],
+        heat_sources=[
+            HeatSource(name="Q", layer="Bottom", power_w=Q_total, shape="full", z_position="bottom")
+        ],
+        boundaries=BoundaryConditions(
+            top=SurfaceBoundary(ambient_c=T_amb, convection_h=h_top, include_radiation=False),
+            bottom=SurfaceBoundary(ambient_c=T_amb, convection_h=h_bot, include_radiation=False),
+            side=SurfaceBoundary(ambient_c=T_amb, convection_h=0.0, include_radiation=False),
+        ),
+        mesh=MeshConfig(nx=1, ny=1),
+    )
+
+    result = SteadyStateSolver().solve(project)
+
+    # --- 6-node analytical solution ---
+    # G_intra: within-layer conductance (no interface resistance)
+    G_intra = k * area / dz   # = 2.0 * 0.01 / 0.001 = 20.0
+    # G_inter: inter-layer conductance (includes interface resistance)
+    # 1 / (dz/(2*k*A) + R_int/A + dz/(2*k*A))
+    G_inter = 1.0 / (dz / (2.0 * k * area) + R_interface / area + dz / (2.0 * k * area))
+    # = 1 / (0.025 + 0.2 + 0.025) = 1 / 0.25 = 4.0
+    # G_top: top surface BC (half dz conduction + convection in series)
+    G_top = 1.0 / (dz / (2.0 * k * area) + 1.0 / (h_top * area))
+    # Bottom is adiabatic (h_bot=0): no BC link at node 0
+
+    n_total = 2 * nz  # 6 nodes
+    A = np.zeros((n_total, n_total))
+    rhs = np.zeros(n_total)
+
+    # Node 0 (bottom of layer 0, adiabatic bottom): all power here
+    A[0, 0] = G_intra
+    A[0, 1] = -G_intra
+    rhs[0] = Q_total
+
+    # Node 1 (interior of layer 0)
+    A[1, 0] = -G_intra
+    A[1, 1] = 2.0 * G_intra
+    A[1, 2] = -G_intra
+    rhs[1] = 0.0
+
+    # Node 2 (top of layer 0, interface to layer 1): uses G_inter upward
+    A[2, 1] = -G_intra
+    A[2, 2] = G_intra + G_inter
+    A[2, 3] = -G_inter
+    rhs[2] = 0.0
+
+    # Node 3 (bottom of layer 1): uses G_inter downward
+    A[3, 2] = -G_inter
+    A[3, 3] = G_inter + G_intra
+    A[3, 4] = -G_intra
+    rhs[3] = 0.0
+
+    # Node 4 (interior of layer 1)
+    A[4, 3] = -G_intra
+    A[4, 4] = 2.0 * G_intra
+    A[4, 5] = -G_intra
+    rhs[4] = 0.0
+
+    # Node 5 (top of layer 1, top surface BC)
+    A[5, 4] = -G_intra
+    A[5, 5] = G_intra + G_top
+    rhs[5] = G_top * T_amb
+
+    T_expected = np.linalg.solve(A, rhs)
+
+    # Assertions
+    assert result.temperatures_c.shape == (n_total, 1, 1), (
+        f"Expected shape ({n_total}, 1, 1), got {result.temperatures_c.shape}"
+    )
+    assert result.nz_per_layer == [nz, nz], (
+        f"Expected nz_per_layer=[{nz}, {nz}], got {result.nz_per_layer}"
+    )
+    assert result.z_offsets == [0, nz, 2 * nz], (
+        f"Expected z_offsets=[0, {nz}, {2 * nz}], got {result.z_offsets}"
+    )
+    for z_idx in range(n_total):
+        t_sim = float(result.temperatures_c[z_idx, 0, 0])
+        t_anal = float(T_expected[z_idx])
+        assert math.isclose(t_sim, t_anal, rel_tol=1e-9, abs_tol=1e-9), (
+            f"z_idx={z_idx}: numerical {t_sim:.6f} C, expected {t_anal:.6f} C"
+        )
+
+    # Physics check: temperature drop at layer boundary (T[2] - T[3]) should
+    # equal Q * (dz/(2*k*A) + R_int/A + dz/(2*k*A)) = 2.0 * 0.25 = 0.5 K.
+    T_boundary_drop = float(T_expected[2]) - float(T_expected[3])
+    expected_drop = Q_total * (dz / (2.0 * k * area) + R_interface / area + dz / (2.0 * k * area))
+    assert math.isclose(T_boundary_drop, expected_drop, rel_tol=1e-9), (
+        f"Boundary temperature drop {T_boundary_drop:.6f} K, expected {expected_drop:.6f} K"
+    )
+
+
+@pytest.mark.xfail(reason="ZREF-04: requires Plan 02 z-refinement in solver", strict=False)
+def test_zref04_backward_compat_nz1_identical() -> None:
+    """ZREF-04: nz=1 on all layers must produce backward-compatible result metadata.
+
+    Loads an existing example project (steady_uniform_stack.json) which has no
+    nz fields (defaults to 1).  After Plan 02 wires z-refinement, the result must
+    carry nz_per_layer with all-1 values and z_offsets=[0, 1, ..., n_layers].
+    """
+    project_path = Path(__file__).parent.parent / "examples" / "steady_uniform_stack.json"
+    project = load_project(str(project_path))
+    result = SteadyStateSolver().solve(project)
+
+    n_layers = len(project.layers)
+
+    # nz_per_layer must be set and all-1s
+    assert result.nz_per_layer is not None, "nz_per_layer should be set after Plan 02"
+    assert result.nz_per_layer == [1] * n_layers, (
+        f"Expected all-1 nz_per_layer, got {result.nz_per_layer}"
+    )
+    # z_offsets must be [0, 1, 2, ..., n_layers]
+    assert result.z_offsets is not None, "z_offsets should be set after Plan 02"
+    assert result.z_offsets == list(range(n_layers + 1)), (
+        f"Expected z_offsets={list(range(n_layers + 1))}, got {result.z_offsets}"
+    )
