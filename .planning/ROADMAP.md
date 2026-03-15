@@ -118,10 +118,10 @@
   2. Within-layer z-z links carry no interface resistance term; the inter-layer boundary between two different layers carries the full interface resistance — both verified by the analytical test
   3. The steady-state and transient solvers produce correct result arrays for a mixed-nz project (e.g., nz=[1, 3, 2] across three layers) without shape errors or index mismatches
   4. A project with all nz=1 (no z-refinement) produces identical temperatures after Phase 8 as it did after Phase 7 — backward compat holds through z-refinement addition
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 Plans:
-- [ ] 08-01-PLAN.md — Model z-fields (nz, z_position) + result z-metadata + ZREF-05 analytical test
-- [ ] 08-02-PLAN.md — Network builder z-refinement + solver reshape
+- [x] 08-01-PLAN.md — Model z-fields (nz, z_position) + result z-metadata + ZREF-05 analytical test
+- [x] 08-02-PLAN.md — Network builder z-refinement + solver reshape
 - [ ] 08-03-PLAN.md — Postprocessing z-adaptation + backward compat regression
 
 ### Phase 9: 3D GUI and ELED Zone Preset

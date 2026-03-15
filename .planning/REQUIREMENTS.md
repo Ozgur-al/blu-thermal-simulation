@@ -68,9 +68,9 @@
 ### Z-Refinement
 
 - [x] **ZREF-01**: Layer model supports `nz` field (default 1) for multiple z-nodes through thickness
-- [ ] **ZREF-02**: Internal z-z links within a layer use `dz/(k*A)` with no interface resistance
+- [x] **ZREF-02**: Internal z-z links within a layer use `dz/(k*A)` with no interface resistance
 - [x] **ZREF-03**: Interface resistance applies only at true layer boundaries, not internal z-sublayers
-- [ ] **ZREF-04**: Steady-state and transient solvers handle 3D node count and reshape results correctly
+- [x] **ZREF-04**: Steady-state and transient solvers handle 3D node count and reshape results correctly
 - [x] **ZREF-05**: Analytical validation test: single-layer slab with nz=5 matches 1D through-thickness profile
 
 ### 3D GUI & Visualization
@@ -143,9 +143,9 @@
 | SOLV-03 | Phase 7 — 3D Solver Core | Complete |
 | SOLV-04 | Phase 7 — 3D Solver Core | Complete |
 | ZREF-01 | Phase 8 — Z-Refinement | Complete |
-| ZREF-02 | Phase 8 — Z-Refinement | Pending |
+| ZREF-02 | Phase 8 — Z-Refinement | Complete |
 | ZREF-03 | Phase 8 — Z-Refinement | Complete |
-| ZREF-04 | Phase 8 — Z-Refinement | Pending |
+| ZREF-04 | Phase 8 — Z-Refinement | Complete |
 | ZREF-05 | Phase 8 — Z-Refinement | Complete |
 | GUI3D-01 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
 | GUI3D-02 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |

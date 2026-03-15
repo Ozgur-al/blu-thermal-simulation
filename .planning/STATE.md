@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
 status: in_progress
-last_updated: "2026-03-16T22:43:53Z"
+last_updated: "2026-03-16T22:50:09Z"
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 32
-  completed_plans: 26
+  completed_plans: 27
 ---
 
 # Project State
@@ -23,25 +23,25 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 ## Current Position
 
 Phase: 8 of 9 (Z-Refinement)
-Plan: 1 of 3 (08-01 complete)
+Plan: 2 of 3 (08-02 complete)
 Status: In progress
-Last activity: 2026-03-16 — 08-01 z-refinement data contracts: domain model fields, result metadata, ZREF analytical test scaffolds
+Last activity: 2026-03-16 — 08-02 z-refinement core physics: intra/inter-layer z-z links, sublayer BCs, z_position heat sources, ZREF-05 and ZREF-03 pass
 
-Progress: [███░░░░░░░] 28%
+Progress: [████░░░░░░] 31%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3 (v2.0)
-- Average duration: 8 min
-- Total execution time: 0.37 hours
+- Total plans completed: 4 (v2.0)
+- Average duration: 7 min
+- Total execution time: 0.44 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 07-3d-solver-core | 2 | 20 min | 10 min |
-| 08-z-refinement | 1 | 4 min | 4 min |
+| 08-z-refinement | 2 | 8 min | 4 min |
 
 *Updated after each plan completion*
 
@@ -64,6 +64,9 @@ Progress: [███░░░░░░░] 28%
 - [Phase 08-z-refinement]: Probe.z_position accepts str|int; from_dict converts digit strings to int for JSON round-trip fidelity
 - [Phase 08-z-refinement]: Result dataclasses carry nz_per_layer/z_offsets as None until Plan 02 wires solver — None is valid backward-compat state
 - [Phase 08-z-refinement]: xfail test scaffolds define exact physics expectations (concrete numbers, matrix setup) before solver implementation
+- [Phase 08-z-refinement]: NodeLayout.layer_offsets updated to z_offsets[l]*n_per_layer so node() method works correctly for nz>1 layers without API changes
+- [Phase 08-z-refinement]: Side BC conductance computed once per physical layer, applied per sublayer — correct because each sublayer has the same material map
+- [Phase 08-z-refinement]: build_heat_source_vector recomputes z_offsets locally (does not take ThermalNetwork as argument) to keep public API unchanged
 
 ### Pending Todos
 
@@ -77,5 +80,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 08-01-PLAN.md
-Resume file: .planning/phases/08-z-refinement/08-01-SUMMARY.md
+Stopped at: Completed 08-02-PLAN.md
+Resume file: .planning/phases/08-z-refinement/08-02-SUMMARY.md
