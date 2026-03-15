@@ -130,7 +130,11 @@
   3. The status bar shows the total node count and displays a warning before solve if the count exceeds 300k
   4. User can select ELED from the architecture dropdown and get a layer whose cross-section is automatically divided into the correct lateral zones: metal frame, FR4+LED board, air gap, and LGP bulk — with widths drawn from the ELED geometry configuration
   5. A simulation of the ELED zoned project shows two heat paths active: higher temperature on the FR4+LED board zone (primary path to metal) and a secondary gradient toward the LGP
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 09-01-PLAN.md — Z-slice combo, nz spinbox in Layers tab, node count in status bar
+- [ ] 09-02-PLAN.md — Material zone editor with preview canvas, zone overlay on temperature map
+- [ ] 09-03-PLAN.md — ELED cross-section zone preset with generate function and human verification
 
 ## Progress
 
@@ -147,4 +151,4 @@ Phases execute in numeric order: 7 -> 8 -> 9
 | 6. Architecture Support | v1.0 | 3/3 | Complete | 2026-03-14 |
 | 7. 3D Solver Core | v2.0 | 0/2 | Planning complete | - |
 | 8. Z-Refinement | v2.0 | 0/TBD | Not started | - |
-| 9. 3D GUI and ELED Zone Preset | v2.0 | 0/TBD | Not started | - |
+| 9. 3D GUI and ELED Zone Preset | v2.0 | 0/3 | Planning complete | - |
