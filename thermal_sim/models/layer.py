@@ -16,6 +16,7 @@ class Layer:
     thickness: float
     interface_resistance_to_next: float = 0.0
     zones: list[MaterialZone] = field(default_factory=list)
+    nz: int = 1
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -26,6 +27,8 @@ class Layer:
             raise ValueError("Layer thickness must be > 0.")
         if self.interface_resistance_to_next < 0.0:
             raise ValueError("Interface resistance must be >= 0.")
+        if self.nz < 1:
+            raise ValueError(f"Layer '{self.name}' nz must be >= 1.")
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -33,6 +36,7 @@ class Layer:
             "material": self.material,
             "thickness": self.thickness,
             "interface_resistance_to_next": self.interface_resistance_to_next,
+            "nz": self.nz,
         }
         if self.zones:
             d["zones"] = [z.to_dict() for z in self.zones]
@@ -46,4 +50,5 @@ class Layer:
             thickness=float(data["thickness"]),
             interface_resistance_to_next=float(data.get("interface_resistance_to_next", 0.0)),
             zones=[MaterialZone.from_dict(z) for z in data.get("zones", [])],
+            nz=int(data.get("nz", 1)),
         )

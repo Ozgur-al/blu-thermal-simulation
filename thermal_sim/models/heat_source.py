@@ -42,6 +42,7 @@ class HeatSource:
     height: float | None = None
     radius: float | None = None
     power_profile: list[PowerBreakpoint] | None = None
+    z_position: str = "top"
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -52,6 +53,10 @@ class HeatSource:
             raise ValueError("Heat source power must be >= 0.")
         if self.shape not in ("full", "rectangle", "circle"):
             raise ValueError(f"Unsupported heat source shape: {self.shape}")
+        if self.z_position not in ("top", "bottom", "distributed"):
+            raise ValueError(
+                f"Unsupported z_position: {self.z_position}. Must be 'top', 'bottom', or 'distributed'."
+            )
         if self.shape == "rectangle":
             if self.width is None or self.height is None:
                 raise ValueError("Rectangle source needs width and height.")
@@ -92,6 +97,7 @@ class HeatSource:
                 if self.power_profile is not None
                 else None
             ),
+            "z_position": self.z_position,
         }
 
     @classmethod
@@ -113,6 +119,7 @@ class HeatSource:
             height=None if data.get("height") is None else float(data["height"]),
             radius=None if data.get("radius") is None else float(data["radius"]),
             power_profile=profile,
+            z_position=data.get("z_position", "top"),
         )
 
 
@@ -153,6 +160,7 @@ class LEDArray:
     edge_offset: float = 0.005  # 5 mm default
     panel_width: float = 0.0
     panel_height: float = 0.0
+    z_position: str = "top"
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -261,6 +269,7 @@ class LEDArray:
                         width=self.led_width if self.footprint_shape == "rectangle" else None,
                         height=self.led_height if self.footprint_shape == "rectangle" else None,
                         radius=self.led_radius if self.footprint_shape == "circle" else None,
+                        z_position=self.z_position,
                     )
                 )
         return sources
@@ -326,6 +335,7 @@ class LEDArray:
                         width=self.led_width if self.footprint_shape == "rectangle" else None,
                         height=self.led_height if self.footprint_shape == "rectangle" else None,
                         radius=self.led_radius if self.footprint_shape == "circle" else None,
+                        z_position=self.z_position,
                     )
                 )
         return sources
@@ -352,6 +362,7 @@ class LEDArray:
                 width=self.led_width if self.footprint_shape == "rectangle" else None,
                 height=self.led_height if self.footprint_shape == "rectangle" else None,
                 radius=self.led_radius if self.footprint_shape == "circle" else None,
+                z_position=self.z_position,
             )
 
         # Horizontal edges (bottom / top): count_x LEDs spaced along x axis
@@ -420,6 +431,7 @@ class LEDArray:
             "edge_offset": self.edge_offset,
             "panel_width": self.panel_width,
             "panel_height": self.panel_height,
+            "z_position": self.z_position,
         }
 
     @classmethod
@@ -451,4 +463,5 @@ class LEDArray:
             edge_offset=float(data.get("edge_offset", 0.005)),
             panel_width=float(data.get("panel_width", 0.0)),
             panel_height=float(data.get("panel_height", 0.0)),
+            z_position=data.get("z_position", "top"),
         )
