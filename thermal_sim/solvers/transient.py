@@ -17,11 +17,13 @@ from thermal_sim.solvers.network_builder import build_heat_source_vector, build_
 class TransientResult:
     """Transient simulation output sampled over time."""
 
-    temperatures_time_c: np.ndarray  # [nt, n_layers, ny, nx]
+    temperatures_time_c: np.ndarray  # [nt, total_z, ny, nx]
     times_s: np.ndarray  # [nt]
     layer_names: list[str]
     dx: float
     dy: float
+    nz_per_layer: list[int] | None = None
+    z_offsets: list[int] | None = None
 
     @property
     def nx(self) -> int:
@@ -34,6 +36,15 @@ class TransientResult:
     @property
     def final_temperatures_c(self) -> np.ndarray:
         return self.temperatures_time_c[-1]
+
+    def layer_temperatures(self, layer_idx: int) -> np.ndarray:
+        """Return temperatures for all z-sublayers of a layer at last timestep: [nz, ny, nx]."""
+        if self.z_offsets is not None:
+            z0 = self.z_offsets[layer_idx]
+            z1 = self.z_offsets[layer_idx + 1]
+            return self.final_temperatures_c[z0:z1]
+        # Fallback for pre-z-refinement results
+        return self.final_temperatures_c[layer_idx:layer_idx + 1]
 
 
 class TransientSolver:
