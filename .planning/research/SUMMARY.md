@@ -1,17 +1,17 @@
 # Project Research Summary
 
-**Project:** blu-thermal-simulation
-**Domain:** Python desktop engineering simulation tool — Phase 4 (prototype-to-professional upgrade)
-**Researched:** 2026-03-14
-**Confidence:** HIGH (stack, architecture), MEDIUM (features, pitfalls)
+**Project:** blu-thermal-simulation v2.0 — 3D RC-network thermal solver
+**Domain:** Engineering desktop thermal simulation tool (Python / NumPy / SciPy sparse)
+**Researched:** 2026-03-16
+**Confidence:** HIGH
 
 ## Executive Summary
 
-This is a Phase 4 upgrade of an existing Python/PySide6 thermal simulation tool that already solves RC-network steady-state and transient problems with a working GUI. The goal is transforming a functioning prototype into a professional internal tool that thermal engineers reach for by default — comparable in feel (if not scope) to Ansys Icepak or COMSOL. Research across all four domains converges on the same conclusion: the biggest risk is not picking the wrong libraries, it is adding Phase 4 features on top of structural debt. The existing `MainWindow` class at 939 lines is already past the point where new features can be added safely. Refactoring must come before feature work, not after.
+This milestone upgrades an existing, working 2.5D RC-network thermal simulation tool (one material per layer, one z-node per layer) to a 3D solver that supports per-cell material zones within a layer and multiple z-nodes through each layer's thickness. The upgrade is motivated by ELED display module cross-sections, where a single z-layer contains four materially distinct regions side by side (metal frame, FR4/LED board, air gap, LGP) that the current homogenized-material model cannot represent without errors of 10–100x in local conductivity. Research confirms that commercial tools (Icepak, FloTHERM) solve the same problem the same way: rectangular zone descriptors overlay a Cartesian grid background material and are rasterized to per-cell material arrays at solve time. This is the right architecture for this tool.
 
-The recommended approach sequences work in three distinct milestones: first, backend engine work that can be tested through the CLI without touching the GUI (parametric sweep engine, power-profile model, PDF report generator); second, wiring those backends into the GUI while maintaining separation via dedicated dialog and panel classes; third, visual polish and packaging. The stack additions are minimal and deliberate — only four new dependencies are required (reportlab, qt-material, pyinstaller, pyinstaller-hooks-contrib), and two of the most critical capabilities (parametric sweep via itertools + ProcessPoolExecutor) use nothing but the stdlib. All recommended libraries are current, well-maintained, and verified against PyPI.
+No new dependencies are required. Every capability needed for the 3D solver, per-cell material assignment, z-refinement, and z-slice visualization is already present in the installed stack (NumPy 1.26+, SciPy 1.12+, Matplotlib 3.8+, PySide6 6.7+). The implementation is a restructuring of the existing network builder, model dataclasses, and result array conventions. The largest changes are in `network_builder.py` (node indexing scheme, per-cell conductance arrays, z-sublevel loop structure), and these cascade through the postprocessor, solvers' reshape calls, and probe extraction. The solver core (`spsolve`, `splu`) is unchanged.
 
-The critical risk profile is well-defined. GUI thread blocking during long sweeps will cause visible freezes on a non-programmer user's machine. JSON backward compatibility breaks will destroy months of saved project files. PyInstaller onefile mode will trigger antivirus on corporate Windows machines. All three risks have known, documented prevention strategies. The architecture research identifies exactly where each risk surfaces and how to neutralize it before it becomes a production problem.
+The dominant risks are correctness risks, not dependency risks. Three pitfalls are critical: (1) existing projects must produce identical temperatures after the migration — a regression test written before any builder changes is the non-negotiable guard; (2) node indexing must be centralized in a single `NodeLayout` abstraction before z-refinement is added, because the old `layer_idx * n_per_layer` formula is silently wrong for variable nz per layer; and (3) per-cell conductance must be computed via NumPy vectorized array slicing (harmonic mean), not a Python loop per cell, or network build time degrades by two orders of magnitude. None of these are novel problems — they have clear, documented solutions detailed in the research.
 
 ---
 
@@ -19,155 +19,180 @@ The critical risk profile is well-defined. GUI thread blocking during long sweep
 
 ### Recommended Stack
 
-Phase 4 adds four new capability domains to an existing Python 3.11 / NumPy / SciPy / PySide6 / Matplotlib stack. The additions are surgical — no changes to the existing solver pipeline or core dependencies are required.
+No new packages are required. All 3D solver capabilities are covered by the existing `requirements.txt`. The decisions are about usage patterns within the existing stack, not additions to it.
 
-**Core technologies (new additions only):**
-- **reportlab 4.4.10** — PDF report generation via Platypus layout engine; industry standard, 4.7M+ downloads/month, embeds matplotlib figures via in-memory BytesIO, no external binaries required on Windows
-- **qt-material 2.17** — Material Design stylesheet for PySide6; actively maintained (April 2025 release); single-line application via `apply_stylesheet(app, 'dark_teal.xml')`; replaces the unmaintained PyQtDarkTheme
-- **pyinstaller 6.19.0 + pyinstaller-hooks-contrib 2026.3** — Windows one-folder bundling; no admin access required; the hooks-contrib package is mandatory for correct scipy/numpy/matplotlib bundling
-- **itertools + concurrent.futures (stdlib)** — parametric sweep engine; zero additional dependencies; ProcessPoolExecutor bypasses GIL for CPU-bound scipy solver calls
+**Core technologies:**
 
-Key exclusions to enforce: WeasyPrint (requires Pango/Cairo system binaries), `--onefile` PyInstaller mode (AV quarantine, slow startup), Nuitka (requires C compiler, needs admin), Dask/Ray (overkill for 10–1000 run sweeps).
+- **NumPy 1.26+** — per-cell material maps as `uint8` index arrays into parallel `float64` property lookup arrays; vectorized harmonic-mean conductance via array slicing; all hot-path operations must stay in NumPy, not Python loops; `uint8` supports up to 256 materials (displays use 10–20), costs 1 byte/cell vs 8 for float64
+- **SciPy 1.12+ sparse** — COO accumulation then single `tocsr()` conversion remains correct at 3D scale; `csr_matrix` (legacy API) kept — no migration to `csr_array` until deprecation is announced; `spsolve` and `splu` are unchanged; int32 overflow bug fixed in 1.8.0, already satisfied by this version requirement
+- **Matplotlib 3.8+** — z-slice navigation uses `imshow` + `set_data` + `draw_idle` (existing pattern, no figure recreation); `Axes3D.plot_surface` is explicitly excluded for temperature results (software renderer bottleneck at 100x100+ arrays; 3D shading distorts thermal gradient perception); `Axes3D` retained only for the existing structure preview schematic
+- **PySide6 6.7+** — `QSlider` for z-node selection; `QTableWidget` for zone definition; existing `FigureCanvasQTAgg` embedding unchanged; all needed widgets are in the installed version
+- **pytest 8.0+** — new analytical 3D validation tests required; backward compat regression test (reference temperatures saved from v1.0 solver) is mandatory before any builder changes
 
-See `STACK.md` for full version compatibility matrix and installation commands.
+**Memory envelope (100x100x40 node 3D system):** ~45 MB matrix + vectors; factorization fill-in expected 110–330 MB for banded 3D systems; well within 8 GB+ desktop RAM. Threshold for concern: >300k nodes for direct solver stall risk, >1M nodes for COO assembly memory pressure.
+
+See `STACK.md` for detailed storage pattern rationale, per-scenario guidance, and alternatives considered.
 
 ### Expected Features
 
-Phase 4 is not a greenfield MVP — it is the upgrade that makes an existing prototype feel like a product. The feature research benchmarks against Ansys Icepak, COMSOL, and Zemax OpticStudio to establish what professional thermal engineers expect.
+**Must have — v2.0 core (launch-blocking):**
+- Per-cell material lookup in the network builder — replaces the single scalar `material_for_layer(l_idx)` path; every conductance computation uses cell-local material properties
+- Rectangular material zone definition on `Layer` — `MaterialZone` dataclass (layer name, material key, x0, y0, x1, y1); background fill = `layer.material`; last-defined zone wins on overlap
+- Harmonic-mean conductance at zone boundaries — `k_eff = 2*k1*k2/(k1+k2)`; inseparable from per-cell material and must ship together; arithmetic mean is physically wrong at high k-contrast interfaces (aluminum vs air is 4,000x contrast)
+- Z-refinement: `Layer.nz: int = 1` — multiple z-nodes through a layer's thickness; `dz_sub = layer.thickness / layer.nz`; internal z-z links use `G = k_through * A / dz_sub` with no interface resistance term
+- New node indexing scheme — `node = (z_offsets[l] + k) * (nx*ny) + iy*nx + ix`; centralized in a `NodeLayout` abstraction established before any other builder changes
+- Backward compatibility — existing project JSON files load without modification, solve to identical temperatures; `nz` defaults to 1, `material_zones` defaults to `[]`
+- Analytical 3D validation tests — minimum: two-zone lateral boundary test, single-material z-refined slab temperature profile vs 1D analytical solution, harmonic-mean interface conductance correctness test
 
-**Must have (table stakes — missing these makes the tool feel like a script):**
-- Undo/Redo via QUndoStack — every engineering tool has this; engineers who fear editing don't use the tool
-- Run/Cancel simulation with progress indicator — transient sweeps can run for minutes without feedback
-- Status bar with file state and last run time — Icepak and COMSOL both show this
-- All CLI capabilities exposed in GUI — CSV export, output directory, solver mode
-- Structured results summary table — T_max/T_avg/T_min per layer, hotspot rank; first thing engineers look at
-- PDF engineering report export — required for design review handoffs
-- Parametric sweep engine with results comparison — core differentiator; most requested feature class in thermal tools
-- One-click packaged launcher — non-programmer colleagues need a double-click exe
+**Should have — v2.0 polish (GUI layer, add after solver is validated):**
+- GUI: `nz` spinbox per layer in the Layers tab (default 1, max 10 soft guard)
+- GUI: material zones table (x_min, x_max, y_min, y_max, material columns) populated when a layer row is selected
+- GUI: z-plane slice selector in the temperature map panel (`QComboBox` or `QSlider`)
+- GUI: probe `z_fraction` control (shown only when target layer has nz > 1)
+- GUI: live total node count in the status bar (updates on nz or mesh parameter change, within 100ms)
+- ELED cross-section zone preset — extend Phase 6 ELED stack template to auto-generate `MaterialZone` objects for metal strip, LED board, air gap, LGP bulk
 
-**Should have (differentiators, Phase 4 bonus):**
-- Time-varying heat sources (power cycling) — real-world duty cycles; high value but high complexity
-- Material library import/export (JSON) — team-shared material databases
-- Hotspot annotation on temperature maps — low complexity, high visual impact
-- Expanded validation with GUI comparison plots — builds engineer trust
+**Defer to v2.x:**
+- XZ cross-section plot (1D temperature profile along z at selected x,y)
+- Zone import from CSV
+- Per-zone heat generation (heat source relative to zone position)
+- Polygon or arbitrary-shape material zones — rectangles are sufficient for all display module geometries; polygon rasterization adds a mesh-preprocessor complexity category
+- Temperature-dependent material properties — requires nonlinear solver loop, not justified for 25–80°C operating range
+- Auto z-refinement based on thermal gradient — adaptive meshing pipeline contradicts the tool's sub-second to low-second solve target
+- Full 3D isosurface / volume rendering — PyVista/VTK dependency, out of scope
 
-**Defer to future phase:**
-- Project templates / New From Template dialog — example files exist; GUI discovery is low urgency
-- Comprehensive keyboard shortcut map — partial shortcuts first
-- Temperature-dependent material properties — breaks linear solver, 10x complexity for marginal accuracy in 25-120°C range
-- 3D visualization / CAD import — fundamentally incompatible with 2.5D RC model approach
-
-**Critical dependency note:** Packaging must be the final step. Undo/Redo must be implemented before other GUI features (retrofitting QUndoCommand is painful). Parametric sweep and results comparison must ship together — sweep output is meaningless without comparison view.
-
-See `FEATURES.md` for full prioritization matrix and competitor analysis.
+See `FEATURES.md` for the full feature dependency graph, effort estimates (days per feature), and competitor feature comparison (Icepak, FloTHERM, EnergyPlus).
 
 ### Architecture Approach
 
-Phase 4 extends the existing layered architecture at well-defined seams without requiring solver surgery. The key architectural insight is that all four Phase 4 features are consumers of `DisplayProject` and emitters of result data — they never reach into solver internals. The solver pipeline remains completely unchanged.
+The existing solver pipeline architecture is preserved. `DisplayProject` gains two new fields (`material_zones: list[MaterialZone]` on the project and `nz: int = 1` on `Layer`). A new `build_material_map()` helper resolves zone rectangles to per-cell property arrays once before network assembly. The network builder is rewritten to use cumulative z-offsets, per-cell conductance arrays (harmonic mean for lateral links), and separate within-layer vs between-layer through-thickness conductance formulas. The `ThermalNetwork` dataclass gains `n_z_nodes`, `z_layer_map`, and `z_sublevel_map` fields. Solvers change only their reshape call. Postprocessor probe extraction and the GUI require targeted updates to consume `z_layer_map`.
 
-New components slot in as: a `sweeps/` package (SweepSpec, SweepRunner, ProjectMutator) parallel to the existing `solvers/`; a `PowerProfile` dataclass in `models/`; a `report_gen.py` module in `io/` alongside the existing `csv_export.py`; and three new UI dialogs/panels in `ui/` that keep sweep logic out of the already-oversized `MainWindow`.
+**Major components:**
 
-**Major components (new):**
-1. **SweepRunner (QRunnable)** — executes N solver calls in background thread; emits per-step progress signals; uses `ProjectMutator.apply()` to deep-copy project for each step without mutating the live project
-2. **ReportGenerator** — assembles ReportLab Platypus PDF; renders matplotlib figures to in-memory BytesIO (no temp files); consumes existing postprocess and visualization functions unchanged
-3. **PowerProfile** — piecewise-linear callable; injected into TransientSolver as optional kwarg; updates only the RHS b_vector per step, never the LHS matrix (LU factorization stays valid for entire simulation)
-4. **SweepDialog + SweepResultsPanel** — dedicated UI classes; MainWindow gets only a "Run Sweep" button and results tab slot; all sweep logic lives in these classes
+1. **`MaterialZone` model** (`thermal_sim/models/material_zone.py`, new) — rectangular override descriptor with `to_dict`/`from_dict`; pure dataclass, no dependencies; coordinates in metres (SI), GUI displays in mm
+2. **`build_material_map()` helper** (`thermal_sim/solvers/material_map.py`, new) — resolves zone list + layer defaults to per-cell `[n_layers, ny, nx]` float64 property arrays; called once at network build time; AABB overlap logic reused from existing `_source_mask()`; cleanly separates zone geometry from conductance physics
+3. **`NodeLayout` / z-offset scheme** (embedded in `network_builder.py`) — cumulative offset array `z_offsets[l] = sum(nz[:l])`; single source of truth for `(layer_idx, k, iy, ix) -> flat_node_idx`; must be established before any z-refinement code; eliminates all inline `layer_idx * n_per_layer` expressions
+4. **`network_builder.py` (modified)** — z-sublevel loops for within-layer through-thickness links; per-cell harmonic-mean conductance arrays for lateral links; `_add_link_vectorized()` extended to accept `conductance: np.ndarray | float`; heat sources deposited on top z-node of target layer by default (surface-mounted assumption)
+5. **`ThermalNetwork` (modified)** — adds `n_z_nodes`, `z_layer_map`; `n_nodes` property becomes `n_z_nodes * nx * ny`; backward compat preserved when all nz=1 (formula reduces to current scheme exactly)
+6. **Solvers (reshape only)** — `n_layers` in reshape calls replaced by `n_z_nodes`; no other changes to steady-state or transient solver logic
+7. **Postprocessor + GUI (z-aware updates)** — probe extraction uses `z_offsets[layer_idx] + (nz-1)` for top-face node; GUI layer profile plot uses `z_layer_map` to group z-nodes by physical layer; temperature map panel gains z-index selector
 
-**Recommended build order:** Backend first (PowerProfile → TransientSolver integration → SweepSpec/ProjectMutator → SweepRunner → ReportGenerator), then GUI wiring, then QDockWidget polish and packaging last.
+**Build order (strict dependency chain):**
 
-See `ARCHITECTURE.md` for full data flow diagrams, pattern examples, and anti-pattern catalogue.
+1. `MaterialZone` model (no deps)
+2. `Layer.nz` field extension (no deps)
+3. `DisplayProject.material_zones` + validation
+4. `build_material_map()` helper (independently testable)
+5. `ThermalNetwork` schema extension
+6. `network_builder.py` rewrite (highest risk; test backward compat with nz=1 / no zones first)
+7. Solver reshape changes
+8. Postprocessor probe index fix
+9. New 3D validation tests (analytical benchmarks)
+10. GUI z-slice controls and zone editor
+
+See `ARCHITECTURE.md` for full data flow diagram, serialization change patterns, anti-pattern catalogue, and integration point callsite table.
 
 ### Critical Pitfalls
 
-Eight pitfalls identified; the top five require explicit phase-level prevention strategies:
+1. **Per-cell conductance lookup destroys vectorization** — naive Python `for` loop over cells to look up per-cell material causes ~100x slowdown (milliseconds becomes seconds at a 30x20 mesh). Prevention: build per-link conductance arrays using NumPy array slicing and harmonic mean before calling `_add_link_vectorized()`; extend that function to accept `float | np.ndarray`. Warning sign: any `for ix in range(grid.nx)` loop inside the network builder inner path.
 
-1. **Blocking solver on main Qt thread** — sweeps running in button handlers will freeze the GUI for minutes on Windows. Prevention: QRunnable + QThreadPool + signal-only communication between worker and main thread. Must be addressed as the first task of GUI work, before adding any new feature.
+2. **Node index formula silently breaks for variable nz** — `layer_idx * n_per_layer` is wrong as soon as any layer has `nz > 1`; wrong nodes are indexed, probes return plausible but incorrect temperatures with no error. Prevention: centralize all node indexing in a `NodeLayout` abstraction before writing any z-refinement code; write a unit test for heterogeneous `nz=[1,3,2]` configuration immediately after creating `NodeLayout`.
 
-2. **JSON backward compatibility breaks** — new fields in `from_dict()` using bracket access (`data["new_field"]`) instead of `.get("new_field", default)` will corrupt every existing project file. Prevention: all new fields use `.get()` with sensible defaults; add `schema_version` integer to JSON root; load all `examples/` files in CI after any model change.
+3. **Backward compatibility drift** — old projects load without error but produce different temperatures because the new builder uses a subtly different conductance formula in the fallback path (e.g., different half-thickness handling or accidentally omitting the interface resistance term). Prevention: write the regression test (compare new builder output to v1.0 reference `.npy` temperature file) before touching any builder code; this test is the Phase 1 entry gate.
 
-3. **PyInstaller onefile mode triggers antivirus** — temp-directory extraction pattern matches malware heuristics; corporate Windows AV will quarantine the exe. Prevention: use `--onedir` exclusively, distribute as a zip, never use UPX compression.
+4. **Interface resistance applied to within-layer z-z links** — `interface_resistance_to_next` belongs only at the physical layer boundary, not between z-sublevel nodes within the same layer; applying it internally makes through-plane gradient 5–10x too steep. Prevention: maintain two distinct code paths — internal z-z links use `G = k_through * A / dz_sub` only; inter-layer links use half-thickness + interface + half-thickness. Analytical 1D slab test for nz=5 catches this immediately.
 
-4. **MainWindow god object collapses under Phase 4 feature weight** — at 939 lines it is already at the limit; adding sweep UI, power profile editors, and report dialogs inline will push it past 1500 lines and make it untestable. Prevention: extract `TableDataParser`, `SimulationController`, and `PlotManager` from `MainWindow` before adding any Phase 4 features.
+5. **SuperLU factorization stalls GUI at large 3D meshes** — at nz=5 across 8 layers on a 100x80 mesh (3.2M nodes), factorization can take minutes on a laptop; progress bar appears frozen (indistinguishable from a crash). Prevention: add pre-solve warning at >300k nodes; keep nz spinbox default at 1, max at 10; confirm `splu()` runs inside the existing `SimulationController` worker thread with an indeterminate progress indicator.
 
-5. **Parametric sweep accumulating full TransientResult arrays** — at default mesh, 10 sweep runs storing full 4D temperature arrays exhaust available RAM. Prevention: SweepRunner must extract summary stats immediately after each run and release the full array; sweep result stores only `{params: dict, summary: dict}` tuples.
-
-Additional pitfalls: PDF font missing after packaging (use ReportLab built-in Type1 fonts — Helvetica/Times); power cycling LU factorization invalidation (separate matrix build from RHS build; never call `build_thermal_network()` inside the time loop); resource path breaks after packaging (create a `resources.py` helper that checks `sys._MEIPASS` before returning paths).
-
-See `PITFALLS.md` for full recovery strategies and the "Looks Done But Isn't" verification checklist.
+See `PITFALLS.md` for performance trap table, integration gotcha table, UX pitfalls, and the complete "Looks Done But Isn't" verification checklist.
 
 ---
 
 ## Implications for Roadmap
 
-Based on combined research, the work naturally partitions into five phases. The sequencing is driven by three constraints: (1) backend components must be testable via CLI before GUI wiring begins; (2) MainWindow must be refactored before new UI features are added; (3) packaging must be last because it validates everything.
+Based on the combined research, the v2.0 milestone splits into three phases driven by the dependency structure and risk profile documented in the architecture and pitfalls research.
 
-### Phase 1: Foundation — MainWindow Refactor + Threading Infrastructure
+### Phase 1: 3D Solver Core — Per-Cell Materials and Node Indexing
 
-**Rationale:** The MainWindow god object at 939 lines is the single largest risk to Phase 4 success. Every subsequent feature will be added to this class unless it is decomposed first. Retrofitting QUndoStack and QThread patterns into a monolith is 3-5x harder than building on clean collaborators. This phase unblocks all subsequent GUI work.
+**Rationale:** Per-cell material lookup is the architectural load-bearing change. Every other v2.0 feature depends on the solver being correct first. The backward compatibility regression test must be written before any code changes, making it the explicit entry gate. `NodeLayout` must be introduced in this phase even with nz=1 everywhere, because z-refinement code written on top of the old index scheme is high-cost to fix after the fact.
 
-**Delivers:** A MainWindow under 400 lines; extracted SimulationController (owns QThread/QRunnable pattern), TableDataParser (owns table widget ↔ model conversion), PlotManager (owns matplotlib canvases); QUndoStack wired to all existing edit operations; existing single-run simulations running off the main thread with progress bar and cancel button.
+**Delivers:**
+- Backward compat regression test passing before any builder changes (old project produces identical temperatures to v1.0)
+- New `MaterialZone` model (`thermal_sim/models/material_zone.py`) with JSON round-trip and validation
+- `DisplayProject.material_zones` field with `__post_init__` validation (layer and material name checks)
+- `build_material_map()` helper with per-cell float64 property arrays and AABB zone rasterization
+- `network_builder.py` rewritten with cumulative z-offset node indexing and per-cell harmonic-mean conductance
+- `ThermalNetwork` extended with `n_z_nodes`, `z_layer_map`
+- `Layer.nz` field (model only, nz=1 still the only operative value at end of this phase)
+- Validation tests: two-zone lateral boundary test, harmonic-mean interface conductance correctness test
+- All `examples/*.json` files load and solve identically
 
-**Addresses:** Undo/Redo (table stakes), Run/Cancel with progress (table stakes), Status bar (table stakes)
+**Addresses (FEATURES.md):** Per-cell material lookup, rectangular material zone definition, harmonic-mean conductance at boundaries, backward compatibility, partial analytical validation suite
 
-**Avoids:** MainWindow god object pitfall (Pitfall 4), Blocking solver pitfall (Pitfall 1)
+**Avoids (PITFALLS.md):** Vectorization destruction (array pattern enforced from the start), node index formula breakage (`NodeLayout` centralized before any downstream code), backward compat drift (regression test written first)
 
-**Research flag:** Standard Qt patterns — skip research phase. QUndoStack and QThread patterns are thoroughly documented and verified.
+**Research flag:** Standard patterns — direct solver, COO assembly, AABB zone rasterization are all established. No additional research phase needed.
 
-### Phase 2: Backend Engines — Sweep + Power Profile + Report Generator
+---
 
-**Rationale:** Building backend components that work via CLI first means they can be tested against known analytical solutions before any GUI is built. This catches physics bugs before UI concerns complicate debugging. The three backend components (SweepEngine, PowerProfile, ReportGenerator) are independent of each other and can be developed in parallel or in sequence.
+### Phase 2: Z-Refinement — Multiple Z-Nodes Per Layer
 
-**Delivers:** `sweeps/` package with SweepSpec, SweepRunner, ProjectMutator; PowerProfile callable injected into TransientSolver; ReportGenerator producing PDF from steady-state, transient, or sweep results; CLI commands for sweep execution and report generation; backward-compatible JSON for power profiles.
+**Rationale:** Z-refinement extends the node indexing scheme established in Phase 1 to variable `nz` per layer. It is sequenced after Phase 1 because it requires the per-cell material map infrastructure (within-layer z-z links use per-cell k_through values from the material map). GUI z-slice controls, z-fraction probes, and live node count are all sequenced after the solver validates.
 
-**Addresses:** Parametric sweep engine (P1), Time-varying heat sources (P2), PDF report export (P1)
+**Delivers:**
+- Within-layer z-sublevel node generation in the network builder (nz > 1 operative)
+- Correct within-layer vs inter-layer z-z conductance formulas with no interface resistance on internal links
+- Solver reshape changes (`n_layers` → `n_z_nodes` in `steady_state.py` and `transient.py`)
+- Postprocessor probe extraction updated to use `z_offsets[layer_idx] + (nz-1)` for top-face default
+- Analytical z-refinement validation: 1D slab temperature profile for nz=5 vs analytical solution (catches interface resistance misapplication)
+- GUI: nz spinbox per layer (default 1, max 10, existing `TableDataParser` pattern)
+- GUI: z-plane slice selector in temperature map panel (`QComboBox` or `QSlider` connected to `im.set_data` + `draw_idle`)
+- GUI: probe z_fraction control (shown only when target layer has nz > 1)
+- GUI: live total node count in the status bar
 
-**Avoids:** JSON backward compat pitfall (Pitfall 2) — schema_version field and `.get()` discipline required here; Sweep memory bloat (Pitfall 6) — summary-only extraction from TransientResult; Power cycling LU invalidation (Pitfall 7); PDF font pitfall (Pitfall 5) — use Type1 built-ins only
+**Addresses (FEATURES.md):** Z-refinement (Layer.nz), probe z_fraction addressing, nz spinbox in Layers GUI, z-plane slicing in visualization, node count estimate in status bar
 
-**Research flag:** Standard patterns for all three. SweepRunner uses documented QRunnable pattern. ReportLab Platypus + BytesIO pattern is verified against official docs. No research phase needed.
+**Avoids (PITFALLS.md):** Interface resistance on internal z-z links (two distinct code paths), SuperLU stall (node count warning at >300k, nz spinbox max=10 soft guard), result array shape breakage everywhere z_layer_map is consumed
 
-### Phase 3: GUI Wiring — Sweep Dialog, Results Comparison, Report Trigger
+**Research flag:** Standard patterns — cumulative offset node indexing and within-layer z-z conductance fully specified in ARCHITECTURE.md from first principles. No additional research phase needed.
 
-**Rationale:** With backend engines working and MainWindow decomposed, GUI wiring is lower risk. Each backend gets a dedicated UI class (SweepDialog, SweepResultsPanel) that MainWindow instantiates but does not own logic for. Results comparison view must ship in the same phase as sweep UI — sweep output is meaningless without it.
+---
 
-**Delivers:** SweepDialog (QDialog for sweep configuration + live progress bar showing "Run 3 of 20"); SweepResultsPanel (QAbstractTableModel-backed comparison table + overlay probe plots); Report generation button integrated into results area; all CLI capabilities accessible from GUI; structured results summary table exposed as dedicated Results Summary panel.
+### Phase 3: ELED Zone Preset and Zone Editor GUI
 
-**Addresses:** Parametric sweep + results comparison (P1), All CLI in GUI (P1), Structured results summary (P1), PDF report from GUI (P1)
+**Rationale:** This phase delivers the primary user-facing value of v2.0 — the ability to define ELED cross-section material zones through the GUI without editing JSON, and the auto-generated zone preset for the ELED stack template (from Phase 6). It is sequenced last because it is purely additive on top of the working 3D solver from Phases 1 and 2.
 
-**Avoids:** Anti-pattern of adding sweep UI to MainWindow directly (use dedicated dialog classes); QTableWidget for large result sets (use QAbstractTableModel + beginInsertRows); canvas.draw() on every signal (throttle redraws to >250ms interval)
+**Delivers:**
+- GUI: material zones table per layer (x_min, x_max, y_min, y_max, material columns; second `QTableWidget` below layers table, same `+/-` row add/delete pattern as heat sources)
+- GUI: zone assignment 2D color map preview in zone editor (live update on zone change; calls `build_material_map()` with current settings)
+- Documented zone overlap rule (last-wins) displayed in tooltip
+- Zone coordinates displayed in mm in GUI, stored in metres (matching `feedback_units_mm.md` preference)
+- ELED cross-section zone preset extending the Phase 6 ELED stack template (auto-generates `MaterialZone` objects for metal strip, LED board strip, air gap, LGP bulk; widths parameterized from ELED geometry config)
 
-**Research flag:** Standard PySide6 patterns. QAbstractTableModel and QRunnable signal patterns are well-documented. Skip research phase.
+**Addresses (FEATURES.md):** Material zone table per layer in GUI, ELED cross-section zone preset
 
-### Phase 4: Polish — Qt Material Theme, QDockWidget Layout, Hotspot Annotation
+**Avoids (PITFALLS.md):** Zone overlap ambiguity (explicit last-wins rule with zone preview map confirmation), UX coordinate confusion (mm display consistent with existing UI convention), GUI rebuild-on-every-keystroke (debounce or block-signals pattern in zone table editor)
 
-**Rationale:** Visual refactoring of the GUI shell is purely presentational and carries no physics risk. Doing it after feature backends are wired means the refactor doesn't need to simultaneously support new components being built. This is also where low-complexity, high-impact polish items ship.
+**Research flag:** Standard patterns for the zone table (QTableWidget, existing pattern). One targeted check needed at start of Phase 3: verify that the Phase 6 ELED template config exposes frame width, LED board width, and air gap width as named fields accessible to the preset generator. If those fields do not exist on `LEDArray` or the ELED stack template, they will need to be added before the preset can be built.
 
-**Delivers:** qt-material dark theme applied; QDockWidget-based panel layout replacing fixed QSplitter; hotspot annotation on temperature maps (top-N labels at hotspot cells); material library import/export (JSON user library); expanded validation GUI report; consistent keyboard shortcuts (Ctrl+S, Ctrl+Z/Y, F5, Escape).
-
-**Addresses:** Professional UI polish, hotspot annotation (P2), material library I/O (P2), expanded validation (P2)
-
-**Avoids:** Applying two conflicting full stylesheets (pick qt-material only, no QDarkStyleSheet); regression to existing features during QDockWidget restructure (purely visual refactor, no logic changes)
-
-**Research flag:** Standard patterns. qt-material 2.17 PySide6 compatibility is confirmed. QDockWidget is core Qt. Skip research phase.
-
-### Phase 5: Packaging — PyInstaller One-Folder Bundle, Resources, Final Verification
-
-**Rationale:** Packaging must be last because it validates that every feature works correctly from a frozen build with no Python installed. It also carries the highest external risk (AV, corporate machines, path resolution) and requires the GUI to be feature-complete before packaging an incomplete tool is worthwhile.
-
-**Delivers:** PyInstaller onedir build with no console window; resources.py `get_resource_path()` helper using sys._MEIPASS; all example JSON files in spec datas; scipy hidden imports in spec; SetCurrentProcessExplicitAppUserModelID for proper taskbar grouping; user data written to %APPDATA%/ThermalSim/; verified on clean Windows machine with Defender enabled; verified from path with spaces and from network share; `launch.bat` fallback for in-repo use.
-
-**Addresses:** One-click packaged launcher (P1 — required for non-programmer adoption)
-
-**Avoids:** Onefile mode AV quarantine (use --onedir), resource path breaks (resources.py helper), PDF font missing (Type1 built-ins confirmed safe), UPX compression (triggers additional AV false positives)
-
-**Research flag:** May benefit from a targeted research pass on scipy 1.12+ hidden import list for pyinstaller-hooks-contrib 2026.3 — the exact set of required hidden imports can change between scipy minor versions. Verify against packaging docs before building.
+---
 
 ### Phase Ordering Rationale
 
-- Phase 1 before all GUI phases: structural debt must be cleared first or every subsequent feature lands in the wrong place
-- Phase 2 before Phase 3: backend-first enables CLI testing independent of GUI; catches physics bugs in isolation
-- Phase 3 after Phase 2 and Phase 1: requires both clean GUI structure (Phase 1) and working backends (Phase 2)
-- Phase 4 after Phase 3: visual refactoring after feature wiring avoids simultaneous backend + presentation churn
-- Phase 5 always last: packaging is a validation gate, not a feature; packaging an incomplete tool ships a permanent incomplete impression
+- Phases 1 and 2 are strictly ordered by dependency: per-cell material lookup must exist before within-layer z-refinement links can use per-cell `k_through` values. `NodeLayout` must be established in Phase 1 (with nz=1 everywhere) so Phase 2 only needs to populate the nz > 1 code paths.
+- Phase 3 is independent of Phase 2's GUI work but depends on Phase 1's model (`MaterialZone`). It is last because the GUI zone editor is the highest user-facing polish and lowest solver risk — wrong code in Phase 3 cannot corrupt solver output.
+- All three phases are additive under the backward-compatibility constraint: a project with no zones and all nz=1 must produce identical results at the end of all three phases as it did before Phase 1 began.
+- GUI features within each phase should be sequenced after solver validation tests pass. This prevents the GUI layer from obscuring solver correctness bugs.
+
+### Research Flags
+
+Phases needing additional research during planning:
+- **Phase 3 (ELED preset):** Verify that the Phase 6 ELED template config exposes the geometry parameters (frame width, LED board width, air gap width) needed to auto-generate zones. This is a one-file inspection at the start of Phase 3 planning, not a full research pass.
+
+Phases with standard patterns (skip research-phase):
+- **Phase 1:** Direct sparse solver extension with AABB zone rasterization and vectorized NumPy conductance assembly — well-documented in ARCHITECTURE.md and STACK.md with concrete code patterns.
+- **Phase 2:** Cumulative offset node indexing and within-layer conductance formulas — fully specified in ARCHITECTURE.md from first principles; within-layer vs inter-layer distinction is physics-clear.
+- **Phase 3:** `QTableWidget` zone editor — follows the existing heat source table pattern already present in the codebase.
 
 ---
 
@@ -175,52 +200,55 @@ Based on combined research, the work naturally partitions into five phases. The 
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All library versions confirmed via PyPI JSON API; compatibility matrix verified; alternatives documented with specific rejection rationale |
-| Features | MEDIUM | Benchmarked against Icepak, COMSOL, Zemax — strong professional consensus; specific implementation complexity estimates are research-based inference, not measured |
-| Architecture | HIGH | Based on direct codebase inspection (Phase 3 source) + official Qt docs; all patterns verified against PySide6 6.x documentation; data flows are concrete, not speculative |
-| Pitfalls | MEDIUM-HIGH | Most pitfalls confirmed by official docs and community post-mortems; memory exhaustion numbers (Pitfall 6) are estimates based on array size calculations, not profiled measurements |
+| Stack | HIGH | No new dependencies; all patterns verified against SciPy/NumPy/Matplotlib official documentation and first-principles arithmetic; memory estimates are calculable from node count × bytes |
+| Features | HIGH | Grounded in direct codebase inspection of `network_builder.py`, `layer.py`, `project.py`; harmonic-mean conductance confirmed by Patankar (1980) and INL FDM comparative study; zone-as-object pattern confirmed in FloTHERM and Icepak documentation |
+| Architecture | HIGH | All findings from direct source inspection of the existing codebase; no external library unknowns; build order confirmed by dependency analysis; backward compat formula traced line-by-line in the current builder |
+| Pitfalls | HIGH | All pitfalls derived from direct source inspection of the existing code (not speculation); vectorization degradation and NodeLayout fragility confirmed by examining the actual `_add_link_vectorized()` signature and node index formula in `network_builder.py` |
 
-**Overall confidence:** HIGH for technology and architecture decisions. MEDIUM for feature complexity estimates and performance thresholds (these will require validation during implementation).
+**Overall confidence: HIGH**
 
 ### Gaps to Address
 
-- **Sweep memory thresholds:** Pitfalls research estimates ~350 MB for a 10-run transient sweep at default mesh. This should be profiled with tracemalloc early in Phase 2 to validate the summary-only extraction requirement before it becomes an emergency.
+- **Heat source distribution on z-refined layers:** The architecture research recommends depositing surface heat sources on the top-most z-node only (not distributed across all nz sub-nodes). This decision is documented but has not been validated against a physical reference case. A validation test in Phase 2 should cover this: LED on a nz=3 layer — verify that the junction temperature is higher than with nz=1 (no artificial spreading), and that the gradient through the layer matches the 1D analytical solution.
 
-- **Report generation performance:** The research notes PDF generation "may" block the main thread for 2-5 seconds on large reports. Whether this requires a QRunnable or runs acceptably on the main thread needs measurement on a real machine during Phase 3.
+- **ELED zone geometry parameterization:** The Phase 3 ELED cross-section preset requires frame width, LED board width, and air gap width from the Phase 6 ELED stack template. If `LEDArray` or the ELED template config does not expose these as named fields, the preset requires adding new fields to the template. Assess this at the start of Phase 3 planning before committing to an implementation approach.
 
-- **PyInstaller hidden imports for scipy 1.12+:** The spec file hidden import list (`scipy.sparse.csgraph._validation`, `scipy.linalg.blas`, `scipy.linalg.lapack`) was verified against pyinstaller-hooks-contrib 2026.3 documentation, but scipy's internal structure changes between minor versions. Validate the complete import list against an actual build during Phase 5.
+- **CSV export format versioning:** Adding a z-slice index to the CSV export format (needed for nz > 1 results) will break existing CSV readers if the format changes without a version marker. A format version bump should be planned before Phase 2 is declared complete. PITFALLS.md flags this as an integration gotcha.
 
-- **Corporate AV testing:** The `--onedir` recommendation is well-supported, but actual behavior on managed Windows endpoints with CrowdStrike or Cylance (not just Defender) was not verified. This needs a real test on a target machine during Phase 5.
-
-- **Qt Material + PySide6 6.10.2 layout regressions:** qt-material applies CSS-level style overrides and can alter widget geometry. The exact visual impact on existing complex layouts (splitters, tabs, matplotlib canvas) needs an integration test during Phase 4.
+- **SuperLU iterative fallback threshold:** STATE.md notes CG did not converge well at 1M nodes in previous testing. The current recommendation is to add a user warning at >300k nodes and not add a second solver unless direct measurement shows it is needed. If engineers push nz values that produce meshes beyond this threshold in practice, this gap may require revisiting. The 300k warning threshold should be documented prominently in the Phase 2 GUI work.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- PyPI JSON API (reportlab, pyinstaller, PySide6, qt-material, pyinstaller-hooks-contrib) — version confirmation
-- PyInstaller official docs (pyinstaller.org) — onedir/onefile operating mode, data files, hidden imports
-- ReportLab official docs (docs.reportlab.com) — Platypus document model, font handling
-- Qt for Python official docs (doc.qt.io/qtforpython-6) — QThread, QRunnable, QDockWidget, QUndoStack
-- Python 3.11 stdlib docs (docs.python.org) — concurrent.futures, itertools
-- Existing codebase direct inspection — MainWindow line count, Phase 3 architecture, CONCERNS.md audit
+
+- Direct codebase: `thermal_sim/solvers/network_builder.py` — existing node indexing, COO assembly, `_add_link_vectorized()`, through-thickness conductance formula (half-thickness model)
+- Direct codebase: `thermal_sim/models/project.py`, `layer.py`, `material.py` — existing dataclass patterns, `from_dict()` / `to_dict()`, `material_for_layer()`
+- Direct codebase: `thermal_sim/solvers/steady_state.py`, `transient.py` — reshape calls, `splu()` location, `state_shape` assumption
+- Direct codebase: `thermal_sim/core/postprocess.py` — `_probe_indices()`, `_top_n_from_map()` layer index usage
+- Direct codebase: `.planning/STATE.md` — measured solver performance (90×60 <1s, 150×100 ~5s); CG convergence failure at 1M nodes
+- Direct codebase: `.planning/PROJECT.md` — v2.0 feature scope, backward compat requirement, out-of-scope items (polygon zones, unstructured mesh, temperature-dependent k)
+- NumPy structured arrays documentation — cache locality of parallel vs structured arrays; uint8 fancy indexing
+- SciPy sparse documentation (v1.17.0) — COO+CSR assembly recommendation; `csr_array` vs `csr_matrix` deprecation status; `spsolve` format preference
+- GitHub scipy/scipy issue #14984 — int32 overflow in SuperLU; confirmed fixed in SciPy 1.8.0
+- INL: "Comparative Study of Harmonic and Arithmetic Averaging of Diffusion Coefficients for Non-Linear Heat Conduction Problems" — harmonic mean as standard for FDM discontinuous conductivity fields
+- Patankar, "Numerical Heat Transfer and Fluid Flow" (1980) — harmonic mean conductance at material interfaces (foundational FDM reference)
+- Matplotlib mplot3d gallery (v3.10.8) — `imshow3d` confirmed as gallery copy-paste, not a built-in function; intersection plane rendering limitation documented
+- EnergyPlus/THERM documentation — rectangular zone definition sufficient for building envelope structured-grid models
 
 ### Secondary (MEDIUM confidence)
-- pythonguis.com QThreadPool multithreading tutorial (2025) — QRunnable + WorkerSignals pattern
-- pythonguis.com PySide6 PyInstaller packaging tutorial (2025) — packaging gotchas, console=False
-- pythonguis.com PDF report generator example (Dec 2025) — ReportLab + matplotlib BytesIO pattern
-- Ansys Icepak 2025 R2 release notes — competitor feature baseline
-- COMSOL 6.3 parametric sweep docs — sweep feature benchmark
-- Electronics Cooling thermal methodology (2024) — engineering tool UX expectations
-- Real Python QThread guide — threading patterns
-- JSON schema evolution patterns (creekservice.org) — backward compat strategies
+
+- Electronics Cooling (2010): "Creating PCB Thermal Conductivity Maps Using Image Processing" — tile-based per-cell conductivity approach; validation at 3.3% average error vs detailed simulation
+- FloTHERM product specification (Siemens/Innofour) — structured Cartesian grid; localized overlapping grid; object-based zone geometry rasterized at solve time
+- FloTHERM V11 feature article — overlapping localized grid details
+- DataCamp: Matplotlib 3D Volumetric Data tutorial — `set_data` + `draw_idle` slice navigation pattern
 
 ### Tertiary (LOW confidence)
-- WebSearch: PyInstaller AV quarantine behavior on corporate endpoints with non-Defender tools — needs real-world validation
-- WebSearch: qt-material layout regression behavior on complex PySide6 UIs — needs integration test
+
+- None — all findings are grounded in HIGH or MEDIUM confidence sources.
 
 ---
 
-*Research completed: 2026-03-14*
+*Research completed: 2026-03-16*
 *Ready for roadmap: yes*

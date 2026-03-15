@@ -1,174 +1,135 @@
 # Pitfalls Research
 
-**Domain:** Desktop engineering simulation tool — Python/PySide6, Phase 4 upgrade (prototype-to-professional)
-**Researched:** 2026-03-14
-**Confidence:** MEDIUM-HIGH (confirmed by official docs and community post-mortems; some claims cross-verified with multiple sources)
+**Domain:** Adding per-cell material heterogeneity and z-refinement to an existing structured-grid 2.5D RC-network thermal solver (Python / NumPy / SciPy sparse)
+**Researched:** 2026-03-16
+**Confidence:** HIGH — all findings from direct source inspection of the existing codebase; no external library dependencies introduced by this milestone; performance thresholds derived from measured node-count analysis of the existing solver
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Running Simulation on the Main Qt Thread
+### Pitfall 1: Per-Cell Conductance Lookup Destroys Vectorization in the Hot Path
 
 **What goes wrong:**
-The parametric sweep and power-cycling simulations are triggered by a GUI button click. If the solver runs synchronously in the main thread, the GUI freezes completely — the window stops painting, buttons become unresponsive, and on Windows the title bar shows "(Not Responding)". For a parametric sweep over 20+ parameter combinations, each potentially taking seconds, this freeze can last minutes.
+The current network builder computes in-plane conductances as a single scalar per layer and then calls `_add_link_vectorized()` with a constant `conductance: float`. When you switch to per-cell materials, the naive replacement is a Python `for` loop over cells, looking up each cell's material and computing its conductance individually. This turns an O(n_per_layer) vectorized NumPy operation into an O(n_per_layer) Python loop — roughly 100x slower per layer. At a 150×100 mesh the current builder runs in milliseconds; a naive per-cell loop at the same mesh takes seconds.
 
 **Why it happens:**
-Qt's event loop runs in the main thread. Any long computation that blocks `exec_()` starves the event loop of cycles. The current codebase already calls solvers directly in button handlers inside `MainWindow`; adding parametric loops without threading multiplies the problem.
+The `_add_link_vectorized()` function takes a scalar conductance and broadcasts it via `np.full(len(n1), conductance)`. The scalar-to-array step is a NumPy no-op. When per-cell material lookup is needed, developers naturally reach for a Python loop because the conductance is now cell-dependent. The loop seems like the obvious fix and it works correctly — it is just an order of magnitude too slow.
 
 **How to avoid:**
-Move all solver calls into a `QObject` worker, `moveToThread()` it onto a `QThread`, and communicate via signals only. Never call `QThread.run()` directly or subclass `QThread` with business logic — use the worker-object pattern. Progress updates must be emitted as signals (`progress_updated = Signal(int)`), not written to labels from the worker. Keep the worker as an instance attribute on `MainWindow` to prevent garbage collection killing the thread mid-run. Connect `finished` → `thread.quit()` → `worker.deleteLater()` → `thread.deleteLater()` to clean up correctly.
+Build a per-cell conductance array once before calling `_add_link_vectorized()`. For in-plane links, precompute a 2D array `g_x_map[iy, ix]` using NumPy vectorized indexing into the material property arrays. The link conductances for horizontal pairs `(ix, iy) -- (ix+1, iy)` involve two adjacent cells; use the harmonic mean of the two cell conductances (the correct physical formula for two resistors in series sharing an interface). This harmonic mean can be computed entirely with NumPy array slicing: `g_x = 2 / (1/g_left + 1/g_right)` where both are 2D arrays. Modify `_add_link_vectorized()` to accept either a scalar or a 1-D per-link array.
 
 **Warning signs:**
-- Any solver call not wrapped in a `QThread` worker
-- Button handlers that call `SteadyStateSolver().solve()` or `TransientSolver().solve()` directly
-- Parametric loops inside button slots
+- Any `for ix in range(grid.nx): for iy in range(grid.ny):` loop inside network builder
+- A `conductance: float` type annotation on the vectorized helper that is not updated to `float | np.ndarray`
+- Network build time growing linearly with cell count (profile with `time.perf_counter()` around `build_thermal_network()`)
+- Profiler showing the network builder's inner loop as the top hotspot at >50% of build time
 
-**Phase to address:** GUI overhaul / parametric sweep phase (Phase 4)
+**Phase to address:** Per-cell material network builder phase (v2.0 Phase 1 — the core architectural change)
 
 ---
 
-### Pitfall 2: Breaking Backward Compatibility on JSON Load
+### Pitfall 2: Node Index Formula Breaks for Variable nz per Layer
 
 **What goes wrong:**
-Phase 4 adds new model fields — power profiles for time-varying sources, sweep parameter definitions, material import metadata. If `from_dict()` is updated to require these new keys, every existing `.json` project file saved before Phase 4 will throw `KeyError` on load. Engineers who've been building project files for months suddenly cannot open their work.
+The current canonical node index is `layer_idx * (nx * ny) + iy * nx + ix`. This assumes one z-node per layer. When z-refinement adds `nz[l]` nodes through a layer's thickness, this formula is wrong for every layer after the first that has `nz > 1`. All downstream code that uses this formula — the network builder, postprocessor, probe extraction, result reshaping — silently produces incorrect results if the formula is not updated everywhere simultaneously.
 
 **Why it happens:**
-The current `from_dict()` already uses `.get(key, default)` correctly for optional fields, but it's easy to slip up when adding new required structure (like a new required sub-object for `power_profile`). The `TransientConfig.from_dict()` method validates `method != "implicit_euler"` and raises — adding a new method string value without checking for the old default is a migration trap. Any `__post_init__` validation that raises on missing new fields will silently break old files.
+The index formula appears in three places in the current codebase: `network_builder.py` (the `node_index()` local function and directly in `b_sources` / `b_boundary` index arithmetic), `transient.py` (the reshape call `t_vec.reshape(state_shape)` where `state_shape = (n_layers, grid.ny, grid.nx)`), and `postprocess.py` (probe extraction uses `layer_idx * n_per_layer + ...`). Developers often update the builder but forget the reshape or the postprocessor. The bug is silent because wrong probes still return a temperature value — just from the wrong node.
 
 **How to avoid:**
-Every new field added to `from_dict()` must use `.get(key, sensible_default)`, never `data[key]`. New sub-objects must be entirely optional with a factory default. Add a `schema_version` integer field to the JSON root and write a migration function that upgrades v1 → v2 → v3 sequentially. Test backward compatibility explicitly: load every file in `examples/` after any model change. Never rename existing keys — add new keys alongside old ones and deprecate.
+Introduce a `NodeLayout` object (or a function) that is the single source of truth for node indexing. It takes a per-layer `nz` list and computes the cumulative offset for each layer. Every other module imports and uses `NodeLayout.node_index(layer_idx, iz, iy, ix)` — no module computes raw offsets inline. The `n_nodes` property, the reshape shape, and the probe extraction all derive from `NodeLayout`. Make the current `n_per_layer` a property on this object. Write a unit test that verifies `NodeLayout.node_index()` for a heterogeneous nz configuration before any downstream code is wired to it.
 
 **Warning signs:**
-- Any `data["new_field"]` (bracket access, not `.get()`) in a new `from_dict()` path
-- New `__post_init__` validation that checks for a field that didn't exist before
-- No `examples/` load test after model changes
-- `TransientConfig.from_dict()` accepting a new `method` value without a default fallback
+- The expression `layer_idx * n_per_layer` appears anywhere outside `NodeLayout` (or the equivalent centralized indexing object)
+- `state_shape = (n_layers, grid.ny, grid.nx)` hardcoded in `transient.py` — this must become `(total_z_nodes, grid.ny, grid.nx)` or a per-layer structure
+- Probe temperatures that are numerically plausible but wrong (a subtle bug: probe reads from a neighbor node in the wrong layer)
+- Unit tests that only test nz=1 per layer — they will pass even with the broken formula
 
-**Phase to address:** Every phase that touches data models; especially power-cycling and parametric sweep additions
+**Phase to address:** Per-cell material network builder phase (v2.0 Phase 1) — establish NodeLayout before any z-refinement work; z-refinement phase (v2.0 Phase 2) — all consumers must be updated before declaring z-refinement complete
 
 ---
 
-### Pitfall 3: PyInstaller onefile Mode Causes Antivirus Quarantine and Slow Startup
+### Pitfall 3: Backward Compatibility Silently Breaks — Old Projects Solve Differently
 
 **What goes wrong:**
-`--onefile` bundles everything into a self-extracting archive that unpacks to `%TEMP%` on every launch. Corporate Windows environments with endpoint protection (Defender, CrowdStrike, Cylance) routinely flag or quarantine freshly extracted executables from temp directories. Even when not quarantined, on cold startup with a large bundle (numpy + scipy + matplotlib + PySide6 ≈ 200-400 MB uncompressed) startup time is 15-30 seconds, which feels broken to a non-programmer user.
+An existing project JSON has no `material_zones` key and no `nz` key. The new `from_dict()` adds these optional fields. If the default for `material_zones` is an empty list, the new network builder interprets an empty zone list as "no zones defined" and falls back to the uniform-material behavior — this is correct. But if the fallback path in the network builder uses a slightly different conductance formula (e.g., different harmonic mean weighting, different interface resistance splitting) than the old code, old projects now produce different temperatures. The JSON loads without error and the solver runs without error — but the numbers are wrong relative to the old solver. Engineers who have calibrated expectations from v1.0 results will not trust the tool.
 
 **Why it happens:**
-`--onefile` is tempting because it produces a single file easy to share via email or Teams. But the temp-extraction pattern is exactly what malware does, and heuristic scanners trigger on it. The project's no-admin constraint means users cannot add exclusions to their AV software.
+The 2.5D builder uses a specific through-thickness conductance formula: `r_total = (lower.thickness / (2 * lower_mat.k_through * area)) + (interface_resistance / area) + (upper.thickness / (2 * upper_mat.k_through * area))`. This half-thickness resistance model is a particular discretization choice. When you generalize to per-cell and per-z-node conductances, it is easy to accidentally use a different formula (e.g., full-thickness instead of half-thickness, or forgetting the interface resistance term). This changes results for old projects even when no zones are defined.
 
 **How to avoid:**
-Use `--onedir` (default PyInstaller mode) and distribute the entire `dist/app/` folder as a zip. Place the launcher `.exe` at the top level of the folder. Create a `launch.bat` or simple shortcut that points to `dist/app/app.exe`. This avoids temp-directory extraction, starts faster, and does not trigger AV heuristics. The folder looks messy but users only ever double-click one file. Do not use UPX compression — it triggers additional AV false positives.
+Write a regression test before writing any new code. Take an existing example project (e.g., `examples/steady_uniform.json`), run it through the current solver, save the temperature array to a `.npy` reference file. After the new builder is implemented, run the same project through the new builder with `material_zones=[]` and `nz=1` per layer, and assert that temperatures match to within 0.001°C. This test must be part of CI and must pass before the new builder is considered complete. The test will catch any formula drift immediately.
 
 **Warning signs:**
-- Build spec using `--onefile` or `EXE(console=False, onefile=True)`
-- UPX compression enabled in spec file
-- No test on a machine with corporate AV before declaring packaging done
+- No regression test that compares new builder output to saved old-solver reference temperatures
+- The fallback path in the new builder is new code rather than a verified copy of the old path
+- `from_dict()` changes that modify how existing fields (e.g., `interface_resistance_to_next`) are read
+- Phase plans that say "implement new builder, then verify backward compat" rather than "write backward compat test first, then implement"
 
-**Phase to address:** Packaging phase (Phase 4)
+**Phase to address:** v2.0 Phase 1 (first task before any builder changes) — write the regression test; then the test is the acceptance criterion for the entire phase
 
 ---
 
-### Pitfall 4: MainWindow God Object Collapses Under Phase 4 Feature Weight
+### Pitfall 4: Sparse Matrix Assembly Memory Explosion for Large 3D Meshes
 
 **What goes wrong:**
-`main_window.py` is already 939 lines mixing UI construction, event handling, data validation, simulation dispatch, and plot management. Phase 4 adds parametric sweep UI, PDF export dialogs, power-profile editors, and improved results comparison — all of which are candidate for adding more methods to `MainWindow`. At ~1500+ lines, the class becomes impossible to test, impossible to reason about, and extremely difficult to extend without causing regressions.
+The current COO accumulator pattern works well for 2.5D meshes. For a 100×80 mesh with 8 layers, `n_nodes = 64,000` and the matrix has at most 6 links per interior node ≈ 384,000 non-zero entries — small. For a 3D mesh with z-refinement: 100×80 mesh, 8 layers each with nz=5 means `n_nodes = 3,200,000`. The COO accumulator before `tocsr()` conversion holds 4 arrays (rows, cols, data for `_add_link_vectorized`) that each grow to ~20M entries. At 8 bytes per float64, this is ~640 MB of intermediate COO data just for the off-diagonal links — before the CSR conversion, which allocates another copy. On a 16 GB Windows laptop with competing processes, this can fail with MemoryError or cause OS-level swapping that makes the system unresponsive.
 
 **Why it happens:**
-The prototype was built fast; everything went into `MainWindow` because it was the only class. Adding Phase 4 features without first extracting controllers makes each feature entangle with all the others through shared `self.last_*` state.
+The `coo_rows`, `coo_cols`, `coo_data` lists accumulate all links before a single `np.concatenate()` + `coo_matrix()` + `tocsr()` at the end. The peak memory is the sum of all intermediate arrays before the COO object is built. This is fine for 2.5D sizes but the 3D case can have 50x more nodes with z-refinement.
 
 **How to avoid:**
-Before adding Phase 4 features, extract three collaborators from `MainWindow`: (1) a `TableDataParser` that converts all table-widget data to/from model objects, (2) a `SimulationController` (a `QObject`) that owns the `QThread` worker and exposes signals for results, and (3) a `PlotManager` that owns the matplotlib canvases and update logic. `MainWindow` then becomes a thin coordinator. CONCERNS.md already identifies this decomposition as the right path. Extract before adding, not after.
+For 3D meshes, switch from a list-of-arrays accumulator to building the CSR matrix in blocks: assemble in-plane links for each layer slice into a sub-matrix, assemble through-thickness links separately, then use `scipy.sparse.block_diag` and `scipy.sparse.bmat` to combine. Alternatively, preallocate fixed-size COO arrays using the exact non-zero count formula for a structured grid: `nnz = 2 * n_nodes + 2 * (nx-1)*ny*nz_total + 2 * nx*(ny-1)*nz_total + 2 * n_nodes_minus_top_z_slice` (interior links only). This avoids the `np.concatenate()` peak. For moderate 3D meshes (under 500k nodes), the current pattern is fine. For large meshes, add a `n_nodes` check before assembly and warn the user if memory estimate exceeds a threshold (e.g., 500k nodes → estimated peak 2 GB intermediate arrays).
 
 **Warning signs:**
-- Any new Phase 4 feature implemented directly as methods on `MainWindow`
-- Methods longer than 50 lines in `main_window.py`
-- `self.last_*` state being read by more than two distinct methods
-- New signals connected inside `__init__` growing past ~20 connections
+- No node-count sanity check before network assembly begins
+- GUI allows setting nz=10 per layer without any warning about memory
+- `np.concatenate(coo_rows)` is the largest memory allocation in a profile run
+- Windows task manager shows physical memory >80% during network build for large meshes
 
-**Phase to address:** GUI overhaul phase (Phase 4, first task before adding features)
+**Phase to address:** v2.0 Phase 1 (per-cell builder) — add node count check and memory estimate warning; v2.0 Phase 2 (z-refinement) — assess whether the current assembly pattern is sufficient or needs restructuring based on actual mesh sizes engineers will use
 
 ---
 
-### Pitfall 5: PDF Report Missing Fonts at Runtime on Target Machines
+### Pitfall 5: splu Factorization at 1M+ Nodes Takes Minutes and Stalls the GUI
 
 **What goes wrong:**
-ReportLab uses font lookup at PDF generation time. If the report uses a font that is not embedded in the PDF and is not installed on the end user's machine, the PDF renderer (Acrobat, Windows PDF viewer) either substitutes a wrong font or fails entirely. On restricted corporate machines, the font set is often non-standard. The PyInstaller bundle does not automatically bundle system fonts.
+`scipy.sparse.linalg.splu` (SuperLU) is a direct sparse solver. It works well up to ~200k nodes (sub-second on typical hardware). The current STATE.md notes that at 150×100 mesh the solver runs in ~5 seconds. With z-refinement at nz=5 per layer, the same panel becomes a 750k-node system. SuperLU's fill-in for a 3D structured grid is substantially worse than for a 2.5D slab — 3D structured grids have a less favorable sparsity pattern for LU decomposition. Factorization of a 1M-node 3D problem can take 5-15 minutes on a typical engineering laptop, and the transient solver's `splu()` prefactoring call happens synchronously before the time loop starts. If this is called on the main thread (even with the existing `SimulationController` worker), users see a frozen progress bar at 0% for minutes — indistinguishable from a crash.
 
 **Why it happens:**
-Developers test PDF generation on their own dev machine where the font is installed. ReportLab's `registerFont()` with a `.ttf` path works fine during development. After packaging with PyInstaller, the `.ttf` path becomes invalid because data files must be explicitly added to the spec's `datas=[]` list and accessed via `sys._MEIPASS` at runtime.
+SuperLU's complexity scales superlinearly with node count for 3D problems. The 2.5D solver never encountered this because the z-direction had only one node per layer. Engineers, excited to try z-refinement, may set nz=10 on all layers to "get good resolution" — this immediately creates a prohibitively large system.
 
 **How to avoid:**
-Either (a) use only ReportLab's 14 built-in Type1 fonts (Helvetica, Times, Courier and variants) which are always available without embedding — this is the safest path for an internal tool, or (b) embed a small subset of an open-source font (e.g., DejaVu Sans) as a data file in the package, add it to the PyInstaller `datas` list, and resolve the path with a helper that checks `sys._MEIPASS` vs. the normal module path. Option (a) is recommended unless engineering brand guidelines require a specific typeface.
+Add a pre-solve node count check that emits a warning (both in the GUI and in the CLI) when `n_nodes > 300,000`: "Mesh contains {n} nodes — solve may take several minutes. Consider reducing nz or nx/ny." Do not refuse to solve, but make the scale explicit. In the GUI, show the node count in the status bar as a live indicator that updates when mesh parameters change. For the transient solver, ensure the `splu()` call is inside the `SimulationController`'s worker thread and reports progress ("Factorizing matrix..." with an indeterminate progress bar) so the GUI remains responsive. Do not add a second solver (iterative CG/GMRES) unless SuperLU is measured as insufficient at the actual mesh sizes engineers use — STATE.md notes CG did not converge well at 1M nodes.
 
 **Warning signs:**
-- `reportlab.pdfbase.pdfmetrics.registerFont(TTFont(...))` with a hardcoded path
-- No `sys._MEIPASS` path resolution helper in the codebase
-- PDF generation tested only on developer machine, not from a PyInstaller build
-- Font file not listed in PyInstaller spec `datas`
+- No node count display or warning in the GUI
+- The `splu()` call is outside the `QThread` worker (anywhere the main thread can block)
+- No test that measures solver time at 3D mesh sizes before declaring the feature complete
+- nz spinbox in the GUI with a maximum of 50 or no maximum
 
-**Phase to address:** PDF report phase (Phase 4)
+**Phase to address:** v2.0 Phase 1 (network builder) — add node count check and warning; v2.0 Phase 2 (z-refinement GUI) — live node count in status bar, nz spinbox max = 10 as a soft guard
 
 ---
 
-### Pitfall 6: Parametric Sweep Accumulating Full Transient Arrays in Memory
+### Pitfall 6: Interface Resistance Between z-Sub-Layers Must Not Use Layer-Level Value
 
 **What goes wrong:**
-A parametric sweep that varies 5 parameters × 4 values each produces up to 1024 runs. If each transient run stores the full `temperatures_time_c` array (currently `[nt, n_layers, ny, nx]`), and a 500×500 mesh with 1000 timesteps produces ~4 GB per run, the sweep either exhausts RAM or swaps to disk and becomes unusably slow — even at default mesh (30×20) with 1200 timesteps, 10-run sweeps already store ~350 MB of numpy arrays before results are aggregated.
+The current `Layer` model has `interface_resistance_to_next: float` which represents the contact resistance between this layer and the layer above it in the stack. With z-refinement (multiple z-nodes through a single layer), there are now *internal* z-z conductances within one layer and *external* interface conductances between layers. If the builder incorrectly applies `interface_resistance_to_next` to both the layer boundary and the internal z-z links, the internal resistance is 5-10x too large (for nz=5, the internal links are `layer.thickness / nz` apart, not `layer.thickness / 2`). This produces temperatures with correct qualitative spatial distribution but systematically wrong magnitudes — the through-thickness gradient is too steep.
 
 **Why it happens:**
-`TransientResult` stores the complete 4-D array in memory (confirmed in `transient.py` line 56-68). This is fine for single runs. Parametric sweeps naively iterate and collect results the same way, holding all of them in memory simultaneously.
+The current through-thickness conductance formula: `r_total = lower.thickness / (2 * lower_mat.k_through * area) + interface_resistance / area + upper.thickness / (2 * upper_mat.k_through * area)` explicitly models half-thickness of each layer plus the interface gap. With sub-layers from z-refinement, each internal z-z link has a resistance of `(layer.thickness / nz) / (k_through * area)` with no interface term. The interface term belongs only at the true layer boundary. Mixing these up is easy because both look like "z-direction resistance" in the code.
 
 **How to avoid:**
-The sweep engine must define its result summary at design time: it only needs peak temperature per layer, probe max/mean, and final temperature map — not the full time history. Extract summary statistics immediately after each run inside the worker, release the full array, and store only the summary dict. The sweep result is a list of `{params: dict, summary: dict}` — never a list of `TransientResult`. The full transient result of a single run can optionally be exported to CSV if the user flags it.
+Make the distinction explicit in the builder. When iterating z-z links within a layer (internal to z-refinement), use only `dz / (k_through * area)` where `dz = layer.thickness / nz`. When iterating z-z links at the layer boundary (between layers), use the existing half-thickness + interface + half-thickness formula. Write an analytical test: a single-layer slab with nz=5, no interface resistance, thermal gradient should match the 1D analytical solution `T(z) = T_base + q * z / k`. This test will fail immediately if internal z-z links include the interface resistance term.
 
 **Warning signs:**
-- Parametric sweep that stores a `list[TransientResult]` or `list[SteadyStateResult]`
-- No `summary()` extraction step between run completion and result storage
-- Memory profiling not part of sweep integration test
+- `interface_resistance_to_next` appears in any code path that generates z-z links for nodes within the same layer
+- No nz>1 analytical validation test (through-thickness temperature gradient against 1D slab formula)
+- The same conductance function is used for both internal-z and layer-boundary-z links
 
-**Phase to address:** Parametric sweep phase (Phase 4)
-
----
-
-### Pitfall 7: Power Cycling Timestep / LU Factorization Invalidation
-
-**What goes wrong:**
-The current transient solver pre-factors the LHS matrix with `splu()` once before the time loop because the matrix `A + C/dt` is constant when `dt` is fixed. Power cycling (varying heat source power over time) changes `b_vector` each timestep but not the matrix — so this is safe. However, if power cycling is implemented by rebuilding the thermal network each step (re-calling `build_thermal_network()`) or by modifying boundary conditions that affect the matrix, the LU factor is stale and results are silently wrong.
-
-**Why it happens:**
-The distinction between "right-hand side changes" (power input, boundary temperatures) and "matrix changes" (topology, boundary condition coefficients, geometry) is subtle. Developers adding power cycling may call `build_thermal_network()` in the time loop to update `b_vector`, which also regenerates the matrix, invalidating the pre-factored LU without triggering an error.
-
-**How to avoid:**
-Power profiles must only update `b_vector` (the forcing term), never the matrix. Separate `build_thermal_network()` into two concerns: `build_matrix()` (topology, BCs, capacitance — called once) and `build_forcing(t)` (heat source power at time t — called each step). Assert inside the solver that the matrix shape does not change between steps. Document this invariant explicitly.
-
-**Warning signs:**
-- Any call to `build_thermal_network()` inside a time-stepping loop
-- Power profile implementation that modifies `BoundaryConditions` objects at runtime
-- No assertion or test that LU factorization remains valid through a duty-cycle run
-
-**Phase to address:** Power cycling / time-varying heat source phase (Phase 4)
-
----
-
-### Pitfall 8: Resource Path Resolution Breaks After PyInstaller Packaging
-
-**What goes wrong:**
-The application calls `_load_startup_project()` from a hardcoded relative path (e.g., `"examples/steady_uniform.json"`). When packaged with PyInstaller, the working directory is wherever the user double-clicks the exe, and relative paths to bundled data files no longer resolve. The startup project silently fails to load (currently caught by a bare `except Exception` on line 383), leaving the user with a blank — confusing for a non-programmer who expects a working example on first launch.
-
-**Why it happens:**
-Relative paths work during development because `python -m thermal_sim.app.gui` is run from the repo root. After packaging, bundled files live under `sys._MEIPASS` and the working directory is unpredictable.
-
-**How to avoid:**
-Create a `resources.py` module with a `get_resource_path(relative_path: str) -> Path` helper that returns `Path(sys._MEIPASS) / relative_path` when frozen, and `Path(__file__).parent.parent / relative_path` otherwise. Add all example files to the PyInstaller spec `datas`. Replace every hardcoded relative path in the codebase with this helper. Replace the bare `except Exception` on startup load with a specific `FileNotFoundError` / `json.JSONDecodeError` handler that logs a warning.
-
-**Warning signs:**
-- `open("examples/...")` or `Path("examples/...")` anywhere in application code
-- No `sys.frozen` / `sys._MEIPASS` check in path resolution
-- Bare `except Exception` on file load that silently discards the error
-- PyInstaller spec with no `datas=` entries for example files
-
-**Phase to address:** Packaging phase (Phase 4)
+**Phase to address:** v2.0 Phase 2 (z-refinement network builder) — this is the single most physics-critical correctness pitfall for z-refinement
 
 ---
 
@@ -178,69 +139,76 @@ Shortcuts that seem reasonable but create long-term problems.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| All logic in `MainWindow` | Fast prototype development | Untestable, can't add features without regression risk | Phase 1-3 prototype only — never beyond Phase 4 start |
-| Bare `except Exception` in GUI | Prevents crashes on bad input | Hides real bugs; makes debugging production issues impossible | Never — replace with specific exception types |
-| `assert` for control flow (`assert self.last_transient_result is not None`) | One-liner | Silently disabled with `python -O`; packaged apps should never use `-O` but it's an invisible footgun | Never — use `if x is None: raise RuntimeError(...)` |
-| No `schema_version` in JSON | Simpler initial format | Any future field change requires guessing file age; migrations become impossible | Acceptable in Phase 1; must be added before Phase 4 adds new fields |
-| `>=` version pins in `requirements.txt` | Always gets latest fixes | numpy 2.x or scipy breaking changes will silently corrupt a packaged build | Fine during active dev; pin upper bounds before packaging |
-| Blocking solver call in button handler | Simpler code | GUI freezes; fatal for non-programmer users who will force-close the app | Never for parametric sweep; acceptable for sub-second single runs only |
+| Copy-paste the old layer loop and add a material-zone branch inside it | Fast to write, old path unchanged | Duplicate logic diverges; future material model changes must be applied twice | Never — extract a shared `_cell_conductance_array()` function |
+| Use Python `dict` lookup `material_map[zone_id]` inside the per-cell loop | Simple to read | O(n_cells) Python-level dict lookups; kills vectorization | Acceptable at design time; must be replaced with NumPy integer-indexed array lookup before shipping |
+| Skip NodeLayout abstraction, update the index formula inline everywhere | Saves one class | Every consumer must be updated manually for z-refinement; missed consumers cause silent wrong results | Never — the abstraction has direct payoff at z-refinement time |
+| Use `nz=1` everywhere internally but add nz>1 "later" | Avoids restructuring now | Deferred restructuring always costs more; by the time z-refinement is added, per-cell material code is established and hard to change | Never — if z-refinement is in scope for v2.0, NodeLayout must accommodate it from the start |
+| Represent material zones as a list of `(rect, material_name)` tuples interpreted at build time | Avoids a 2D NumPy array | Requires O(n_cells * n_zones) overlap testing per build; slow for many zones | Acceptable for ≤5 zones; need NumPy `material_id_map[ny, nx]` for >5 zones or frequent rebuilds |
+| Store `material_id_map` as a `list[list[str]]` (Python lists of material name strings) | Easy to serialize | 100x slower lookup than a NumPy `int32` array indexed into a material list | Fine in the model (for JSON round-trip); must be converted to `np.int32` array before the network builder uses it |
 
 ---
 
 ## Integration Gotchas
 
-Common mistakes when connecting the components added in Phase 4.
+Common mistakes when connecting the new per-cell and z-refinement features to the existing system.
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Matplotlib figure → PDF via ReportLab | Saving figure to disk as PNG then passing file path to ReportLab `Image()` | Render figure to `io.BytesIO` buffer (`fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')`), pass buffer directly to `reportlab.platypus.Image(buf)` — no temp files |
-| QThread worker → MainWindow UI update | Calling `self.label.setText()` from inside the worker's `run()` method | Emit a `Signal(str)` from worker; connect to `label.setText` in `MainWindow` — all widget updates from main thread only |
-| PyInstaller `--add-data` for JSON examples | Path separator: `--add-data "examples;examples"` on Windows (semicolon, not colon) | Use the spec file `datas=[("examples", "examples")]` to avoid shell quoting hell; verify with `os.listdir(sys._MEIPASS)` debug print |
-| ReportLab + matplotlib colorbar | `tight_layout()` called before saving to buffer clips the colorbar | Call `fig.savefig(buf, bbox_inches='tight')` explicitly — `tight_layout()` alone is not sufficient when colorbars are present |
-| Parametric sweep result display | Rebuilding the entire results table from scratch on every new result signal | Use `QAbstractTableModel` backed by the growing results list; `beginInsertRows()` / `endInsertRows()` for incremental updates |
+| `postprocess.py` probe extraction | `layer_idx * n_per_layer + iy * nx + ix` hardcoded — breaks for nz>1 | Use `NodeLayout.probe_node(layer_idx, probe_x, probe_y)` that accounts for variable nz; probe reads from the top z-node of the layer by default |
+| `transient.py` result reshape | `t_vec.reshape((n_layers, grid.ny, grid.nx))` — fails for nz>1 | Reshape to `(total_z_nodes, grid.ny, grid.nx)` or use NodeLayout to extract per-layer-top slices for the output array |
+| `SteadyStateResult` / `TransientResult` shape | `temperatures_c: np.ndarray  # shape: [n_layers, ny, nx]` — 3D arrays now have extra z axis | Either add a `temperatures_3d_c: np.ndarray  # [nz_total, ny, nx]` field alongside the existing one (backward compat), or change the shape and update all consumers simultaneously |
+| GUI temperature map display | Expects `temperatures_c[layer_idx, :, :]` — direct 2D slice | For nz>1, expose a "z-slice selector" and compute the correct node index from NodeLayout; default to top z-node for backward visual compatibility |
+| CSV export | `temperature_map_c[layer_idx]` indexing — breaks for nz>1 | Export format must be updated to include z-slice index; old CSV readers will break if format changes without version bump |
+| JSON backward compat | Adding required `material_zones` key or `nz` key to Layer without defaults | All new fields must use `.get(key, default)` in `from_dict()`; `material_zones` default = `[]` means "uniform material from `layer.material`"; `nz` default = `1` means "one z-node, 2.5D behavior" |
+| `DisplayProject.__post_init__` validation | Adding zone validation that rejects a zone material name not in `project.materials` — correct, but timing matters | Zone validation must run after all materials are loaded; the existing validation order is materials first, then layers — zones must be validated after both |
+| `material_for_layer()` method | Code that calls `project.material_for_layer(l_idx)` in the new per-cell builder — this returns a single material, incorrect for per-cell | Replace calls to `material_for_layer()` in the builder with calls to `project.material_map_for_layer(l_idx)` that returns the `np.int32` zone map and the material list |
 
 ---
 
 ## Performance Traps
 
-Patterns that work at small scale but fail as usage grows.
+Patterns that work at small scale but fail as mesh size grows.
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Full `TransientResult` stored per sweep run | Memory grows linearly with sweep size; app hangs or crashes | Extract summary stats immediately, release array | ~10 runs at default mesh, ~3 runs at 200×150 mesh |
-| `canvas.draw()` called on every timestep result signal | Matplotlib redraws are expensive; GUI animation lags far behind computation | Throttle: only redraw if >250 ms since last draw, or redraw only on `finished` signal | Noticeable from first run; severe with 1000+ timestep transients |
-| Rebuilding all QTableWidget rows on every model change | Table flickers; scroll position resets; slow for large probe/layer counts | Patch only changed rows; or use `QAbstractTableModel` for read-only result tables | Noticeable at ~50 rows; severe at ~200 |
-| PDF generation blocking main thread | App freezes during report generation (reportlab with embedded figures is slow) | Run PDF generation in QThread worker same as solver | Large reports (many figures) take 2-5 seconds; worse with high-DPI figure export |
-| Re-calling `build_thermal_network()` at every parametric step | Network rebuild is significant CPU even if only one parameter changes | Build network once per sweep run (correct), not once per timestep | Immediate: transient sweep runs become 10× slower |
+| Python loop over cells for per-cell conductance | Network build time grows 100x vs current; 30×20 mesh takes 10s instead of 0.1s | Pre-build NumPy conductance arrays; harmonic-mean via array slicing | Immediately visible at 30×20 mesh with Python loops |
+| `np.add.at()` for per-cell heat source distribution with zones | Slow for many small zones (each `add.at()` call is O(n_touched_cells)) | Pre-compute which cells belong to which zone; use boolean mask array | Noticeable at >20 zones; severe at >100 zones |
+| Re-running `build_thermal_network()` for every GUI parameter change | Interactive parameter edits cause 5-30s lag per keystroke for large meshes | Debounce: only rebuild on explicit "Run" click, not on every spinbox change | Immediate for any mesh >50×50 |
+| SuperLU factorization at >300k nodes | Factorization takes minutes; progress bar appears frozen | Node count check + user warning before solve; keep nz defaults low (1 or 2) | 3D mesh with 100×80×(8 layers * nz=5) = 3.2M nodes |
+| Storing full transient history for 3D results | `[nt, nz_total, ny, nx]` at 1000 timesteps × 500k nodes × 8 bytes = 4 GB | Cap stored samples; stream to disk for large meshes; or reduce output_interval | >10 timesteps stored for a 300k node 3D mesh |
+| `coo_matrix` intermediate arrays growing proportional to nnz | Peak memory 3-5x the final CSR matrix size during assembly | Pre-allocate fixed-size COO arrays using exact nnz formula for structured grid | Meshes with >200k nodes hit >2 GB intermediate allocation |
 
 ---
 
 ## UX Pitfalls
 
-Common user experience mistakes for non-programmer engineering tool users.
+Common user experience mistakes in the material zone editor and z-refinement controls.
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| No progress indicator during long runs | Users cannot tell if app is frozen or running; they force-close it | Progress bar + cancel button for any computation over ~1 second; show current sweep iteration (e.g., "Run 3 of 20") |
-| Error messages that expose Python tracebacks | "KeyError: 'material'" means nothing to a hardware engineer | Catch all solver/IO errors in `SimulationController`; present a one-sentence English message ("Layer 'Copper' references unknown material — check the Materials tab") |
-| Parametric sweep results with no unit labels | Engineers cannot interpret a table of bare numbers | Every result column must include units in the header: "Peak T (°C)", "T_ambient delta (K)", "Time to 80°C (s)" |
-| "Run" button stays active during sweep | User clicks Run again mid-sweep, launching a second worker thread that conflicts with the first | Disable Run button and all editing controls while worker is active; re-enable only in `finished` slot |
-| PDF report that opens immediately in a modal dialog | Engineers want to generate a report and keep working | Save PDF to disk and show a non-modal notification with an "Open" link; do not block the UI |
-| Unsaved-changes warning missing on exit | Engineers lose parameter edits when closing accidentally | Implement `closeEvent()` override that checks a dirty flag; prompt "Save before closing?" |
+| Material zone editor with no visual preview | Engineers cannot tell if zones cover the right cells; they run the solver to check | Show a 2D color map of the zone assignment in the zone editor (or in the structure preview); update it live as zone rectangles are defined |
+| Zone overlap ambiguity (last-wins vs first-wins vs error) | Engineers define overlapping zones and get unexpected material assignment | Define and document a clear rule (last-defined zone wins, matching ELED cross-section use case); show the effective zone assignment map so the result is visible |
+| z-refinement spinbox with no node count feedback | Engineer sets nz=10 on a 100×80 mesh without realizing this creates a 640k-node problem | Show live "Total nodes: {n}" in the status bar or next to the nz control; update on every spinbox change |
+| Zone definition requires exact coordinates in SI units (metres) | Engineers think in mm; entering 0.004 instead of 4mm causes errors | Display zone coordinates in mm (matching the existing GUI mm preference from feedback); store internally in metres (existing SI convention) |
+| Copying zone definitions from one layer to another is not supported | ELED cross-sections repeat on every row of the LED grid; engineers re-enter zones manually | Provide a "Copy zones from layer" dropdown in the zone editor; reduces ELED setup from 20 minutes to 20 seconds |
+| No distinction between "no zones defined" and "one zone covering all cells" | Engineers add one zone that covers everything, then delete material fields, leaving an empty zone list; solver may behave unexpectedly | If `material_zones` is empty, always fall back to `layer.material` for the whole layer; never treat empty zones as an error; document this in tooltips |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-Things that appear complete but are missing critical pieces for Phase 4.
+Things that appear complete but are missing critical pieces for v2.0.
 
-- [ ] **Parametric sweep:** Runs all combinations, produces a result list — verify that memory is released between runs, cancel mid-sweep works cleanly, and results persist after the worker thread is destroyed
-- [ ] **PDF report:** Generates a file — verify the file opens correctly on a machine other than the developer's, fonts render correctly, all figures are the right size, and generation works from the packaged exe (not just from source)
-- [ ] **Power cycling:** Simulates duty-cycle power — verify that LU factorization is not being re-computed each step, that time-averaged temperatures are physically correct against a known analytical case, and that the GUI shows the time-varying power profile
-- [ ] **GUI overhaul:** Looks polished in screenshots — verify it is usable at 1366×768 (smallest common corporate laptop resolution), that all editing actions are reachable without scrolling horizontally, and that tab order is logical for keyboard-only navigation
-- [ ] **PyInstaller packaging:** `app.exe` launches — verify on a clean machine with no Python installed, with corporate AV active, from a path containing spaces, and from a network share (common corporate workflow)
-- [ ] **JSON backward compat:** New fields load without errors — verify by running the full `examples/` test suite against the old project files after any `from_dict()` change
-- [ ] **One-click launch:** Double-clicking the exe opens the GUI — verify there is no console window flash, the window icon appears in the taskbar (requires `SetCurrentProcessExplicitAppUserModelID`), and the startup example project loads
+- [ ] **Per-cell material network builder:** Produces correct COO triplets — verify that the resulting conductance matrix passes the backward-compat regression test (old project, identical temperatures to v1.0 solver output)
+- [ ] **Per-cell material network builder:** Handles zone overlap correctly — verify the priority rule (last-wins) with a two-zone overlap unit test
+- [ ] **NodeLayout abstraction:** Compute correct node indices — verify with a 3-layer, heterogeneous nz=[1,3,2] test that `NodeLayout.node_index()` produces unique, contiguous indices for all nodes
+- [ ] **z-refinement network builder:** Internal z-z links have correct resistance — verify against 1D analytical temperature profile for a single-material slab with nz=5 and known boundary conditions
+- [ ] **Backward compatibility:** Old project JSON loads and solves identically — automated test using saved reference temperatures from v1.0 solver
+- [ ] **JSON serialization round-trip:** New fields survive save/load — verify that a project with 3 material zones and nz=[2,1,3] serializes to JSON and deserializes to an identical Python object
+- [ ] **Probe extraction:** Returns temperature from correct node for nz>1 — verify probe at a specific z-position in a layer with nz=3 reads from the correct z-sub-node, not the default z=0 sub-node
+- [ ] **GUI material zone editor:** Zone editor signals do not cascade — verify that setting a zone's material does not trigger a network rebuild on every keystroke (debounce or block-signals pattern)
+- [ ] **Performance:** Network builder within acceptable time bounds — benchmark at 100×80 mesh, 8 layers, 5 zones per layer; assert build time <5 seconds
+- [ ] **Memory:** Assembly peak memory acceptable — at 100×80, nz=3 per layer, 8 layers (192k nodes), measure peak RSS during `build_thermal_network()`; assert <1 GB
 
 ---
 
@@ -250,12 +218,13 @@ When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| GUI freeze from blocking solver | MEDIUM | Extract `SimulationController` with `QThread`; requires refactoring `MainWindow` button handlers but not the solver core |
-| JSON backward compat broken | HIGH | Write a migration script that reads old format, adds default values for missing fields, rewrites as new format; communicate to all users to migrate their files manually |
-| PyInstaller AV quarantine | MEDIUM | Switch from `--onefile` to `--onedir`; rebuild and redistribute folder zip; update launch instructions |
-| Font missing in PDF on target machine | LOW | Switch to ReportLab built-in fonts (Helvetica/Times); no architectural changes required |
-| MainWindow god object too large to maintain | HIGH | Incremental extraction: start with `TableDataParser` (lowest risk), then `PlotManager`, then `SimulationController`; each extraction is a standalone refactor with its own test |
-| Memory exhaustion in parametric sweep | MEDIUM | Add summary-only extraction immediately after each run; requires changing sweep accumulation loop but not the solver |
+| Per-cell loop destroys performance | MEDIUM | Profile to identify which loop is slow; convert conductance computation to NumPy array arithmetic; `_add_link_vectorized()` signature accepts both scalar and array with one-line change |
+| NodeLayout abstraction missing, index formula everywhere | HIGH | Introduce NodeLayout with the corrected formula; use grep to find all `layer_idx * n_per_layer` expressions; update them one-by-one; re-run tests after each file |
+| Backward compat broken (different temperatures for old projects) | HIGH | Diff the old and new builder code path to find the formula change; restore the exact old formula in the nz=1 / no-zones path; write the regression test that would have caught this |
+| Sparse matrix memory exhaustion at large meshes | MEDIUM | Switch from list-accumulator to block-wise assembly; `scipy.sparse.bmat()` accepts a list of sub-matrices without requiring all COO entries in memory simultaneously |
+| SuperLU timeout for large 3D meshes | LOW | Add user warning before solve; do not attempt to add a second solver; document the practical mesh size limit (300k nodes) in the GUI tooltip and in the user guide |
+| Interface resistance applied inside layer (wrong z-z formula) | MEDIUM | Write the 1D slab analytical test; find the location in the builder where `interface_resistance_to_next` is being accessed for an internal z-z link; remove it; verify test passes |
+| JSON backward compat broken by new required keys | MEDIUM | Add `.get(key, default)` for all new fields in `from_dict()`; deploy updated version; communicate to users that the new version can load old files |
 
 ---
 
@@ -265,30 +234,33 @@ How roadmap phases should address these pitfalls.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Blocking solver / GUI freeze | GUI overhaul + refactor (Phase 4, week 1) | Run a 10-second computation from GUI; confirm window remains responsive |
-| JSON backward compat breaks | Every model-change task | Load all `examples/*.json` files in CI after any `from_dict()` change |
-| PyInstaller AV / onefile | Packaging phase (Phase 4, last milestone) | Test `--onedir` build on a clean machine with Defender enabled |
-| PDF font missing after packaging | PDF report phase (Phase 4) | Generate report from the exe build and open on a second machine |
-| MainWindow god object growth | GUI overhaul (Phase 4, before adding features) | `main_window.py` must be under 400 lines after extraction; enforce with a line-count check |
-| Parametric sweep memory bloat | Parametric sweep phase (Phase 4) | Profile memory with `tracemalloc` during a 20-run sweep; peak must stay under 500 MB |
-| Power cycling LU invalidation | Power cycling phase (Phase 4) | Unit test: run a 2-layer model with duty-cycle power; compare final temperature to analytical steady-state average |
-| Resource path breaks after packaging | Packaging phase (Phase 4) | Startup example project loads correctly from `dist/app/app.exe` on a clean machine |
+| Per-cell conductance lookup destroys vectorization | v2.0 Phase 1 — per-cell network builder | Benchmark network build time at 100×80 mesh with 5 zones; assert <5 seconds |
+| Node index formula breaks for variable nz | v2.0 Phase 1 — establish NodeLayout before any builder changes | Unit test: NodeLayout produces unique indices for heterogeneous nz=[1,3,2] configuration |
+| Backward compat: old projects solve differently | v2.0 Phase 1 — write regression test FIRST, before any builder changes | Regression test passes: old project produces temperatures within 0.001°C of v1.0 reference |
+| Sparse matrix assembly memory explosion | v2.0 Phase 1 — add node count warning; v2.0 Phase 2 — assess restructuring need | Memory profile at 192k-node 3D mesh; peak RSS <1 GB |
+| splu factorization too slow for 3D meshes | v2.0 Phase 1 — add pre-solve warning; v2.0 Phase 2 (z-refine GUI) — live node count display | Node count warning appears in GUI before solve for any mesh >300k nodes |
+| Interface resistance applied to internal z-z links | v2.0 Phase 2 — z-refinement network builder | 1D slab analytical test passes for nz=5 single material layer |
+| JSON backward compat broken by new fields | v2.0 Phase 1 — `from_dict()` uses `.get()` for all new fields | Load all `examples/*.json` files with new code; no exceptions; load/solve produces identical temperatures |
+| UX: no node count feedback in GUI | v2.0 Phase 2 — z-refinement controls | Live node count appears in status bar; updates within 100ms of nz spinbox change |
+| UX: zone overlap ambiguity | v2.0 Phase 1 — zone editor design | Documented priority rule; zone preview map shows effective material assignment |
+| Result array shape change breaks postprocessor | v2.0 Phase 1 — NodeLayout and result shape | All postprocessor functions pass existing tests; probe extraction test with nz>1 passes |
 
 ---
 
 ## Sources
 
-- PyInstaller official documentation — onefile vs onedir, data files, hidden imports: https://pyinstaller.org/en/stable/operating-mode.html and https://pyinstaller.org/en/stable/usage.html (HIGH confidence)
-- PySide6 packaging tutorial (pythonguis.com): https://www.pythonguis.com/tutorials/packaging-pyside6-applications-windows-pyinstaller-installforge/ (MEDIUM confidence — verified against PyInstaller docs)
-- Real Python QThread guide: https://realpython.com/python-pyqt-qthread/ (HIGH confidence — official patterns, confirmed by Qt docs)
-- Qt official threading guidance: https://doc.qt.io/qtforpython-6/PySide6/QtCore/QThread.html (HIGH confidence)
-- Matplotlib memory leak issues (GitHub): https://github.com/matplotlib/matplotlib/issues/23701 and https://github.com/matplotlib/matplotlib/issues/20300 (MEDIUM confidence — confirmed real, workarounds well-established)
-- ReportLab user guide (official): https://docs.reportlab.com/ (HIGH confidence)
-- PyInstaller PySide6 Qt forum threading issue (PySide-803): https://bugreports.qt.io/browse/PYSIDE-803 (MEDIUM confidence)
-- JSON schema backward compatibility patterns: https://www.creekservice.org/articles/2024/01/08/json-schema-evolution-part-1.html (MEDIUM confidence)
-- Codebase CONCERNS.md audit (internal, 2026-03-14): known issues in `main_window.py`, `project_io.py`, `transient.py` (HIGH confidence — direct inspection)
+- Direct source inspection: `G:/blu-thermal-simulation/thermal_sim/solvers/network_builder.py` — current COO accumulator pattern, `_add_link_vectorized()`, node index formula, through-thickness conductance formula
+- Direct source inspection: `G:/blu-thermal-simulation/thermal_sim/solvers/transient.py` — `splu()` call location, result reshape, state_shape assumption
+- Direct source inspection: `G:/blu-thermal-simulation/thermal_sim/solvers/steady_state.py` — `spsolve()` call, result reshape
+- Direct source inspection: `G:/blu-thermal-simulation/thermal_sim/models/project.py` — `DisplayProject`, `MeshConfig`, `material_for_layer()`, `from_dict()` patterns
+- Direct source inspection: `G:/blu-thermal-simulation/thermal_sim/models/layer.py` — `interface_resistance_to_next` field, `from_dict()` `.get()` pattern
+- Direct source inspection: `G:/blu-thermal-simulation/.planning/codebase/CONCERNS.md` — identified scaling concerns, memory concerns, node index documentation
+- Direct source inspection: `G:/blu-thermal-simulation/.planning/STATE.md` — measured performance: 90×60 <1s, 150×100 ~5s; CG convergence failure at 1M nodes
+- Direct source inspection: `G:/blu-thermal-simulation/.planning/PROJECT.md` — v2.0 feature scope, backward compat requirement, structured Cartesian grid constraint
+- SciPy documentation on SuperLU fill-in behavior for 3D structured grids (HIGH confidence — superlinear scaling of direct solvers on 3D problems is well-established numerical analysis)
+- NumPy array operation performance (HIGH confidence — Python loop vs vectorized array operation 100x speedup is a well-known NumPy characteristic)
 
 ---
 
-*Pitfalls research for: Desktop engineering simulation tool — Python/PySide6 Phase 4 upgrade*
-*Researched: 2026-03-14*
+*Pitfalls research for: Adding per-cell material heterogeneity and z-refinement to existing 2.5D RC-network thermal solver*
+*Researched: 2026-03-16*

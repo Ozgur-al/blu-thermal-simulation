@@ -1,28 +1,40 @@
 # Feature Research
 
-**Domain:** Desktop thermal simulation engineering tool (RC-network solver, display/automotive)
-**Researched:** 2026-03-14
-**Confidence:** MEDIUM — professional simulation tool UX patterns are well-documented from COMSOL, Ansys Icepak, and Zemax; Phase 4-specific implementation details drawn from training data and verified against current documentation where possible.
+**Domain:** 3D RC-network thermal solver — per-cell material zones and z-refinement for structured Cartesian grid
+**Researched:** 2026-03-16
+**Confidence:** HIGH — findings grounded in direct codebase inspection (network_builder.py, layer.py, project.py), confirmed by electronics-cooling.com PCB thermal conductivity mapping literature, and harmonic-mean conductance theory from peer-reviewed FDM literature.
 
 ---
 
-## Context: What Already Exists (Phase 1-3)
+## Context: Scope Boundary
 
-The following are DONE and are NOT features to build in Phase 4:
+This file covers only the **new v2.0 capabilities** being added to the existing working 2.5D simulator. The following are already shipped and are NOT features to build here:
 
-- 2.5D RC thermal network solver (steady-state + transient, implicit Euler)
-- Material model with anisotropic conductivity, emissivity, interface resistance
-- Layer stack, heat sources (full-area, rectangle, circle), LED array templates
-- Convection + linearized radiation boundary conditions
-- Virtual probe points with time histories
-- CLI runner: steady/transient, CSV export, PNG plots
-- JSON project save/load with full round-trip serialization
-- PySide6 GUI: tabbed editor (materials, layers, heat sources, boundaries, probes), results dashboard, structure preview
-- Embedded matplotlib: temperature maps, probe histories, layer profiles
-- Material library presets (aluminum, copper, FR4, etc.)
-- Analytical validation test suite
+- 2.5D layered RC thermal network (one material per layer, one z-node per layer)
+- Steady-state (`spsolve`) and transient (implicit Euler) solvers
+- LED array expansion — grid/edge/custom modes, zone-based power (Phase 6)
+- Stack templates — DLED/ELED with architecture dropdown (Phase 6)
+- GUI: tabbed editor, temperature maps, probe history, parametric sweep, PDF report, comparison
+- JSON round-trip serialization (`to_dict` / `from_dict` pattern)
+- Material library presets and user-library import/export
 
-Phase 4 elevates this from a working prototype to a professional internal tool. The features below are evaluated in that framing — "would a thermal engineer who uses Zemax or Icepak notice if this is missing?"
+The v2.0 milestone is specifically about making the solver **3D**: per-cell materials within a layer (lateral zones), multiple z-nodes per layer (z-refinement), and the consequences for the network builder, GUI, and visualization.
+
+---
+
+## Why 3D Matters for This Tool
+
+The existing 2.5D model assumes each layer has one material for all x,y positions. This cannot represent:
+
+- **ELED cross-section**: at the same z-level (one layer), you have metal frame | FR4+LED board | air gap | LGP. Four different materials side-by-side. The 2.5D model forces a single homogenized material for the whole layer, which is wrong by 10-100x in local conductivity.
+- **Metal bezel inserts**: aluminum strip along panel edges within an otherwise FR4 layer.
+- **Copper pour on PCB layers**: copper-rich zones at arbitrary x,y positions within a layer.
+- **Thermal interface pads**: localized TIM patches applied to specific regions, not the whole layer.
+
+Z-refinement is needed when:
+
+- A thick layer (e.g. 4mm LGP or 1mm glass) needs temperature gradient through its own thickness.
+- Through-plane accuracy matters — not just the average temperature of the layer but the temperature at top vs bottom face.
 
 ---
 
@@ -30,123 +42,125 @@ Phase 4 elevates this from a working prototype to a professional internal tool. 
 
 ### Table Stakes (Users Expect These)
 
-Features users assume exist in a professional simulation tool. Missing = tool feels like a script, not a product.
+Features that must work for the 3D solver to be a credible upgrade. Missing any of these means the feature is incomplete or unusable.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| **Undo/Redo for project edits** | Every desktop engineering tool (Zemax, COMSOL, all CAD) has undo/redo. Absent = users fear editing. | MEDIUM | Qt provides `QUndoStack` / `QUndoCommand` natively; requires wrapping each edit operation as a Command. This is non-trivial but well-understood. |
-| **Inline validation feedback in editors** | Professional tools show red borders or warning icons on invalid inputs immediately (e.g. negative thickness, missing material reference). | LOW | Extend `__post_init__` validation to surface in GUI via field-level visual feedback. QValidator or post-edit signal checks. |
-| **Run/Cancel simulation with progress indicator** | Engineers expect to be able to cancel a long run. No progress bar on a 30-second transient feels broken. | MEDIUM | Requires running solver in a QThread + progress callback. Transient loop already has time steps — natural progress unit. |
-| **Status bar with simulation state** | Icepak, COMSOL, and Zemax all show solver status, last run time, and current file state in a bottom bar. | LOW | QStatusBar with: file path (modified indicator), last run time, solver state. |
-| **Auto-save / unsaved changes indicator** | Window title asterisk on unsaved changes is expected in every desktop engineering tool. | LOW | Track dirty state on project changes; update title bar with `*` prefix. |
-| **All CLI capabilities accessible from GUI** | Engineers using the GUI should not need to drop to terminal for any workflow step. Currently CSV export, CLI-only flags, and batch-mode are not fully exposed in GUI. | MEDIUM | Expose: output directory picker, CSV export button, mode selection, all solver options. |
-| **PDF engineering report export** | Professional tools generate reports for design reviews, handoffs, and documentation. Icepak auto-generates reports with screenshots, probe tables, and material summaries. | HIGH | ReportLab + matplotlib figures embedded as images. Sections: project summary, stack table, boundary conditions, temperature maps per layer, probe history plots, key metrics table (T_max, T_avg, hotspots). |
-| **Layer/material/source inline editing** | COMSOL and Zemax let users double-click items in a tree to edit them in place, not just through a side-panel form. Editing feels direct. | MEDIUM | Replace current tab-per-entity-type with a tree view + inline edit dialogs. Or improve the current form editors to feel more direct. |
-| **Consistent keyboard shortcuts** | Ctrl+S (save), Ctrl+Z/Y (undo/redo), F5 (run), Escape (cancel) — professional tools honor these without exception. | LOW | Map standard keyboard shortcuts throughout. |
-| **Structured results summary table** | After every run, a summary table showing T_max, T_avg, T_min per layer, plus hotspot rank — this is the first thing a thermal engineer looks at. | LOW | Already partially in postprocess.py; expose as a formatted table in a dedicated Results Summary panel. |
+| **Per-cell material lookup in network builder** | The entire v2.0 value proposition — lateral material zones are meaningless if the solver ignores them | HIGH | Replace `material_for_layer(l_idx)` scalar lookup with `material_at(l_idx, ix, iy)` that queries a per-cell material map. Every conductance G = kA/L computation must use cell-local k. This is the architectural load-bearing change. |
+| **Rectangular material zone definition on a layer** | Structured Cartesian grids use rectangular zones as the primitive. Icepak, FloTHERM, ANSYS Fluent cell zones, and EnergyPlus all define material regions as axis-aligned boxes in their structured-grid models. Polygon zones are found only in unstructured-mesh tools. | MEDIUM | A `MaterialZone` dataclass: `(layer_name, material_key, x_min, x_max, y_min, y_max)`. Multiple zones per layer, applied in priority order. Background fill = layer's existing `material` field. This preserves backward compatibility — if no zones exist, the layer's single material fills everything. |
+| **Harmonic-mean conductance at material boundaries** | When two adjacent cells have different conductivities, the conductance of the link must use `G = 2*k1*k2 / (k1+k2) * A/L_half` (harmonic mean). Using arithmetic mean at material boundaries is known to overestimate conductance when there is a large k contrast. Published FDM literature confirms harmonic mean as the standard for discontinuous conductivity fields. | MEDIUM | This is a math change in `_add_link_vectorized`: instead of one G value per layer, each link pair gets its own G computed from local cell properties. Vectorization becomes per-link rather than per-layer. |
+| **Z-refinement: multiple z-nodes per layer** | The current `n_per_layer` is 1 node through a layer's thickness. For thick layers (LGP 4mm, glass 1.1mm) or high-conductivity materials with strong through-plane gradients, one node per layer loses accuracy. The node-per-layer model is a known limitation of 2.5D formulations. | HIGH | `Layer` gets an optional `nz: int = 1` field. Total node count becomes sum over layers of `nx * ny * nz_i`. The node indexing scheme changes: `node_idx(l_idx, iz, iy, ix)`. Each sub-layer gets thickness `layer.thickness / nz`. Through-plane links connect sub-layers of the same physical layer (using `k_through * A / dz`), distinct from inter-layer links. |
+| **Backward compatibility: 2.5D projects load identically** | Existing project JSON files must load and produce the same numerical results as before. Any field addition that breaks `from_dict()` or changes the default behavior is unacceptable. | MEDIUM | Achieved by: `MaterialZone` list defaults to empty (no zones = homogeneous layer, same as before). `nz` defaults to 1 (same node count as before). All new fields use `.get(key, default)` in `from_dict()`. Analytical validation tests must pass before and after the change. |
+| **Probe addressing in 3D node space** | Existing probes specify `(layer, x, y)`. When a layer has `nz > 1`, a probe must map to a specific z sub-node. Engineers expect to be able to probe the top face, bottom face, or midplane of a thick layer. | MEDIUM | Probe gets an optional `z_fraction: float = 0.5` (0.0 = bottom face of layer, 1.0 = top face, 0.5 = midplane). When `nz=1`, ignored (single node). When `nz>1`, selects the sub-node nearest to `z_fraction * layer.thickness`. GUI shows this only when the target layer has `nz > 1`. |
+| **Analytical validation tests for 3D conduction** | The existing validation suite tests 1D two-layer resistance chains and 2-node RC transients against hand-calculated analytical solutions. Adding 3D material zones without new validation tests leaves correctness unverified. | MEDIUM | Minimum required: (1) Two-zone horizontal layer test: left half = material A, right half = material B, uniform heat on left, verify temperature drop matches series R chain. (2) Z-refinement test: three-node-thick layer, compare midplane temperature against 5-node version — within 1%. (3) Lateral zone interface test: 2×1 cell grid with different k per cell, verify interface conductance uses harmonic mean. |
 
 ### Differentiators (Competitive Advantage)
 
-Features that elevate the tool beyond a script wrapper — what makes it the tool engineers reach for over opening Python themselves.
+Features that make the 3D upgrade noticeably more capable than what engineers could build themselves in a spreadsheet or 1D tool.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| **Parametric sweep engine** | Engineers need to answer "how does T_max change with 10% vs 20% copper thickness?" without manually re-running. This is the most requested feature class in thermal tools (COMSOL parametric study, Icepak sensitivity). | HIGH | Define sweep: parameter name + value list + run label. Execute N sequential solves. Results table: one row per run, columns = key metrics. Export to CSV. Plot overlay: selected metric vs parameter value. |
-| **Time-varying heat sources (power cycling)** | Real-world display panels have duty cycles — LEDs pulse, SoCs have burst workloads. Steady-state doesn't capture peak temperature under cycling. | HIGH | Model: heat source gets optional `power_profile` = list of (time, power) tuples. Network builder interpolates power at each transient timestep. UI: profile editor (table + mini-plot). |
-| **Results comparison view (multi-run overlay)** | After parametric sweep or comparing design variants, overlaying probe histories on one plot and comparing T_max tables side-by-side is the core workflow. MATLAB Simulation Data Inspector, AnyLogic Compare Runs, and COMSOL all have this. | MEDIUM | Store named result snapshots. Comparison tab: select 2+ snapshots, render overlay probe plot and side-by-side metric table. |
-| **Material library import/export (JSON/CSV)** | Ansys supports XML import of custom material libraries; teams share material databases across projects. Engineers want to add a new TIM or substrate and share it with colleagues. | MEDIUM | "User materials" library separate from built-in presets. Export as JSON. Import from JSON with merge-or-replace semantics. GUI material picker shows library source tag. |
-| **One-click packaged launcher (.exe or batch)** | Non-programmer engineers won't run `python -m thermal_sim.app.gui`. A double-click executable is the difference between "a tool I use" and "a thing IT manages". | MEDIUM | PyInstaller one-folder bundle (faster startup than one-file for large scipy/matplotlib bundles). `run_gui.bat` as fallback for in-repo use. Icon branding. |
-| **Hotspot annotation on temperature maps** | Professional tools like Icepak label the top-N hotspot locations directly on the temperature map. Engineers immediately see where problems are without reading a table. | LOW | Extend `plot_temperature_map()` to accept `annotate_hotspots=N` parameter. Plot text markers at top-N hotspot cell centers with temperature values. |
-| **Project templates / example library** | Zemax ships with example files showing optical system types. COMSOL has an Application Library. New users start with a working example, not a blank canvas. | LOW | Already have 3 example JSON files (Phase 2). Expose these in a "New From Template" dialog in the GUI, with thumbnail previews showing the geometry. |
-| **Expanded validation datasets with comparison plots** | Internal tools gain trust when their results visibly agree with analytical solutions or published benchmarks. A "Validation" tab showing solver vs analytical curves builds engineer confidence. | MEDIUM | Extend existing validation tests. Add a GUI "Validation Report" mode that runs all analytical test cases and displays agreement plots. |
+| **ELED cross-section zone preset** | Engineers setting up ELED panels today must manually figure out how to represent "metal | FR4 | air | LGP" in the model. A built-in zone preset that auto-fills the correct material zones for ELED cross-section geometry removes trial and error. | MEDIUM | Extend the ELED stack template (from Phase 6) to also generate `MaterialZone` objects for the LGP layer: zone 1 = metal frame strip at left edge, zone 2 = LED board strip, zone 3 = air (or low-k filler), zone 4 = LGP bulk. Widths parameterized from ELED geometry config. |
+| **Per-layer nz spinbox in GUI** | Current GUI has no z-refinement control. Commercial tools like Icepak expose mesh resolution per-region. Adding a simple integer spinbox per layer in the Layers tab gives engineers direct control with immediate understanding. | LOW | Add `nz` column to the Layers table (integer, default 1, range 1-20). Existing `TableDataParser` pattern handles it. Total node count updates in the status bar when nz changes so engineers can see the cost. |
+| **Material zone table per layer in GUI** | Engineers need a way to define rectangular material zones without editing JSON by hand. A table with columns `[zone_name, material, x_min, x_max, y_min, y_max]` per layer (shown when a layer row is selected) covers the common case. | MEDIUM | Two-panel layout in the Layers tab: top = existing layers table, bottom = zones table that populates when a layer row is selected. Same `QTableWidget` + `TableDataParser` pattern already used for heat sources and LED arrays. |
+| **Node count estimate in status bar** | The 3D solver can grow to many more nodes (nx * ny * sum_nz). A live node count display ("3D nodes: 15,000 — est. solve time: <1s") in the status bar lets engineers manage the complexity budget before they run. | LOW | Compute `sum(nx * ny * layer.nz for layer in project.layers)` whenever project changes. The existing status bar already shows last run time; add node count next to it. |
+| **Z-plane slicing in temperature visualization** | The current visualization shows per-layer x-y temperature maps. With z-refinement, engineers need to select which z sub-node they are viewing. A simple slider or dropdown "Sub-layer (1 of 3)" added to the existing temperature map panel satisfies this without a full 3D renderer. | MEDIUM | Add a `z_index` control (QComboBox or QSlider) above the temperature map. Default = top sub-node of each layer (surface temperatures). Rebuilds the imshow from `T_3d[layer_idx, z_idx, :, :]`. No new rendering library needed. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features to deliberately NOT build in Phase 4. These seem like good ideas but create disproportionate complexity or scope creep.
+Features that seem like natural extensions of the 3D upgrade but should be deliberately excluded from v2.0.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| **Temperature-dependent material properties** | "More accurate" — conductivity of metals does vary with temperature. Engineers know this. | Requires nonlinear solve loop, breaks current sparse linear solver pipeline entirely. 10x complexity increase for marginal accuracy at the operating temperature ranges this tool targets (25-120°C). | Add a documentation note: "Properties assumed constant; valid for typical electronics operating range. Contact TIM vendor for high-T extrapolations." |
-| **Undo/redo on simulation results** | Seems natural — "undo last solve". | Results are immutable derived data; the project model is the source of truth. Undoing a solve means re-running the previous project state, which is expensive and confusing. | Undo applies to project edits only (not solver runs). Named result snapshots provide the "go back to previous run" workflow instead. |
-| **Web-based report viewer** | "So I can share results in a browser" | Adds a web server, HTML templating, and a different rendering pipeline. Breaks the self-contained desktop tool model. | PDF report is the right artifact for sharing — opens without any special software, printable, archivable. |
-| **Cloud sync / multi-user project sharing** | "Collaborate with remote colleagues" | Requires authentication, conflict resolution, server infrastructure. Completely out of scope for an internal desktop tool distributed via file share. | Share project JSON files + PDF reports over existing file share / email. |
-| **3D visualization / CAD import** | "I want to see the real geometry" | This is a 2.5D RC model — the physics abstraction is layered; 3D geometry is not the model. Importing CAD would require a mesher, geometry engine, and would invalidate the entire RC-network approach. | Structure preview dialog (already built) shows the layer stack. For 3D, use Icepak. This tool's value is speed and simplicity. |
-| **Auto-meshing refinement / convergence loops** | "The mesh should refine automatically until converged" | Adaptive meshing requires repeated network rebuilds, a convergence criterion loop, and significantly more memory. The tool's value proposition is sub-second to seconds solves. | Expose grid resolution as a user-visible parameter. Document that the validation tests confirm convergence at recommended resolution. |
-| **Real-time (live-updating) simulation** | "Update results as I type" | Transient solves can take 10-60 seconds. Live updates would require background threading for every edit and complex result invalidation logic. | Run button with clear simulation state indicator (stale / current). Progress bar for long solves. |
-| **Built-in Python scripting console** | Power users sometimes want to script from within the tool | Adds a significant GUI component (QCodeEditor), sandboxing concerns, and doubles the surface area for bugs. | CLI is already the scripting interface. Engineers can run CLI from terminal or batch files. |
+| **Polygon or arbitrary-shape material zones** | "Some PCB copper pours are not rectangular" | Polygon zone rasterization onto a Cartesian grid requires a spatial query for every cell during network build. This is the complexity that turns a simple structured-grid tool into a mesh preprocessor. The ELED display use case (metal strips along edges, LED boards at edges) is accurately modeled with rectangles. | Rectangular zones only. Engineers who need polygon accuracy should use Icepak. Document the approximation explicitly. |
+| **Temperature-dependent material properties** | "Conductivity changes with temperature — more accurate" | Requires a nonlinear solver loop (Picard or Newton iteration). The current sparse LU factorization approach breaks because the matrix changes with temperature. For the operating range of displays (25-80°C), the error from constant-k assumption is small (<5% for most structural materials). | Keep constant-k. Document range of validity. |
+| **Auto z-refinement based on thermal gradient** | "The tool should figure out how many nodes I need per layer" | Adaptive refinement requires multiple solves, convergence checking, and mesh modification — a full adaptive meshing pipeline. This contradicts the tool's value of sub-second to low-second solves. | Expose `nz` as a user parameter with a recommended default in the tooltip. For guidance: nz=1 for thin layers (<0.5mm), nz=2-3 for thick dielectrics (LGP, glass), nz=4+ for through-plane sensitivity studies. |
+| **Full 3D visualization (isosurface, volume render)** | "I want to see temperature in 3D" | Requires a 3D rendering engine (PyVista, VTK, or matplotlib mplot3d). mplot3d is slow for large grids and non-interactive. PyVista/VTK would be a major new dependency and integration effort. For display module concept studies, per-layer 2D maps are the correct abstraction. | Z-plane slicing within the existing matplotlib imshow panel. Engineers can step through sub-layers. For cross-section views, a "show xz-slice" option (a 1D profile along z at a selected x,y) is a low-complexity addition if needed. |
+| **Unstructured or tetrahedral meshing** | "For curved parts (the bezel fillet) you need triangles" | Display module layers are rectangular blocks. The structured Cartesian grid is the correct mesh for this geometry. Unstructured meshing requires a mesh library (gmsh, etc.), a completely different solver pipeline, and CAD input formats. Out of scope explicitly (per PROJECT.md). | Structured Cartesian grid with rectangular zones is sufficient. The bezel/frame thermal effect is captured via enhanced side boundary conditions. |
+| **Per-cell interface resistance (contact conductance maps)** | "The TIM is thicker under certain components — model that" | Would require an interface resistance map (nx * ny floats) per layer interface, stored and looked up during network build. This is physically correct but adds significant model complexity and a new data structure. PROJECT.md explicitly excludes "contact pressure-dependent interface resistance". | Scalar `interface_resistance_to_next` per layer already exists. Engineers can split the layer into sub-layers with different bulk conductivities as an approximation. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[Parametric Sweep Engine]
-    └──requires──> [Results Comparison View]
-                       └──enhances──> [PDF Report Export]
+[Per-cell material lookup in network builder]
+    └──requires──> [Rectangular material zone definition]
+                       └──enables──> [ELED cross-section zone preset]
 
-[Time-Varying Heat Sources]
-    └──requires──> [Run/Cancel with Progress Indicator]
-                       (transient runs get much longer with cycling profiles)
+[Z-refinement: multiple z-nodes per layer]
+    └──requires──> [New node indexing scheme in network builder]
+    └──enables──> [Z-plane slicing visualization]
+    └──enables──> [Probe z_fraction addressing]
 
-[PDF Report Export]
-    └──requires──> [Structured Results Summary Table]
-    └──enhances──> [Hotspot Annotation on Temperature Maps]
+[Harmonic-mean conductance at material boundaries]
+    └──requires──> [Per-cell material lookup in network builder]
 
-[Material Library Import/Export]
-    └──requires──> [Expanded Material Library (built-in presets)]
+[Analytical validation tests — 3D]
+    └──requires──> [Per-cell material lookup]
+    └──requires──> [Z-refinement]
+    (tests must be written after solver changes, not before)
 
-[One-Click Packaged Launcher]
-    └──requires──> [All CLI Capabilities in GUI]
-                       (packaging only makes sense when GUI is complete)
+[Material zone table per layer in GUI]
+    └──requires──> [Rectangular material zone definition on Layer model]
+    └──enhances──> [ELED cross-section zone preset]
 
-[Undo/Redo]
-    └──enables──> [Inline Validation Feedback]
-                       (validation can surface errors that undo can fix)
+[nz spinbox in Layers GUI]
+    └──requires──> [Z-refinement model field (Layer.nz)]
+    └──enhances──> [Z-plane slicing visualization]
 
-[Results Comparison View]
-    └──enhances──> [Parametric Sweep Engine]
-    └──enhances──> [Project Templates / Example Library]
+[Node count estimate in status bar]
+    └──requires──> [nz in Layer model]
+    └──enhances──> [Z-refinement UX]
 
-[Keyboard Shortcuts]
-    └──enhances──> [Undo/Redo]
+[Backward compatibility: existing projects load identically]
+    └──requires ALL changes have defaults──> [MaterialZone list default empty]
+    └──requires──> [Layer.nz default = 1]
 ```
 
 ### Dependency Notes
 
-- **Parametric Sweep requires Results Comparison View:** Sweep output is meaningless without a way to compare and inspect the N result sets side by side. Build both in the same phase or the sweep feels incomplete.
-- **Time-Varying Heat Sources requires Run/Cancel Progress:** Power cycling transient runs will be 5-20x longer than standard transients. Without cancellation, engineers will force-quit the app.
-- **PDF Report requires Structured Results Summary:** The report pulls from the same metrics table. Build summary table first; report assembles from it.
-- **Packaging requires GUI feature parity:** Bundling an incomplete GUI into an .exe just ships an incomplete tool permanently. Packaging should be the final step after all GUI capabilities are exposed.
-- **Undo/Redo is foundational:** Implement early in Phase 4 because every subsequent GUI feature should be wrapped in QUndoCommand objects. Retrofitting undo is painful.
+- **Per-cell material lookup is the architectural prerequisite.** Nothing else works correctly without it. The network builder currently uses `material_for_layer(l_idx)` which returns one material for an entire layer. Every conductance computation in the lateral loop and the through-plane loop must switch to `material_at(l_idx, ix, iy)`. This change is non-negotiable and must come first.
+
+- **Harmonic-mean conductance is inseparable from per-cell material.** Once adjacent cells can have different materials, computing G with a single k per layer is incorrect. The two features must be implemented together. There is no intermediate state where per-cell materials work correctly with arithmetic-mean conductance.
+
+- **Z-refinement changes the node indexing scheme** throughout the solver pipeline (network builder, postprocessor, probe readout, visualization). It should be designed and implemented as a unit with a clean interface (`node_idx(l_idx, iz, ix, iy)`), not incrementally.
+
+- **GUI features depend only on model fields**, not on the solver implementation. The `nz` spinbox in the Layers tab and the `MaterialZone` table can be built as soon as the model dataclasses are updated — the solver does not need to be working yet.
+
+- **Validation tests must come after the solver changes** but before GUI wiring. Tests give confidence that the 3D conductance math is correct before the GUI layer obscures the signal.
+
+- **Backward compatibility must be verified throughout.** Every change to `Layer.from_dict()`, `DisplayProject.__post_init__()`, and `network_builder.py` must be tested against the three example JSON files in `examples/`. These act as regression anchors.
 
 ---
 
-## MVP Definition (Phase 4 Framing)
+## MVP Definition (v2.0 Framing)
 
-This is an existing product, not a greenfield MVP. Phase 4 "MVP" means: what is the minimum set of features that makes this feel like a professional internal tool rather than a prototype?
+This is an existing tool. v2.0 MVP means: the minimum set of 3D features that makes ELED cross-section modeling physically meaningful.
 
-### Must Ship in Phase 4 (Core Polish)
+### Launch With (v2.0 core)
 
-- [ ] **Undo/Redo** — engineers who fear editing don't use the tool
-- [ ] **Run/Cancel with progress indicator** — transient runs need a cancel button
-- [ ] **Status bar** — file state, last run time, solver status
-- [ ] **All CLI capabilities in GUI** — CSV export, output directory, mode selection
-- [ ] **Structured results summary table** — T_max/T_avg/T_min per layer, hotspot rank
-- [ ] **PDF engineering report export** — enables design review handoffs
-- [ ] **Parametric sweep engine + results comparison** — core differentiator engineers need
-- [ ] **One-click packaged launcher** — adoption depends on this for non-programmer colleagues
+- [ ] **Per-cell material lookup + rectangular zones** — ELED lateral heterogeneity is the primary use case; without this, the upgrade is cosmetic
+- [ ] **Harmonic-mean conductance** — required for physical correctness when zones exist; must ship alongside zones
+- [ ] **Z-refinement (Layer.nz field)** — needed for through-plane accuracy in thick layers; architectural change, build with zone support
+- [ ] **New node indexing scheme** — restructures network builder to support arbitrary nz per layer; prerequisite for everything
+- [ ] **Backward compatibility** — existing project JSON files and validation tests must be unbroken
+- [ ] **Analytical validation tests for 3D** — correctness evidence for the new solver
 
-### Add After Core Is Working
+### Add After Core Is Working (v2.0 polish)
 
-- [ ] **Time-varying heat sources (power cycling)** — high value, high complexity; add once sweep engine is stable
-- [ ] **Material library import/export** — medium value; add when material customization requests come in
-- [ ] **Hotspot annotation on maps** — low complexity, high visual impact; quick win late in phase
-- [ ] **Expanded validation with GUI report** — trust-building; add as polish at end of phase
+- [ ] **GUI: nz spinbox in Layers tab** — expose z-refinement control; low complexity once model field exists
+- [ ] **GUI: Material zones table per layer** — expose zone definition without JSON editing; medium complexity
+- [ ] **GUI: Z-plane slicing visualization** — step through sub-layers in temperature map panel; medium complexity
+- [ ] **GUI: Probe z_fraction control** — only shown when target layer has nz > 1; low complexity
+- [ ] **GUI: Node count estimate in status bar** — helps engineers manage complexity budget; low complexity
+- [ ] **ELED cross-section zone preset** — extend Phase 6 ELED template to auto-generate zones; medium complexity once zone model exists
 
-### Defer to Future Phase
+### Future Consideration (v2.x)
 
-- [ ] **Project templates / New From Template dialog** — already have example files; GUI discovery deferred
-- [ ] **Comprehensive keyboard shortcut map** — partial shortcuts first, full map later
+- [ ] **XZ cross-section plot** — 1D temperature profile along z at a selected (x, y) position; useful for through-plane studies; not blocking v2.0
+- [ ] **Zone import from CSV** — engineers who want to define many zones programmatically; deferred to v2.x if requested
+- [ ] **Per-zone heat generation** — heat sources defined relative to a material zone rather than absolute x,y position; useful for LED board modeling; deferred
 
 ---
 
@@ -154,101 +168,156 @@ This is an existing product, not a greenfield MVP. Phase 4 "MVP" means: what is 
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Undo/Redo | HIGH | MEDIUM | P1 |
-| Run/Cancel + progress | HIGH | MEDIUM | P1 |
-| Structured results summary table | HIGH | LOW | P1 |
-| Status bar + dirty state | MEDIUM | LOW | P1 |
-| All CLI capabilities in GUI | HIGH | MEDIUM | P1 |
-| PDF report export | HIGH | HIGH | P1 |
-| Parametric sweep engine | HIGH | HIGH | P1 |
-| Results comparison view | HIGH | MEDIUM | P1 |
-| One-click packaged launcher | HIGH | MEDIUM | P1 |
-| Hotspot annotation on maps | MEDIUM | LOW | P2 |
-| Time-varying heat sources | HIGH | HIGH | P2 |
-| Material library import/export | MEDIUM | MEDIUM | P2 |
-| Expanded validation / GUI report | MEDIUM | MEDIUM | P2 |
-| Project templates / New dialog | LOW | LOW | P3 |
-| Keyboard shortcut map | LOW | LOW | P3 |
+| Per-cell material lookup in network builder | HIGH | HIGH | P1 |
+| Harmonic-mean conductance at boundaries | HIGH | MEDIUM | P1 |
+| Z-refinement (Layer.nz + new indexing) | HIGH | HIGH | P1 |
+| Backward compatibility + existing tests pass | HIGH | LOW | P1 |
+| Analytical 3D validation tests | HIGH | MEDIUM | P1 |
+| nz spinbox in Layers GUI | MEDIUM | LOW | P2 |
+| Material zones table per layer in GUI | HIGH | MEDIUM | P2 |
+| Z-plane slicing in visualization | MEDIUM | MEDIUM | P2 |
+| Probe z_fraction addressing | LOW | LOW | P2 |
+| Node count in status bar | LOW | LOW | P2 |
+| ELED cross-section zone preset | HIGH | MEDIUM | P2 |
+| XZ cross-section plot | LOW | MEDIUM | P3 |
 
 **Priority key:**
-- P1: Phase 4 core — ships before packaging
-- P2: Phase 4 bonus — adds polish but not blockers
-- P3: Future phase
+- P1: Must have for v2.0 launch — the solver must work correctly first
+- P2: Should have — GUI and visualization make the solver usable interactively
+- P3: Nice to have — deferred to v2.x
 
 ---
 
-## Competitor Feature Analysis
+## How Commercial Tools Handle Material Zones in Structured Grids
 
-Reference tools: Ansys Icepak (electronics thermal), COMSOL Multiphysics (general FEA), Ansys Zemax OpticStudio (optical design, same user persona as target audience).
+### FloTHERM (Siemens)
 
-| Feature | Icepak | COMSOL | Zemax | Our Phase 4 Approach |
-|---------|--------|--------|-------|----------------------|
-| Report generation | Auto report with screenshots, probe tables, fan operating points | Template-based PDF/HTML report with result figures | PDF report via Report Designer | ReportLab PDF with matplotlib figures embedded; fixed structure, not templated |
-| Parametric sweep | Built-in parametric solver; tabular results display | Full parametric sweep with probe table accumulation, all-combinations mode | Optimization + tolerance analysis (more advanced) | Sequential solve loop over user-defined parameter × value table; CSV + comparison plot |
-| Results comparison | Solution Overview Reporter (live metrics); result archive in AEDT project | Compare datasets in Simulation Data Inspector-style view | Compare surfaces between system variants | Named result snapshots; comparison tab with overlay plots and side-by-side metric table |
-| Progress/cancellation | Real-time convergence monitor; cancel button | Progress bar; stop solver button | Progress dialog for ray tracing | QThread solver + progress signal + cancel event |
-| Material management | Granta materials database; XML import/export | Built-in material database + CSV import | Built-in + user-defined materials | Built-in presets + user JSON library with import/export |
-| Undo/redo | Full undo history across all model edits | Full undo/redo in GUI | Full undo/redo | Qt QUndoStack wrapping all project edit operations |
-| Packaging/deployment | License-server or node-locked EXE; enterprise IT managed | EXE installer; license required | EXE installer; license required | PyInstaller one-folder bundle; no admin required; runs from user-space |
-| Time-varying sources | Tabular boundary conditions for transient; power profiles | Time-dependent expressions for heat sources | N/A (optical, not thermal) | `power_profile` list on HeatSource; interpolated in transient loop |
+Uses a structured Cartesian grid throughout. Engineers define geometric objects (board, component, fin, etc.) with material properties; the grid intersects these objects and assigns material to each control volume. Resolution is user-controlled via localized grid refinement around objects. FloTHERM does NOT ask the user to define a cell-by-cell material map — instead, it renders the geometry into the grid at solve time. This is effectively the same as the rectangular zone approach: zones overlay the background and override material per cell.
+
+**Lesson for this tool:** The zone-as-object model (define a rectangle, assign material) is the correct UX pattern. A cell-by-cell material table editor would be impractical for engineers. (MEDIUM confidence — from FloTHERM product documentation and training material; see sources.)
+
+### ANSYS Icepak
+
+Also structured Cartesian. Engineers define "blocks" (solid regions) and "PCB" objects with optional layout-derived conductivity maps. PCB conductivity maps are derived from board layout tools as per-tile orthotropic properties — the harmonic mean is used for through-plane and series-parallel for in-plane. At the solver level, each control volume stores its own k values.
+
+**Lesson for this tool:** Per-cell material lookup in the solver is the right architecture; the GUI abstracts this as rectangular zones. The engineering accuracy requires harmonic mean at zone boundaries. (MEDIUM confidence — from Electronics Cooling article on PCB thermal conductivity mapping, 2010, and Icepak user documentation.)
+
+### EnergyPlus / THERM
+
+For building components, uses rectangular zone definition for thermal zones with per-zone material properties. THERM specifically uses polygon zone drawing on cross-sections — but this is for building envelope cross-sections where the geometry is truly polygonal (wall studs, insulation cavities). Display module layers are rectangular stacks where rectangles are adequate.
+
+**Lesson for this tool:** Rectangles are sufficient for display module use cases. Polygons add complexity with no benefit for this geometry class. (HIGH confidence — from EnergyPlus documentation and THERM program description, directly inspected.)
+
+### PCB-specific tools (Sigrity, SIwave thermal, FloTHERM PCB)
+
+PCB thermal analyzers extract per-cell (per-tile) orthotropic conductivity from board layout exports. Each tile has a copper fraction that determines effective k in three directions. The tile-based approach is exactly "rectangular zones" — just automated from the layout bitmap rather than manually entered.
+
+**Lesson for this tool:** For PCB layers, a future extension could accept a copper-fraction map (nx*ny floats) rather than zone rectangles. For v2.0 (display module focus), rectangular zone definition is the correct starting point. (MEDIUM confidence — from Electronics Cooling PCB conductivity mapping article.)
 
 ---
 
 ## Complexity Notes by Feature
 
-### PDF Report Export — HIGH complexity
-- ReportLab Platypus layout engine (MEDIUM learning curve)
-- Must render matplotlib figures to BytesIO and embed as images — non-trivial
-- Report template: 8-10 sections, each requiring conditional content based on sim type (steady vs transient)
-- Page layout and typography require explicit attention; professional look requires iteration
-- Source: pythonguis.com tutorial (updated Dec 2025) confirms PySide6 + ReportLab + worker threads is a proven pattern
+### Per-cell material lookup + harmonic mean conductance — HIGH complexity
 
-### Parametric Sweep Engine — HIGH complexity
-- N sequential solver calls: straightforward if solvers are stateless (they are)
-- Progress reporting across N runs (not just within one run) requires two-level progress bar
-- Results storage: in-memory dict of {run_label: SimResult} — size can grow; need to decide if persisted to disk
-- UI: parameter table editor + run button + results table + comparison plot panel — 4 interconnected components
-- CSV export of sweep results table is low complexity
+The current `_add_link_vectorized` in `network_builder.py` takes a single `conductance: float` for all links in a layer at once. For 3D, lateral links between cells (ix, iy) and (ix+1, iy) must use `G_ij = harmonic_mean(k_i, k_j) * thickness * dy / dx` — one G per link, not one G per layer. The vectorized loop must change from:
 
-### Time-Varying Heat Sources — HIGH complexity
-- Model layer: `power_profile` is a list of `(time_s: float, power_W: float)` tuples on `HeatSource`
-- Network builder: must interpolate power at each timestep from profile — numpy interp, straightforward
-- JSON serialization: profiles serialize as list-of-lists
-- Backward compat: existing projects without profiles must default to constant power (current behavior) — no breakage
-- UI: tabular profile editor + small preview plot of the power vs time curve
-- Risk: very large profiles (1000+ points) at fine timesteps can make network rebuild per step expensive — profile-aware rebuild caching may be needed
+```python
+g_x = material.k_in_plane * layer.thickness * grid.dy / grid.dx
+_add_link_vectorized(base + flat_left, base + flat_right, g_x)  # scalar G for all links
+```
 
-### One-Click Packaging — MEDIUM complexity
-- PyInstaller 6.x with PySide6 hook is well-supported and tested (pythonguis.com tutorial verified)
-- scipy + numpy are bundled correctly out of the box per PyInstaller docs
-- matplotlib requires explicit collection of `matplotlib.libs` on some builds
-- One-folder bundle recommended over one-file (faster startup for large scientific Python bundles; one-file must unpack to temp on every launch — 2-3s overhead)
-- Bundle size estimate: ~250-400 MB for the one-folder distribution (numpy + scipy + matplotlib + PySide6)
-- SmartScreen warnings on unsigned EXE are a real friction point for Windows internal distribution; document in packaging README
+to:
 
-### Undo/Redo — MEDIUM complexity
-- Qt's `QUndoStack` + `QUndoCommand` pattern is the correct approach (confirmed in PySide6 docs)
-- Each project edit must be wrapped: `AddLayerCommand`, `EditMaterialCommand`, `DeleteHeatSourceCommand`, etc.
-- Connecting QUndoStack to menu Edit > Undo/Redo with auto-updated text is provided by Qt
-- Risk: LED array template operations and bulk operations (e.g., "reset all boundary conditions") need careful command grouping
-- Results should NOT be in the undo stack — only project model mutations
+```python
+# Per-link conductance array using material map
+k_left  = material_map[l_idx, iy_all[mask_x], ix_all[mask_x]]      # shape (n_x_links,)
+k_right = material_map[l_idx, iy_all[mask_x], ix_all[mask_x] + 1]  # shape (n_x_links,)
+k_harm  = 2 * k_left * k_right / (k_left + k_right)
+g_x_arr = k_harm * layer.thickness * grid.dy / grid.dx
+_add_link_per_pair(base + flat_left, base + flat_right, g_x_arr)    # vector G
+```
+
+This requires refactoring `_add_link_vectorized` to accept either a scalar or an array. COO assembly still works — `coo_data.append(g_x_arr)` instead of `np.full(n, g_x)`.
+
+**Estimated effort:** 3-5 days for network builder refactor + correctness tests.
+
+### Z-refinement + new node indexing — HIGH complexity
+
+Current indexing: `node_idx(l_idx, iy, ix) = l_idx * n_per_layer + iy * nx + ix`
+
+3D indexing with nz: `node_idx(l_idx, iz, iy, ix) = offset[l_idx] + iz * ny * nx + iy * nx + ix`
+
+Where `offset[l_idx] = sum(ny * nx * nz_k for k in range(l_idx))`.
+
+This changes:
+- `n_nodes` computation
+- All node index lookups in boundary condition application (top/bottom nodes are now the topmost iz sub-node of the top layer, and bottommost iz of the bottom layer)
+- All probe readout (probe must resolve to a specific iz)
+- Postprocessor result array shape: changes from `(n_layers, ny, nx)` to `(total_sub_layers, ny, nx)` or a ragged structure
+- Visualization: layer selection must include sub-layer index when nz > 1
+
+**Estimated effort:** 4-7 days including all downstream changes.
+
+### Rectangular material zone model + GUI — MEDIUM complexity
+
+Model change: add `zones: list[MaterialZone] = field(default_factory=list)` to `Layer`. `MaterialZone` is a new dataclass: `layer_name (str implied), material (str), x_min, x_max, y_min, y_max (float)`. The `material_map[l_idx, :, :]` array is built once per solve from the zone definitions, using zone priority order (last zone wins at any cell). Background = `layer.material`.
+
+GUI: a second `QTableWidget` below the layers table. Populates when a layer row is selected. Columns: `Material | x_min [mm] | x_max [mm] | y_min [mm] | y_max [mm]`. Same `+/-` row add/delete pattern as the existing heat sources table.
+
+**Estimated effort:** 2-3 days model + 2-3 days GUI.
+
+### Z-plane slicing visualization — MEDIUM complexity
+
+The postprocessor currently returns temperature arrays shaped `(n_layers, ny, nx)` (one z-node per layer). With z-refinement it returns `(total_sub_layers, ny, nx)` or an indexed structure. The visualization tab needs a layer selector (existing) plus a sub-layer (iz) selector (new). `pcolormesh` / `imshow` call is unchanged — just the data slice changes.
+
+**Estimated effort:** 1-2 days.
+
+---
+
+## Interface Stability Considerations
+
+These interfaces are load-bearing and their changes must be managed carefully:
+
+| Interface | Current Contract | v2.0 Change | Risk |
+|-----------|-----------------|-------------|------|
+| `material_for_layer(l_idx)` on `DisplayProject` | Returns one `Material` for entire layer | Must add `material_at(l_idx, ix, iy)` returning per-cell material | LOW — add new method, don't remove old one yet |
+| `build_thermal_network(project)` signature | Takes `DisplayProject`, returns `ThermalNetwork` | Unchanged signature; internal structure changes | MEDIUM — return type `ThermalNetwork` needs updated `n_nodes` and `n_layers` semantics |
+| `ThermalNetwork.n_nodes` property | `n_layers * nx * ny` | Must become `sum(nz_i) * nx * ny` | HIGH — any code computing result array shape from `n_layers * nx * ny` must be updated |
+| Probe readout in `postprocess.py` | Takes `(layer_idx, ix, iy)`, returns scalar | Must take `(layer_idx, iz, ix, iy)` with iz from probe's z_fraction | MEDIUM |
+| Postprocessor result shape | `T_array.shape = (n_layers, ny, nx)` | Becomes `(total_sub_layers, ny, nx)` or ragged by-layer structure | HIGH — visualization and GUI depend on this shape |
+
+---
+
+## Competitor Feature Analysis
+
+| Feature | Icepak | FloTHERM | This Tool (v2.0) |
+|---------|--------|----------|-----------------|
+| Per-cell material assignment | Object-based geometry → grid intersection, any shape | Object-based (blocks, packages), Cartesian grid intersection | Rectangular zone overlay on background material; applied at network build time |
+| Z-refinement | Automatic local mesh refinement per region | Overlapping localized grid; user controls local z-resolution | Per-layer nz integer; uniform sub-division within a layer |
+| Material zone UI | 3D CAD-style object placement | Flotherm SmartParts wizard + drag-and-drop component placement | Table-based zone entry (x_min, x_max, y_min, y_max) in the Layers tab |
+| 3D visualization | Full 3D temperature field rendering with cut planes | Full 3D post-processing, cut planes, streamlines | 2D z-plane slice of existing matplotlib imshow; concept-study level |
+| Interface conductance | Automatic harmonic mean at material boundaries | User-specified contact resistance per interface | Harmonic mean at zone boundaries (automatic); scalar interface resistance remains at layer boundaries |
+
+**Assessment:** Commercial tools use object-based zone geometry that is rasterized onto the Cartesian grid at solve time. This tool's rectangular zone approach is the same physics at a simpler input abstraction, appropriate for the concept-study use case.
 
 ---
 
 ## Sources
 
-- Ansys Icepak 2025 R2 release notes: https://www.ansys.com/blog/whats-new-ansys-icepak-2025-r2
-- COMSOL parametric sweep documentation (v6.3): https://doc.comsol.com/6.3/doc/com.comsol.help.comsol/comsol_ref_solver.36.048.html
-- Thermal Analysis Methodology Best Practices (Electronics Cooling, 2024): https://www.electronics-cooling.com/2024/09/thermal-analysis-methodology-best-practices/
-- PySide6 QUndoStack documentation: https://doc.qt.io/qtforpython-6/PySide6/QtGui/QUndoStack.html
-- Packaging PySide6 with PyInstaller & InstallForge (pythonguis.com, updated 2025): https://www.pythonguis.com/tutorials/packaging-pyside6-applications-windows-pyinstaller-installforge/
-- PyInstaller official docs: https://pyinstaller.org/en/stable/operating-mode.html
-- ReportLab for engineering PDF reports (pythonguis.com, Dec 2025): https://www.pythonguis.com/examples/python-pdf-report-generator/
-- ReportLab + matplotlib chart integration: https://woteq.com/how-to-generate-charts-with-reportlab-and-matplotlib/
-- MATLAB Simulation Data Inspector (results comparison pattern): https://www.mathworks.com/help/simulink/slref/simulationdatainspector.html
-- Ansys Materials data for simulation (material library patterns): https://www.ansys.com/content/dam/product/materials/materials-data-simulation.pdf
-- Power cycling / duty-cycle transient thermal analysis: https://pmc.ncbi.nlm.nih.gov/articles/PMC8467052/
+- Direct codebase inspection: `G:/blu-thermal-simulation/thermal_sim/solvers/network_builder.py` — existing `_add_link_vectorized`, `material_for_layer`, `build_thermal_network` (HIGH confidence)
+- Direct codebase inspection: `G:/blu-thermal-simulation/thermal_sim/models/layer.py`, `project.py`, `models/heat_source.py` (HIGH confidence)
+- Direct codebase inspection: `.planning/PROJECT.md` — Out-of-scope items confirm polygon zones, unstructured meshing, temperature-dependent properties all excluded (HIGH confidence)
+- Electronics Cooling: "Creating PCB Thermal Conductivity Maps Using Image Processing" (2010) — tile-based per-cell conductivity approach, validation against detailed simulation at 3.3% average error: https://www.electronics-cooling.com/2010/09/creating-pcb-thermal-conductivity-maps-using-image-processing/ (MEDIUM confidence)
+- Idaho National Laboratory: "A Comparative Study of the Harmonic and Arithmetic Averaging of Diffusion Coefficients for Non-Linear Heat Conduction Problems" — harmonic mean standard for discontinuous conductivity in FDM: https://inldigitallibrary.inl.gov/sites/sti/sti/3952796.pdf (HIGH confidence)
+- ScienceDirect (Patankar 1978 pattern): harmonic mean conductance at material interfaces in finite volume / finite difference — established standard in numerical heat transfer textbooks (HIGH confidence; method appears in Patankar "Numerical Heat Transfer and Fluid Flow" 1980, a foundational reference)
+- FloTHERM product specification (Siemens/Innofour): structured Cartesian grid, localized overlapping grid: https://www.innofour.com/solutions/cae-simulation-and-test/cad-embedded-cfd/technical-specifications/ (MEDIUM confidence)
+- FloTHERM V11 overlapping localized grid article: https://blogs.sw.siemens.com/simulating-the-real-world/2015/11/30/top-7-flotherm-v11-features-5-overlapping-localized-grid/ (MEDIUM confidence)
+- THERM 2.0 program description (polygon zone definition for building cross-sections): https://www.osti.gov/servlets/purl/901210 (HIGH confidence)
+- EnergyPlus Input/Output Reference: thermal zone geometry (rectangular surface definition): https://bigladdersoftware.com/epx/docs/8-3/engineering-reference/conduction-finite-difference-solution.html (HIGH confidence)
 
 ---
-*Feature research for: Desktop thermal simulation tool (blu-thermal-simulation Phase 4)*
-*Researched: 2026-03-14*
+
+*Feature research for: 3D RC-network thermal solver — per-cell material zones and z-refinement*
+*Research scope: v2.0 milestone features only (not existing 2.5D capabilities)*
+*Researched: 2026-03-16*

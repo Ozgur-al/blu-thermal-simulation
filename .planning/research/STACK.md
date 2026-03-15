@@ -1,139 +1,175 @@
 # Stack Research
 
-**Domain:** Python desktop engineering simulation tool — Phase 4 additions
-**Researched:** 2026-03-14
-**Confidence:** HIGH (core PDF/packaging), MEDIUM (Qt UI patterns), HIGH (parametric sweep)
+**Domain:** Python desktop engineering simulation tool — v2.0 3D solver additions
+**Researched:** 2026-03-16
+**Confidence:** HIGH (numpy/scipy patterns), HIGH (memory math), MEDIUM (matplotlib 3D visualization)
 
 ---
 
 ## Context: What Already Exists
 
-This is a Phase 4 research document. The existing stack is:
+This is a subsequent-milestone research document. The full existing stack is:
 
-- Python 3.11+, NumPy 1.26+, SciPy 1.12+, PySide6 6.7+, Matplotlib 3.8+, pytest 8.0+
+- Python 3.11+, NumPy 1.26+, SciPy 1.12+, PySide6 6.7+, Matplotlib 3.8+, pytest 8.0+, qt-material 2.14+
 
-Phase 4 adds four new capability domains. This document covers only new additions.
+**No new packages are required for the 3D solver.** Every capability needed is already present in the stack. This document covers usage patterns, data structure choices, and integration points for the new features only.
 
 ---
 
 ## Recommended Stack — New Additions
 
-### PDF Report Generation
+### No new dependencies
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| reportlab | 4.4.10 | PDF document generation with tables, layout, images | Industry standard for programmatic Python PDFs; Platypus document model handles multi-page flow, tables, and embedded figures in one pass; supports Python 3.9–3.14; 4.7M+ downloads/month; no external binary dependencies |
-
-**How it integrates with the existing stack:**
-
-Matplotlib figures are rendered to in-memory `BytesIO` PNG buffers (`fig.savefig(buf, format='png', dpi=150)`), then embedded as `reportlab.platypus.Image` objects inside a `SimpleDocTemplate` Platypus story. This avoids any intermediate files on disk and works entirely within user-space Python. The pattern is well-documented and verified against current ReportLab 4.x docs.
-
-**Do not use WeasyPrint.** It requires external system binaries (Pango, Cairo, GLib) that cannot be installed without admin access on Windows. It also requires knowledge of HTML/CSS — unnecessary overhead for a pure-Python tool with no web layer.
-
-**Do not use fpdf2 (2.8.7) for this use case.** It is fine for simple one-page documents but lacks the auto-flowing multi-page layout engine (Platypus) needed for reports with variable-length probe tables, multi-figure pages, and section headers. ReportLab's Platypus handles document flow natively.
-
-```
-pip install reportlab==4.4.10
-```
+The 3D solver milestone requires zero additional pip installs. The decisions below are about how to use existing libraries correctly, not what to add.
 
 ---
 
-### Parametric Sweep Engine
+## Per-Cell Material Assignment: Storage Pattern
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| itertools (stdlib) | 3.11 stdlib | Cartesian product over parameter grids | Zero dependency, `itertools.product(*param_ranges)` generates full sweep grids; standard for scientific parameter spaces |
-| numpy.linspace / numpy.arange | existing | Generate numeric parameter ranges | Already in stack; produces sweep axis values with correct spacing |
-| concurrent.futures.ProcessPoolExecutor | 3.11 stdlib | Parallel sweep execution | Each simulation run is independent and CPU-bound (scipy spsolve); ProcessPoolExecutor bypasses the GIL, distributes runs across cores; stdlib, no extra deps |
+### Decision: uint8 index array + parallel float64 property arrays
 
-**Architecture recommendation:**
-
-Build a `SweepEngine` class that accepts a base project config and a `param_grid: dict[str, list]`, generates the Cartesian product with `itertools.product`, applies each combination to a deep copy of the config, and dispatches each run to the process pool. Results are collected into a list of `(params_dict, SimulationResult)` tuples for display and export.
-
-**Do not use a third-party sweep framework** (Dask, Ray, or PyRates). This tool has 10–1000 run sweeps over a deterministic solver. The overhead of a distributed compute framework is unjustified. `concurrent.futures` from stdlib is the correct fit.
-
-**Thread safety note:** SciPy's `spsolve` releases the GIL during LAPACK calls, so `ThreadPoolExecutor` could work. However, Python 3.11 still has GIL contention overhead for CPU-bound code. `ProcessPoolExecutor` is more reliable and predictable for Windows desktop apps. Test with 4–8 workers matching typical laptop core counts.
+**Use this pattern, not a dict-per-cell or structured array.**
 
 ```python
-# No additional install — stdlib only
-from itertools import product
-from concurrent.futures import ProcessPoolExecutor
+# Layer material zone map: shape (ny, nx), dtype uint8
+# Value = index into material lookup arrays
+material_map: np.ndarray  # shape (n_layers, ny, nx), uint8
+
+# Flat lookup arrays indexed by material ID — one entry per registered material
+k_in_plane: np.ndarray    # shape (n_materials,), float64
+k_through: np.ndarray     # shape (n_materials,), float64
+density: np.ndarray       # shape (n_materials,), float64
+specific_heat: np.ndarray # shape (n_materials,), float64
+emissivity: np.ndarray    # shape (n_materials,), float64
+
+# Lookup for a layer: vectorized, no Python loop
+k_xy_grid = k_in_plane[material_map[layer_idx]]  # shape (ny, nx), float64
 ```
+
+**Why uint8 index + parallel float64 arrays:**
+
+- Memory: `uint8` costs 1 byte per cell vs 8 bytes for a float64 property copy per cell. For a 100x100x40 mesh, the entire material map is 400 KB vs 3.2 MB if properties were stored inline. More importantly, the conductivity arrays used in network assembly come out as contiguous float64 slices, which feeds directly into vectorized arithmetic.
+
+- Access pattern: The network builder loops over pairs of adjacent cells computing conductances via `G = k * A / L`. With uint8 maps, that becomes `k_grid = k_in_plane[material_map[z]]` — a single vectorized index operation that produces the full (ny, nx) conductivity plane, then arithmetic proceeds as before. No Python-level cell loops required.
+
+- Why not structured arrays: NumPy structured arrays (C-struct layout) cause poor cache behavior when accessing a single field (e.g., `k_through`) across all cells — the processor must skip over the other fields between each load. Parallel float64 arrays are fully contiguous per property and cache-optimal for the field-at-a-time access pattern in network assembly. Numba's documentation documents structured arrays as ~10x slower than plain arrays for this reason; the same principle applies to plain NumPy vectorized code.
+
+- Why not dict-per-cell: Python dict lookup in a hot loop over 400,000 cells is 100–1000x slower than numpy fancy indexing. This would make network assembly prohibitively slow.
+
+- uint8 supports up to 256 distinct materials per project. Display module stacks have at most 10–20 materials. uint8 is sufficient and wastes no memory.
+
+**Data model change:** `Layer` gains an optional `material_zones: list[MaterialZone]` field, where each `MaterialZone` specifies a rectangular region and a material key. When absent, the entire layer uses `layer.material` (backward-compatible). The network builder resolves the map once at assembly time by rasterizing zones onto the (ny, nx) grid.
 
 ---
 
-### Professional Qt UI Polish
+## Sparse Matrix Assembly for 3D Networks
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| qt-material | 2.17 | Material Design stylesheet for PySide6 | Actively maintained (last release April 2025); single `pip install`; applies via `apply_stylesheet(app, theme='dark_teal.xml')` without modifying any widget code; works with PySide6 6.x |
-| PySide6 QSS (built-in) | existing | Fine-grained widget styling | Targeted overrides after qt-material base; avoids re-skinning everything manually |
+### Decision: Keep COO accumulation, convert to CSR once — no format change needed
 
-**Qt UI patterns to implement for Phase 4:**
+The existing COO-to-CSR assembly pattern in `network_builder.py` is already correct for 3D. The only change is scale.
 
-1. **QSplitter layouts** — Horizontal split between parameter/editor panel and results panel. Users can resize to give more screen to results. Already documented in Qt for Python official docs.
+**What changes at 3D scale:**
 
-2. **QThread + Worker Signal pattern** — All simulation runs (single or sweep) must run off the main thread. Use the `Worker(QRunnable)` + `WorkerSignals` pattern from pythonguis.com: emit `progress(int)` signals to drive a `QProgressBar` during sweeps. This prevents GUI freeze on long sweeps and is the established 2025 PySide6 threading idiom.
+The current 2.5D builder uses a uniform conductance per layer for lateral links (`g_x = k * t * dy/dx`, scalar). In 3D, this becomes a per-cell conductance since `k` varies cell to cell. The link generation loop must produce per-link conductance arrays instead of broadcasting a scalar. The vectorized structure of `_add_link_vectorized` already accepts `np.ndarray` conductances — it accepts either a scalar or an array via `np.full(len(n1), conductance)`. For 3D, pass the per-link conductance array directly.
 
-3. **QAbstractTableModel subclass** — For displaying sweep results in a table. Do not use `QTableWidget` directly; it does not scale to 100+ sweep results. A custom model backed by a list of result dicts performs better and separates data from view.
+**3D node indexing:**
 
-4. **QTabWidget with lazy loading** — Results tabs (map view, probe charts, sweep table, report preview) should only render when activated, not on simulation completion. Avoids rendering all plots at once.
-
-**Do not use PyQtDarkTheme (2.1.0).** Last release was December 2022. No recent maintenance activity. Qt-material is the actively maintained alternative.
-
-**Do not use QDarkStyleSheet for primary theming** if qt-material is chosen — applying two full stylesheets creates unpredictable cascade conflicts. Pick one.
-
+```python
+# 3D flat index: z_idx * (ny * nx) + iy * nx + ix
+# where z_idx counts across ALL z-nodes (sum of nz[i] for layers 0..layer-1)
+def node_3d(z_idx: int, iy: int, ix: int) -> int:
+    return z_idx * (ny * nx) + iy * nx + ix
 ```
-pip install qt-material==2.17
-```
+
+Z-refinement means a layer with `nz=4` contributes 4 z-slices of (ny, nx) nodes. Total nodes = sum(layer.nz for all layers) * ny * nx.
+
+**Memory estimates — 100x100x40 node system (10 layers, nz=4 each):**
+
+| Quantity | Value | Memory |
+|----------|-------|--------|
+| Total nodes (n) | 100 × 100 × 40 = 400,000 | — |
+| Non-zeros in A (6-connectivity, banded) | ~7 per node × 400,000 = 2,800,000 | — |
+| CSR data array (float64) | 2,800,000 × 8 bytes | 22 MB |
+| CSR indices (int32) | 2,800,000 × 4 bytes | 11 MB |
+| CSR indptr (int32) | 400,001 × 4 bytes | 1.6 MB |
+| b, c, T vectors (float64) | 3 × 400,000 × 8 bytes | 9.6 MB |
+| Material map (uint8) | 40 × 100 × 100 | 400 KB |
+| **Total estimate** | | **~45 MB** |
+
+This is well within typical desktop RAM (8 GB+). SuperLU fill-in during factorization can be 5–50x the non-zero count for banded systems — the worst case (50x fill) would be ~1.1 GB, which is still manageable. For a 3D structured grid with local connectivity, actual fill is typically 5–15x — expected factorization footprint is 110–330 MB.
+
+**int32 index overflow risk:**
+
+The 32-bit SuperLU overflow bug (GitHub issue #14984) triggers around n=46,679 with multiple RHS columns. With n=400,000 and a single RHS, the risk is lower but non-zero. SciPy 1.8.0 fixed the signed integer overflow; the project already requires SciPy 1.12+, so the fix is present. No action needed, but worth testing with the largest realistic mesh.
+
+**Do not migrate to the new `csr_array` / `coo_array` API yet.** SciPy 1.12 supports both the legacy `csr_matrix` / `coo_matrix` classes and the new `_array` classes. `spsolve` works with both. Migrating to `_array` classes now introduces risk for zero benefit — the existing `csr_matrix` code is correct and tested. The new API becomes mandatory only when `spmatrix` classes are eventually deprecated (not scheduled as of SciPy 1.15).
 
 ---
 
-### One-Click Packaging (Windows, No Admin)
+## Z-Refinement: No New Libraries
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| pyinstaller | 6.19.0 | Bundle Python app + dependencies into runnable folder | 4.7M+ downloads/month; official hooks for PySide6 and matplotlib work out of the box; actively maintained (version 6.19.0 released 2026); Windows-first; hooks-contrib 2026.3 adds scipy 1.13 compatibility |
-| pyinstaller-hooks-contrib | 2026.3 | Community hooks for numpy, scipy, matplotlib | Required alongside PyInstaller; covers scipy.special hidden imports and matplotlib.libs delvewheel DLLs on Windows |
+Z-refinement is a model-level change, not a solver-level change. The math is identical to inter-layer conduction — `G = k * A / dz`, where `dz = layer.thickness / layer.nz`. Each z-node within a layer connects to the next z-node above it with the same formula. The top z-node of one layer connects to the bottom z-node of the next layer (with interface resistance). No new scipy capabilities required.
 
-**Critical packaging decisions:**
+**`Layer` model addition:**
 
-1. **Use `--onedir` not `--onefile`.** Onefile extracts to `%TEMP%` on every launch — slow (5–15 seconds for large apps) and potentially blocked by IT security policies on managed Windows machines. Onedir produces a `dist/ThermalSim/` folder that users can place anywhere (Downloads, Desktop, USB drive) and run directly without admin access. Zip it for distribution.
-
-2. **Set `console=False`** in the `.spec` EXE section. Without this, a black CMD window appears alongside the GUI.
-
-3. **Set application user model ID** to prevent Windows taskbar grouping under Python:
-   ```python
-   # In GUI entry point, before QApplication init
-   import ctypes
-   ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('com.yourcompany.thermalsim')
-   ```
-
-4. **Add scipy hidden imports to spec file.** PyInstaller does not auto-detect all scipy submodules. Minimum required:
-   ```python
-   hiddenimports=['scipy.sparse.csgraph._validation', 'scipy.linalg.blas', 'scipy.linalg.lapack']
-   ```
-
-5. **Write user data to `%APPDATA%`**, not to the executable directory. The exe folder may be on a read-only network share. Use `os.path.expandvars('%APPDATA%/ThermalSim/')` for logs and settings.
-
-6. **Build on the target platform.** PyInstaller must be run on Windows to produce a Windows exe. This is non-negotiable — cross-compilation is not supported.
-
+```python
+@dataclass
+class Layer:
+    name: str
+    material: str
+    thickness: float
+    interface_resistance_to_next: float = 0.0
+    nz: int = 1                           # NEW: number of z-nodes through this layer
+    material_zones: list[MaterialZone] = field(default_factory=list)  # NEW
 ```
-pip install pyinstaller==6.19.0 pyinstaller-hooks-contrib==2026.3
+
+When `nz=1` and `material_zones=[]`, behavior is identical to the current 2.5D model — backward compatible.
+
+---
+
+## 3D Visualization: Matplotlib Slice Views
+
+### Decision: Multi-panel 2D imshow slices, not Axes3D
+
+**Use 2D imshow panels for z-slice navigation. Do not use Axes3D for primary visualization.**
+
+**Why not Axes3D:**
+
+- `Axes3D.plot_surface` is a 3D wire-mesh renderer. It provides perspective projection of a colored surface, but does not produce true 2D heatmap quality — colors are shaded by the 3D illumination model, which distorts thermal gradient perception.
+- The gallery-provided `imshow3d` helper (which uses `plot_surface` internally) is not a built-in function. It has documented limitations: no aspect ratio control, integer-position pixel edges, and — critically — incorrect rendering when multiple planes intersect. This makes multi-slice simultaneous display unreliable.
+- `Axes3D` performance degrades on large arrays. A 100x100 surface has 10,000 polygons; matplotlib's software renderer (used in PySide6 embedded canvases) becomes sluggish above ~50,000 polygons.
+
+**What to use instead:**
+
+```python
+# Pattern: two-panel layout for z-slice navigation
+fig, (ax_map, ax_profile) = plt.subplots(1, 2)
+
+# Left panel: 2D imshow of selected z-slice (existing pattern, unchanged)
+im = ax_map.imshow(T[z_idx].reshape(ny, nx), origin='lower',
+                   extent=[0, width, 0, height], cmap='hot', aspect='auto')
+
+# Right panel: 1D profile through selected x or y cut (new)
+ax_profile.plot(z_positions, T_column)  # temperature vs z at (ix, iy)
 ```
+
+For layer-aware slicing, the GUI exposes a slider or combo box to select the z-index. The existing `FigureCanvasQTAgg` embedding supports this without new widgets — connect a `QSlider.valueChanged` signal to a function that calls `im.set_data(new_slice)` and `fig.canvas.draw_idle()`. This is the standard matplotlib interactive slice pattern; `set_data` + `draw_idle` avoids re-creating the figure on every frame.
+
+**Optional: Axes3D for structural preview only**
+
+`Axes3D` is appropriate for the existing Structure Preview dialog where a coarse schematic of layer boundaries (colored rectangles) is shown. This is not temperature data — it is a static annotation. Keep using Axes3D there. Do not use it for the temperature results dashboard.
 
 ---
 
 ## Supporting Libraries Summary
 
-| Library | Version | Purpose | Phase 4 Scope |
-|---------|---------|---------|---------------|
-| reportlab | 4.4.10 | PDF engineering reports | New — PDF report feature |
-| qt-material | 2.17 | Professional dark theme | New — GUI polish |
-| pyinstaller | 6.19.0 | Windows one-click build | New — packaging |
-| pyinstaller-hooks-contrib | 2026.3 | Hooks for scipy/numpy/mpl | New — packaging |
-| itertools | stdlib | Parametric sweep grids | New — sweep engine (no install) |
-| concurrent.futures | stdlib | Parallel sweep execution | New — sweep engine (no install) |
+| Library | Version | Role | Change for 3D |
+|---------|---------|------|---------------|
+| numpy | 1.26+ (existing) | Per-cell material maps, vectorized conductance arrays | Use uint8 material_map + float64 lookup arrays |
+| scipy.sparse | 1.12+ (existing) | COO assembly, CSR for spsolve | No format change; per-link conductance arrays replace scalars |
+| scipy.sparse.linalg | 1.12+ (existing) | spsolve, splu for transient | No change; system is larger but API is identical |
+| matplotlib | 3.8+ (existing) | Z-slice visualization | Use imshow + set_data pattern, not Axes3D for results |
+| PySide6 | 6.7+ (existing) | GUI z-slice slider, zone editor | QSlider for z-index; QGraphicsScene for zone rectangle editor |
 
 ---
 
@@ -141,14 +177,11 @@ pip install pyinstaller==6.19.0 pyinstaller-hooks-contrib==2026.3
 
 | Recommended | Alternative | Why Not |
 |-------------|-------------|---------|
-| reportlab 4.4.10 | WeasyPrint | Requires Pango/Cairo system binaries — blocked without admin on Windows |
-| reportlab 4.4.10 | fpdf2 2.8.7 | No auto-flowing multi-page layout; manual page breaks required for variable-length reports |
-| ProcessPoolExecutor (stdlib) | Dask / Ray | Massive overkill for 10–1000 run sweeps; adds large binary dependencies |
-| ProcessPoolExecutor (stdlib) | ThreadPoolExecutor | GIL contention on Python 3.11 for CPU-bound scipy; process pool is more reliable |
-| pyinstaller --onedir | pyinstaller --onefile | Onefile extracts to TEMP on every launch — slow, may trigger AV/security tools |
-| pyinstaller --onedir | Nuitka | Requires C compiler (MSVC or MinGW) — cannot install without admin on managed Windows; longer build times |
-| qt-material 2.17 | PyQtDarkTheme | Last release Dec 2022, effectively unmaintained |
-| qt-material 2.17 | QDarkStyleSheet | Older project; less active than qt-material; limited PySide6 6.x testing |
+| uint8 material index + float64 lookup arrays | Structured numpy array (dtype with fields) | Field access in structured arrays is non-contiguous; poor cache locality for property-at-a-time network assembly; ~10x slower in tight vectorized loops |
+| uint8 material index + float64 lookup arrays | dict mapping (ix, iy) -> Material | Python dict lookup per cell in hot loop; 100-1000x slower than numpy fancy indexing over 400,000 cells |
+| 2D imshow + QSlider for z-navigation | Axes3D plot_surface | Software renderer bottleneck at 100x100+ arrays; 3D shading distorts thermal color perception; imshow3d is a gallery copy-paste, not a maintained API |
+| COO accumulate then tocsr() once | Building CSR directly with lil_matrix | lil_matrix row-insertion is fine for small systems but memory-inefficient for large ones; COO accumulate + tocsr() is the documented best practice for FEM-style assembly with duplicate entries |
+| Keep csr_matrix (legacy API) | Migrate to csr_array (new API) | Zero benefit at this version range; migration introduces test risk; `spsolve` works with both; defer until spmatrix deprecation is announced |
 
 ---
 
@@ -156,78 +189,74 @@ pip install pyinstaller==6.19.0 pyinstaller-hooks-contrib==2026.3
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| WeasyPrint | Requires system-level Pango/Cairo/GLib binaries; blocked by no-admin constraint on Windows | reportlab |
-| Nuitka | Requires MSVC or MinGW C compiler; admin access typically needed on managed Windows for compiler install | PyInstaller |
-| `--onefile` mode in PyInstaller | Extracts to TEMP on every launch; 5–15 second startup; TEMP extraction blocked by some corporate security policies | `--onedir` mode |
-| PyQtDarkTheme | No releases since Dec 2022; effectively abandoned | qt-material |
-| QTableWidget for sweep results | Doesn't scale; no model/view separation; hard to sort/filter large result sets | QAbstractTableModel + QTableView |
-| Writing output files to exe directory | May be on read-only network share; breaks when used from USB | Write to `%APPDATA%/ThermalSim/` |
+| dict-per-cell material storage | Python dict overhead in vectorized assembly loop; ~100x slower than numpy index arrays for 400,000 cells | uint8 material_map + float64 lookup arrays |
+| numpy structured arrays for material properties | Field access is non-contiguous in memory; cache thrash when extracting a single property (k_through) across all cells | Separate parallel float64 arrays per property |
+| Axes3D for temperature results visualization | Software renderer slow on large grids; 3D shading distorts heatmap color; imshow3d intersecting plane limitation | 2D imshow panels with z-slice slider |
+| `scipy.sparse.csr_array` (new API) right now | No benefit over existing csr_matrix at SciPy 1.12+; adds migration risk to tested code | Keep csr_matrix; migrate when spmatrix is deprecated |
+| Any external thermal solver (FEM/FVM library) | Out-of-scope; project is an RC-network approximation tool; adding FEM would require compiled extensions incompatible with no-admin Windows constraint | Extend existing scipy spsolve pipeline |
+
+---
+
+## Stack Patterns by Scenario
+
+**If nz=1 for all layers (2.5D project loaded):**
+- Material map collapses to a single z-node per layer: `material_map[layer_idx, :, :] = material_id`
+- Network builder produces identical output to the current 2.5D builder — backward compatibility confirmed
+
+**If a layer has lateral material zones:**
+- Rasterize `MaterialZone` rectangles onto the (ny, nx) grid at network build time — do not rasterize on every solve
+- Store the rasterized map as `np.ndarray(uint8)` on the `ThermalNetwork` or as a scratch array in the builder
+
+**If total node count exceeds 1,000,000 (e.g., 200x200x25):**
+- Factorization fill-in may push RAM above 4 GB
+- Switch from `spsolve` (direct) to `scipy.sparse.linalg.gmres` or `bicgstab` (iterative, Krylov) with an ILU preconditioner
+- This is not expected for the target 100x100x40 case but document the threshold
+
+**If z-slice navigation feels slow in GUI:**
+- Use `im.set_data(new_slice)` + `canvas.draw_idle()` instead of `plt.imshow()` re-call — avoids axis recreation
+- Pre-compute the full 3D temperature array into a `(n_z_total, ny, nx)` numpy array once after solve; slice from RAM on demand
 
 ---
 
 ## Version Compatibility
 
-| Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| PySide6 6.10.2 | qt-material 2.17 | Confirmed; qt-material explicitly supports PySide6 6.x |
-| PySide6 6.10.2 | pyinstaller 6.19.0 | Official hooks in pyinstaller-hooks-contrib support current PySide6 |
-| reportlab 4.4.10 | matplotlib 3.8+ | No conflicts; integration via BytesIO PNG buffer, not shared API |
-| scipy 1.12+ | pyinstaller-hooks-contrib 2026.3 | Hooks updated for scipy 1.13 hidden imports |
-| Python 3.11 | all above | All packages support Python 3.9+ |
+| Package | Required Version | Notes |
+|---------|-----------------|-------|
+| numpy | 1.26+ (existing) | uint8 fancy indexing, structured arrays — stable API |
+| scipy | 1.12+ (existing) | spsolve int32 overflow fixed in 1.8.0 (already satisfied); COO+CSR assembly API stable |
+| matplotlib | 3.8+ (existing) | imshow + set_data + draw_idle pattern stable since 2.x; Axes3D stable since 1.x |
+| PySide6 | 6.7+ (existing) | QSlider, QGraphicsScene, FigureCanvasQTAgg — all stable |
 
 ---
 
 ## Installation
 
 ```bash
-# PDF reports
-pip install reportlab==4.4.10
-
-# GUI theme polish
-pip install qt-material==2.17
-
-# Packaging (dev/build machine only, not end-user requirement)
-pip install pyinstaller==6.19.0 pyinstaller-hooks-contrib==2026.3
-
-# Parametric sweep engine — no additional install (stdlib only)
-# itertools, concurrent.futures are part of Python 3.11 stdlib
+# No new packages required.
+# All 3D solver capabilities are covered by the existing requirements.txt:
+#   numpy>=1.26
+#   scipy>=1.12
+#   matplotlib>=3.8
+#   PySide6>=6.7
+#   pytest>=8.0
+#   qt-material>=2.14
 ```
-
----
-
-## Stack Patterns by Scenario
-
-**If sweep runs take > 30 seconds each:**
-- Add a cancellation mechanism: use `executor.shutdown(wait=False, cancel_futures=True)` when the user clicks Cancel
-- Emit per-run progress signals, not just a final completion signal
-
-**If PDF report is > 20 pages:**
-- Switch from `SimpleDocTemplate` to `BaseDocTemplate` with named frames for header/footer control
-- Use `reportlab.platypus.KeepTogether` to prevent table rows from splitting across pages
-
-**If packaging produces > 500 MB folder:**
-- Add `--exclude-module` in spec file to drop unused matplotlib backends (wx, gtk) and scipy submodules not used by the solver
-- PySide6 alone adds ~200 MB; this is expected and unavoidable without admin-level system Qt
 
 ---
 
 ## Sources
 
-- PyPI JSON API `https://pypi.org/pypi/reportlab/json` — version 4.4.10 confirmed [HIGH confidence]
-- PyPI JSON API `https://pypi.org/pypi/pyinstaller/json` — version 6.19.0 confirmed [HIGH confidence]
-- PyPI JSON API `https://pypi.org/pypi/PySide6/json` — version 6.10.2 confirmed [HIGH confidence]
-- PyPI JSON API `https://pypi.org/pypi/qt-material/json` — version 2.17, last release April 2025 [HIGH confidence]
-- PyPI JSON API `https://pypi.org/pypi/pyqtdarktheme/json` — version 2.1.0, last release Dec 2022, stale [HIGH confidence]
-- PyPI JSON API `https://pypi.org/pypi/pyinstaller-hooks-contrib/json` — version 2026.3 confirmed [HIGH confidence]
-- `https://pyinstaller.org/en/stable/usage.html` — onefile vs onedir, TEMP extraction behavior [HIGH confidence]
-- `https://www.pythonguis.com/tutorials/packaging-pyside6-applications-windows-pyinstaller-installforge/` — PySide6 packaging gotchas, console=False, path issues [MEDIUM confidence]
-- `https://docs.reportlab.com/reportlab/userguide/ch5_platypus/` — Platypus document model [HIGH confidence]
-- `https://saturncloud.io/blog/loading-matplotlib-objects-into-reportlab-a-guide/` — matplotlib BytesIO embed pattern [MEDIUM confidence]
-- `https://www.pythonguis.com/tutorials/multithreading-pyside6-applications-qthreadpool/` — QRunnable + WorkerSignals pattern [MEDIUM confidence]
-- `https://docs.python.org/3/library/concurrent.futures.html` — ProcessPoolExecutor stdlib [HIGH confidence]
-- WebSearch: packaging comparisons, Qt theme library activity [LOW confidence where noted above]
+- [NumPy Structured Arrays docs (v2.4)](https://numpy.org/doc/stable/user/basics.rec.html) — structured array cache locality limitations confirmed [HIGH confidence]
+- [SciPy sparse docs (v1.17.0)](https://docs.scipy.org/doc/scipy/reference/sparse.html) — COO+CSR assembly recommendation, new array API status, csr_array [HIGH confidence]
+- [SciPy spsolve docs (v1.17.0)](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.spsolve.html) — format conversion behavior, CSC preference for SuperLU [HIGH confidence]
+- [GitHub scipy issue #14984](https://github.com/scipy/scipy/issues/14984) — int32 overflow in SuperLU; fixed in SciPy 1.8.0 [HIGH confidence]
+- [GitHub scipy issue #18603](https://github.com/scipy/scipy/issues/18603) — int64 index downcast handling in spsolve [MEDIUM confidence]
+- [Matplotlib mplot3d gallery (v3.10.8)](https://matplotlib.org/stable/gallery/mplot3d/index.html) — available 3D plot types, imshow3d limitations [HIGH confidence]
+- [Matplotlib imshow3d example (v3.10.8)](https://matplotlib.org/stable/gallery/mplot3d/imshow3d.html) — confirmed imshow3d is a gallery copy-paste, not a built-in function; intersection rendering limitation documented [HIGH confidence]
+- [DataCamp: Matplotlib 3D Volumetric Data](https://www.datacamp.com/tutorial/matplotlib-3d-volumetric-data) — slice navigation with set_data + draw_idle pattern [MEDIUM confidence]
+- Memory estimates computed from first principles: n=400,000 nodes, ~7 non-zeros/node in 3D 6-connectivity structured grid, float64=8 bytes, int32=4 bytes [HIGH confidence — arithmetic]
 
 ---
 
-*Stack research for: Python thermal simulation desktop app — Phase 4 additions*
-*Researched: 2026-03-14*
+*Stack research for: Python thermal simulation desktop app — v2.0 3D solver additions*
+*Researched: 2026-03-16*
