@@ -842,13 +842,12 @@ def test_zref03_interface_resistance_applies_at_layer_boundary() -> None:
     )
 
 
-@pytest.mark.xfail(reason="ZREF-04: requires Plan 02 z-refinement in solver", strict=False)
 def test_zref04_backward_compat_nz1_identical() -> None:
     """ZREF-04: nz=1 on all layers must produce backward-compatible result metadata.
 
     Loads an existing example project (steady_uniform_stack.json) which has no
-    nz fields (defaults to 1).  After Plan 02 wires z-refinement, the result must
-    carry nz_per_layer with all-1 values and z_offsets=[0, 1, ..., n_layers].
+    nz fields (defaults to 1).  The result must carry nz_per_layer with all-1 values
+    and z_offsets=[0, 1, ..., n_layers].
     """
     project_path = Path(__file__).parent.parent / "examples" / "steady_uniform_stack.json"
     project = load_project(str(project_path))
@@ -865,4 +864,64 @@ def test_zref04_backward_compat_nz1_identical() -> None:
     assert result.z_offsets is not None, "z_offsets should be set after Plan 02"
     assert result.z_offsets == list(range(n_layers + 1)), (
         f"Expected z_offsets={list(range(n_layers + 1))}, got {result.z_offsets}"
+    )
+    # When all layers have nz=1, total_z == n_layers, so shape[0] is the layer count
+    assert result.temperatures_c.shape[0] == n_layers, (
+        f"Expected temperatures_c.shape[0] == {n_layers}, got {result.temperatures_c.shape[0]}"
+    )
+
+
+@pytest.mark.parametrize("json_name", [
+    "steady_uniform_stack.json",
+    "localized_hotspots_stack.json",
+])
+def test_zref04_all_examples_produce_valid_results(json_name: str) -> None:
+    """ZREF-04: All example JSONs (nz=1 implicit) load and solve without error."""
+    project = load_project(Path(__file__).parent.parent / "examples" / json_name)
+    result = SteadyStateSolver().solve(project)
+    # When all layers have nz=1 (implicit default), total_z == n_layers
+    assert result.temperatures_c.shape == (len(project.layers), result.ny, result.nx)
+    assert result.nz_per_layer == [1] * len(project.layers)
+    # Temperatures should be physically reasonable (above ambient, not NaN)
+    assert not np.any(np.isnan(result.temperatures_c))
+    assert float(result.temperatures_c.max()) > 0.0
+
+
+def test_zref04_mixed_nz_project_solves_without_shape_error() -> None:
+    """ZREF-04: A project with nz=[1, 3, 2] solves correctly.
+
+    total_z = 1 + 3 + 2 = 6. When all nz=1, total_z would equal n_layers=3,
+    so this test specifically validates that mixed nz values produce the
+    correct expanded z-axis shape.
+    """
+    mat = Material("M", 2.0, 2.0, 1000.0, 900.0, 0.9)
+    project = DisplayProject(
+        name="Mixed nz",
+        width=0.05,
+        height=0.05,
+        materials={"M": mat},
+        layers=[
+            Layer(name="L1", material="M", thickness=0.001, nz=1, interface_resistance_to_next=0.0),
+            Layer(name="L2", material="M", thickness=0.003, nz=3, interface_resistance_to_next=0.0),
+            Layer(name="L3", material="M", thickness=0.002, nz=2),
+        ],
+        heat_sources=[HeatSource(name="Q", layer="L1", power_w=1.0, shape="full")],
+        boundaries=BoundaryConditions(
+            top=SurfaceBoundary(ambient_c=25.0, convection_h=10.0, include_radiation=False),
+            bottom=SurfaceBoundary(ambient_c=25.0, convection_h=5.0, include_radiation=False),
+            side=SurfaceBoundary(ambient_c=25.0, convection_h=0.0, include_radiation=False),
+        ),
+        mesh=MeshConfig(nx=1, ny=1),
+    )
+    result = SteadyStateSolver().solve(project)
+    total_z = 1 + 3 + 2  # = 6, NOT n_layers=3
+    assert result.temperatures_c.shape == (total_z, 1, 1)
+    assert result.nz_per_layer == [1, 3, 2]
+    assert result.z_offsets == [0, 1, 4, 6]
+    assert not np.any(np.isnan(result.temperatures_c))
+    # L1 is bottommost with heat, so its temperature should be highest
+    t_l1 = float(result.temperatures_c[0, 0, 0])   # L1 has nz=1 at z_offset 0
+    t_l3_top = float(result.temperatures_c[5, 0, 0])  # L3 top sublayer at z_offset 5
+    assert t_l1 > t_l3_top, (
+        f"L1 (heat source) should be hotter than L3 top: L1={t_l1:.2f} C, L3_top={t_l3_top:.2f} C"
     )
