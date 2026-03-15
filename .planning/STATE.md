@@ -36,18 +36,18 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 ## Current Position
 
 Phase: 9 of 9 (3D GUI and ELED Zone Preset) — in_progress
-Plan: 1 of 3 (09-01 complete)
+Plan: 2 of 3 (09-02 complete)
 Status: in_progress
-Last activity: 2026-03-15 — 09-01 z-refinement GUI: nz spinbox column, z-sublayer combo, node count status bar, 300k warning; 202 tests pass
+Last activity: 2026-03-16 — 09-02 zone editor GUI: zone sub-table per layer, zone preview canvas, zone overlay on temperature map and PDF export; 202 tests pass
 
-Progress: [█████████░] 93%
+Progress: [█████████░] 96%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4 (v2.0)
+- Total plans completed: 5 (v2.0)
 - Average duration: 7 min
-- Total execution time: 0.44 hours
+- Total execution time: 0.52 hours
 
 **By Phase:**
 
@@ -55,6 +55,7 @@ Progress: [█████████░] 93%
 |-------|-------|-------|----------|
 | 07-3d-solver-core | 2 | 20 min | 10 min |
 | 08-z-refinement | 3 | 20 min | 7 min |
+| 09-3d-gui-and-eled-zone-preset | 2 | 15 min | 8 min |
 
 *Updated after each plan completion*
 
@@ -85,6 +86,9 @@ Progress: [█████████░] 93%
 - [Phase 09-3d-gui-and-eled-zone-preset]: nz column uses QSpinBox as cell widget (column 4) rather than a table item; _build_project_from_ui reads cellWidget(row, 4).value() after parse_layers_table
 - [Phase 09-3d-gui-and-eled-zone-preset]: _refresh_layer_choices(project, result=None) — result=None yields plain layer names; result with nz>1 yields z-sublayer entries with userData=flat_z_index
 - [Phase 09-3d-gui-and-eled-zone-preset]: _plot_map uses currentData() as flat z-index; falls back to layer_names.index() when userData is None for backward compat
+- [Phase 09-3d-gui-and-eled-zone-preset]: _layer_zones dict (layer_row -> list[dict]) mirrors _source_profiles pattern; stores SI metres internally, displays in mm in zone table
+- [Phase 09-3d-gui-and-eled-zone-preset]: _updating_zones flag (not blockSignals) guards recursive cellChanged — blockSignals would also suppress the combo changes
+- [Phase 09-3d-gui-and-eled-zone-preset]: zones= parameter on plot_temperature_map_annotated defaults to None — fully backward-compatible; ResultSnapshot.layer_zones uses getattr for older snapshots
 
 ### Pending Todos
 
@@ -97,6 +101,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15
-Stopped at: Completed 09-01-PLAN.md
-Resume file: .planning/phases/09-3d-gui-and-eled-zone-preset/09-01-SUMMARY.md
+Last session: 2026-03-16
+Stopped at: Completed 09-02-PLAN.md
+Resume file: .planning/phases/09-3d-gui-and-eled-zone-preset/09-02-SUMMARY.md
