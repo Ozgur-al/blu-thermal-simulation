@@ -85,6 +85,7 @@ from thermal_sim.ui.structure_preview import StructurePreviewDialog
 from thermal_sim.ui.sweep_dialog import SweepDialog
 from thermal_sim.ui.sweep_results_widget import SweepResultsWidget
 from thermal_sim.ui.table_data_parser import TableDataParser
+from thermal_sim.models.material_zone import MaterialZone
 
 
 class _CellEditCommand(QUndoCommand):
@@ -169,6 +170,12 @@ class MainWindow(QMainWindow):
 
         # Power profile breakpoints: source_row_index -> list[PowerBreakpoint]
         self._source_profiles: dict[int, list] = {}
+
+        # Material zones per layer row: layer_row_index -> list[dict]
+        # Each dict: {"material": str, "x": float, "y": float, "width": float, "height": float} (SI metres)
+        self._layer_zones: dict[int, list] = {}
+        # Guard flag to prevent recursive cellChanged during zone table population
+        self._updating_zones: bool = False
 
         # Persistent output directory
         settings = QSettings("ThermalSim", "ThermalSimulator")
@@ -559,6 +566,46 @@ class MainWindow(QMainWindow):
             "nz": "Number of z-sublayers through thickness (z-refinement)",
         })
         self._wire_table_undo(self.layers_table)
+
+        # Zone sub-panel (appears when a layer row is selected)
+        self._zone_panel = QGroupBox("Material Zones")
+        zone_layout = QVBoxLayout(self._zone_panel)
+
+        # Zone table: Material, X start [mm], X end [mm], Y start [mm], Y end [mm]
+        self._zone_table = QTableWidget(0, 5)
+        self._zone_table.setHorizontalHeaderLabels(
+            ["Material", "X start [mm]", "X end [mm]", "Y start [mm]", "Y end [mm]"]
+        )
+        self._zone_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._zone_table.verticalHeader().setVisible(False)
+        self._zone_table.setAlternatingRowColors(True)
+        self._zone_table.setMaximumHeight(150)
+        self._zone_table.cellChanged.connect(self._on_zone_table_changed)
+        zone_layout.addWidget(self._zone_table)
+
+        zone_btn_row = QHBoxLayout()
+        add_zone_btn = QPushButton("+ Add Zone")
+        add_zone_btn.setToolTip("Add a rectangular material zone to this layer")
+        add_zone_btn.clicked.connect(self._add_zone_row)
+        rm_zone_btn = QPushButton("- Remove Zone")
+        rm_zone_btn.setToolTip("Remove the selected zone")
+        rm_zone_btn.clicked.connect(self._remove_zone_row)
+        zone_btn_row.addWidget(add_zone_btn)
+        zone_btn_row.addWidget(rm_zone_btn)
+        zone_btn_row.addStretch()
+        zone_layout.addLayout(zone_btn_row)
+
+        # Zone preview canvas
+        self._zone_preview_canvas = MplCanvas(width=3.5, height=2.5, dpi=80)
+        self._zone_preview_canvas.setMaximumHeight(200)
+        zone_layout.addWidget(self._zone_preview_canvas)
+
+        self._zone_panel.setVisible(False)
+        layout.addWidget(self._zone_panel)
+
+        # Wire layer row selection to show/hide zone panel
+        self.layers_table.itemSelectionChanged.connect(self._on_layer_selected_for_zones)
+
         return tab
 
     def _build_sources_tab(self) -> QWidget:
@@ -1145,10 +1192,26 @@ class MainWindow(QMainWindow):
 
     def _remove_table_row(self, table: QTableWidget) -> None:
         """Remove selected row and revalidate to clear any stale error entries."""
+        if table is self.layers_table:
+            removed_row = table.currentRow()
+        else:
+            removed_row = -1
         TableDataParser.remove_selected_row(self, table)
         self._revalidate_table(table)
         if table is self.layers_table:
             self._update_node_count_label()
+            # Shift _layer_zones keys: remove the deleted row, shift remaining keys down
+            if removed_row >= 0:
+                new_zones: dict[int, list] = {}
+                for key, val in self._layer_zones.items():
+                    if key < removed_row:
+                        new_zones[key] = val
+                    elif key > removed_row:
+                        new_zones[key - 1] = val
+                    # key == removed_row is dropped
+                self._layer_zones = new_zones
+            # Hide zone panel if the selected layer was removed
+            self._zone_panel.setVisible(False)
 
     # ------------------------------------------------------------------
     # Inline cell validation
@@ -1281,6 +1344,23 @@ class MainWindow(QMainWindow):
         for row, layer in enumerate(project.layers):
             self._set_layer_nz_spinbox(row, layer.nz)
 
+        # Populate zone data per layer from loaded project
+        self._layer_zones = {}
+        for row, layer in enumerate(project.layers):
+            if layer.zones:
+                self._layer_zones[row] = [
+                    {
+                        "material": z.material,
+                        "x": z.x,
+                        "y": z.y,
+                        "width": z.width,
+                        "height": z.height,
+                    }
+                    for z in layer.zones
+                ]
+        # Refresh zone panel if a layer row is currently selected
+        self._zone_panel.setVisible(False)
+
         self._refresh_layer_choices(project)
         self._refresh_profile_choices(project)
 
@@ -1324,6 +1404,7 @@ class MainWindow(QMainWindow):
         TableDataParser._add_table_row(self.layers_table)
         row = self.layers_table.rowCount() - 1
         self._set_layer_nz_spinbox(row, nz=1)
+        self._layer_zones[row] = []
         self._undo_stack.endMacro()
         self._update_node_count_label()
 
@@ -2136,6 +2217,185 @@ class MainWindow(QMainWindow):
         self._plot_manager.fill_probe_table(self.probe_table, probe_values)
 
     # ------------------------------------------------------------------
+    # Zone editor helpers (Layers tab)
+    # ------------------------------------------------------------------
+
+    def _on_layer_selected_for_zones(self) -> None:
+        """Show/hide zone panel and populate it when a layer row is selected."""
+        row = self.layers_table.currentRow()
+        if row < 0:
+            self._zone_panel.setVisible(False)
+            return
+        self._zone_panel.setVisible(True)
+        self._populate_zone_table(row)
+        self._refresh_zone_preview(row)
+
+    def _populate_zone_table(self, layer_row: int) -> None:
+        """Load zone data for *layer_row* into the zone sub-table (display in mm)."""
+        self._updating_zones = True
+        self._zone_table.blockSignals(True)
+        self._zone_table.setRowCount(0)
+        zones = self._layer_zones.get(layer_row, [])
+        for z in zones:
+            r = self._zone_table.rowCount()
+            self._zone_table.insertRow(r)
+            # Material combo
+            mat_combo = self._make_zone_material_combo(z.get("material", ""))
+            self._zone_table.setCellWidget(r, 0, mat_combo)
+            # Coordinates in mm (stored as SI metres)
+            x_start_mm = z["x"] * 1000.0
+            x_end_mm = (z["x"] + z["width"]) * 1000.0
+            y_start_mm = z["y"] * 1000.0
+            y_end_mm = (z["y"] + z["height"]) * 1000.0
+            for col, val in enumerate([x_start_mm, x_end_mm, y_start_mm, y_end_mm], start=1):
+                self._zone_table.setItem(r, col, QTableWidgetItem(f"{val:.3f}"))
+        self._zone_table.blockSignals(False)
+        self._updating_zones = False
+
+    def _make_zone_material_combo(self, current_material: str = "") -> QComboBox:
+        """Create a QComboBox populated with current project material names."""
+        combo = QComboBox()
+        # Collect material names from materials_table
+        for row in range(self.materials_table.rowCount()):
+            name = TableDataParser._cell_text(self.materials_table, row, 0)
+            if name:
+                combo.addItem(name)
+        # Select current or first
+        idx = combo.findText(current_material)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        # Wire change to zone table update
+        combo.currentTextChanged.connect(self._on_zone_combo_changed)
+        return combo
+
+    def _on_zone_combo_changed(self) -> None:
+        """Handle material combo change in zone table — save and refresh preview."""
+        if self._updating_zones:
+            return
+        layer_row = self.layers_table.currentRow()
+        if layer_row < 0:
+            return
+        self._read_zone_table_into_store(layer_row)
+        self._refresh_zone_preview(layer_row)
+
+    def _on_zone_table_changed(self, row: int, col: int) -> None:  # noqa: ARG002
+        """Handle coordinate cell edits in the zone table."""
+        if self._updating_zones:
+            return
+        layer_row = self.layers_table.currentRow()
+        if layer_row < 0:
+            return
+        self._read_zone_table_into_store(layer_row)
+        self._refresh_zone_preview(layer_row)
+
+    def _read_zone_table_into_store(self, layer_row: int) -> None:
+        """Read all zone table rows and persist them into _layer_zones (SI metres)."""
+        zones = []
+        for r in range(self._zone_table.rowCount()):
+            mat_combo = self._zone_table.cellWidget(r, 0)
+            material = mat_combo.currentText() if mat_combo else ""
+            try:
+                x_start_mm = float((self._zone_table.item(r, 1) or QTableWidgetItem("0")).text())
+                x_end_mm = float((self._zone_table.item(r, 2) or QTableWidgetItem("10")).text())
+                y_start_mm = float((self._zone_table.item(r, 3) or QTableWidgetItem("0")).text())
+                y_end_mm = float((self._zone_table.item(r, 4) or QTableWidgetItem("10")).text())
+            except ValueError:
+                continue
+            x_m = x_start_mm / 1000.0
+            width_m = max((x_end_mm - x_start_mm) / 1000.0, 1e-6)
+            y_m = y_start_mm / 1000.0
+            height_m = max((y_end_mm - y_start_mm) / 1000.0, 1e-6)
+            zones.append({
+                "material": material,
+                "x": x_m,
+                "y": y_m,
+                "width": width_m,
+                "height": height_m,
+            })
+        self._layer_zones[layer_row] = zones
+
+    def _add_zone_row(self) -> None:
+        """Insert a new zone row with default values spanning the full panel."""
+        layer_row = self.layers_table.currentRow()
+        if layer_row < 0:
+            return
+        # Default zone: full panel extent
+        w_mm = self.width_spin.value()
+        h_mm = self.height_spin.value()
+        # Pick first available material
+        default_mat = ""
+        if self.materials_table.rowCount() > 0:
+            default_mat = TableDataParser._cell_text(self.materials_table, 0, 0) or ""
+        new_zone = {
+            "material": default_mat,
+            "x": 0.0,
+            "y": 0.0,
+            "width": w_mm / 1000.0,
+            "height": h_mm / 1000.0,
+        }
+        existing = self._layer_zones.get(layer_row, [])
+        existing.append(new_zone)
+        self._layer_zones[layer_row] = existing
+        self._populate_zone_table(layer_row)
+        self._refresh_zone_preview(layer_row)
+
+    def _remove_zone_row(self) -> None:
+        """Remove the selected zone row."""
+        layer_row = self.layers_table.currentRow()
+        if layer_row < 0:
+            return
+        zone_row = self._zone_table.currentRow()
+        if zone_row < 0:
+            return
+        zones = self._layer_zones.get(layer_row, [])
+        if zone_row < len(zones):
+            zones.pop(zone_row)
+            self._layer_zones[layer_row] = zones
+        self._populate_zone_table(layer_row)
+        self._refresh_zone_preview(layer_row)
+
+    def _refresh_zone_preview(self, layer_row: int) -> None:
+        """Redraw the zone preview canvas showing rectangles on the layer footprint."""
+        from matplotlib.patches import Rectangle as MplRectangle
+        w_mm = self.width_spin.value()
+        h_mm = self.height_spin.value()
+        ax = self._zone_preview_canvas.axes
+        ax.clear()
+        # Draw layer footprint
+        ax.add_patch(MplRectangle(
+            (0, 0), w_mm, h_mm,
+            linewidth=1.0, edgecolor="#888888", facecolor="#2a2a2a",
+        ))
+        # Draw zones
+        zones = self._layer_zones.get(layer_row, [])
+        colors = ["#4fc3f7", "#ffb74d", "#a5d6a7", "#f48fb1", "#ce93d8"]
+        for i, z in enumerate(zones):
+            x_mm = z["x"] * 1000.0
+            y_mm = z["y"] * 1000.0
+            w_zone = z["width"] * 1000.0
+            h_zone = z["height"] * 1000.0
+            color = colors[i % len(colors)]
+            ax.add_patch(MplRectangle(
+                (x_mm, y_mm), w_zone, h_zone,
+                linewidth=1.2, edgecolor="white",
+                linestyle="--", facecolor=color, alpha=0.35,
+            ))
+            ax.text(
+                x_mm + 0.5, y_mm + 0.5,
+                z.get("material", ""),
+                fontsize=7, color="white",
+                va="bottom", ha="left",
+            )
+        ax.set_xlim(0, max(w_mm, 1))
+        ax.set_ylim(0, max(h_mm, 1))
+        ax.set_xlabel("x [mm]", fontsize=7)
+        ax.set_ylabel("y [mm]", fontsize=7)
+        ax.set_title("Zone Preview", fontsize=8)
+        ax.tick_params(labelsize=6)
+        self._zone_preview_canvas.figure.tight_layout()
+        self._zone_preview_canvas.draw_idle()
+
+    # ------------------------------------------------------------------
     # Power profile UI helpers
     # ------------------------------------------------------------------
 
@@ -2343,6 +2603,22 @@ class MainWindow(QMainWindow):
         for row, layer in enumerate(project.layers):
             nz_spin = self.layers_table.cellWidget(row, 4)
             layer.nz = nz_spin.value() if nz_spin is not None else 1
+        # Attach material zones from the zone sub-panel
+        for row, layer in enumerate(project.layers):
+            zone_dicts = self._layer_zones.get(row, [])
+            zones = []
+            for z in zone_dicts:
+                try:
+                    zones.append(MaterialZone(
+                        material=z["material"],
+                        x=z["x"],
+                        y=z["y"],
+                        width=z["width"],
+                        height=z["height"],
+                    ))
+                except (ValueError, KeyError):
+                    continue
+            layer.zones = zones
         # Attach power profiles from the profile sub-panel
         from thermal_sim.models.heat_source import PowerBreakpoint  # noqa: F401 (side-effect import for clarity)
         for row_idx, bps in self._source_profiles.items():
