@@ -60,10 +60,10 @@
 
 ### 3D Solver Core
 
-- [ ] **SOLV-01**: Network builder supports per-cell material assignment via MaterialZone rectangular descriptors rasterized at build time
-- [ ] **SOLV-02**: Lateral conductance between cells of different materials uses harmonic-mean formula
-- [ ] **SOLV-03**: NodeLayout abstraction centralizes node indexing for variable z-nodes per layer
-- [ ] **SOLV-04**: Existing v1.0 projects load and solve with identical temperatures (backward-compat regression test)
+- [x] **SOLV-01**: Network builder supports per-cell material assignment via MaterialZone rectangular descriptors rasterized at build time
+- [x] **SOLV-02**: Lateral conductance between cells of different materials uses harmonic-mean formula
+- [x] **SOLV-03**: NodeLayout abstraction centralizes node indexing for variable z-nodes per layer
+- [x] **SOLV-04**: Existing v1.0 projects load and solve with identical temperatures (backward-compat regression test)
 
 ### Z-Refinement
 
@@ -138,10 +138,10 @@
 | ARCH-04 | Phase 6 — Architecture Support | Complete |
 | ARCH-05 | Phase 6 — Architecture Support | Complete |
 | ARCH-06 | Phase 6 — Architecture Support | Complete |
-| SOLV-01 | Phase 7 — 3D Solver Core | Pending |
-| SOLV-02 | Phase 7 — 3D Solver Core | Pending |
-| SOLV-03 | Phase 7 — 3D Solver Core | Pending |
-| SOLV-04 | Phase 7 — 3D Solver Core | Pending |
+| SOLV-01 | Phase 7 — 3D Solver Core | Complete |
+| SOLV-02 | Phase 7 — 3D Solver Core | Complete |
+| SOLV-03 | Phase 7 — 3D Solver Core | Complete |
+| SOLV-04 | Phase 7 — 3D Solver Core | Complete |
 | ZREF-01 | Phase 8 — Z-Refinement | Pending |
 | ZREF-02 | Phase 8 — Z-Refinement | Pending |
 | ZREF-03 | Phase 8 — Z-Refinement | Pending |
