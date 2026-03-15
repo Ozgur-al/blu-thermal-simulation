@@ -54,10 +54,12 @@ class SteadyStateSolver:
         if on_progress:
             on_progress("solving")
         solution = spsolve(network.a_matrix, network.b_vector)
-        temperatures = solution.reshape((network.n_layers, network.grid.ny, network.grid.nx))
+        temperatures = solution.reshape((network.n_z_nodes, network.grid.ny, network.grid.nx))
         return SteadyStateResult(
             temperatures_c=temperatures,
             layer_names=network.layer_names,
             dx=network.grid.dx,
             dy=network.grid.dy,
+            nz_per_layer=list(network.nz_per_layer),
+            z_offsets=list(network.z_offsets),
         )

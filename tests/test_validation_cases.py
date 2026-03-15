@@ -628,7 +628,6 @@ def generate_all_validation_plots(output_dir: Path | str = Path("outputs/validat
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(reason="ZREF-05: requires Plan 02 z-refinement in network builder", strict=False)
 def test_zref05_single_layer_nz5_matches_1d_analytical() -> None:
     """ZREF-05: single layer with nz=5 must match 1D analytical tridiagonal solution.
 
@@ -719,7 +718,6 @@ def test_zref05_single_layer_nz5_matches_1d_analytical() -> None:
         )
 
 
-@pytest.mark.xfail(reason="ZREF-03: requires Plan 02 z-refinement in network builder", strict=False)
 def test_zref03_interface_resistance_applies_at_layer_boundary() -> None:
     """ZREF-03: interface resistance must apply only at true layer boundaries, not within layers.
 

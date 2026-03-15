@@ -88,7 +88,7 @@ class TransientSolver:
         lu = splu(lhs.tocsc())
 
         # Pre-allocate output arrays instead of growing lists.
-        state_shape = (network.n_layers, network.grid.ny, network.grid.nx)
+        state_shape = (network.n_z_nodes, network.grid.ny, network.grid.nx)
         n_samples = sum(
             1 for s in range(1, n_steps + 1) if s % sample_every == 0 or s == n_steps
         ) + 1  # +1 for initial state
@@ -130,4 +130,6 @@ class TransientSolver:
             layer_names=network.layer_names,
             dx=network.grid.dx,
             dy=network.grid.dy,
+            nz_per_layer=list(network.nz_per_layer),
+            z_offsets=list(network.z_offsets),
         )
