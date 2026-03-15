@@ -2,7 +2,18 @@
 
 ## What This Is
 
-A desktop thermal simulation tool for display module concept studies, used by hardware/thermal engineers to evaluate layer stack configurations, hotspot behavior, and thermal margins. It models 2.5D conduction networks with convection and radiation boundaries, offering both steady-state and transient analysis. Targets internal team distribution as a professional engineering tool with a polished, Zemax-inspired interface.
+A desktop thermal simulation tool for display module concept studies, used by hardware/thermal engineers to evaluate layer stack configurations, hotspot behavior, and thermal margins. It models RC conduction networks with convection and radiation boundaries, offering both steady-state and transient analysis. Targets internal team distribution as a professional engineering tool with a polished, Zemax-inspired interface.
+
+## Current Milestone: v2.0 Full 3D Solver
+
+**Goal:** Upgrade from 2.5D (uniform material per layer, one z-node per layer) to a full 3D RC-network solver with per-cell material assignment and z-refinement — enabling accurate modeling of laterally heterogeneous layers like ELED edge assemblies.
+
+**Target features:**
+- Per-cell material zones within a layer (different materials at different x,y positions in same z-plane)
+- Z-refinement (multiple nodes through a layer's thickness for through-plane resolution)
+- Correct ELED thermal modeling with dual heat paths (LED→FR4→metal + LED→air→LGP)
+- GUI for defining material regions and z-refinement controls
+- 3D visualization with z-plane slicing
 
 ## Core Value
 
@@ -34,27 +45,27 @@ Engineers can quickly set up a display stack, run thermal simulations, and get a
 
 ### Active
 
-<!-- Current scope: Phase 4 — polish, new capabilities, product-grade quality. -->
+<!-- Current scope: v2.0 — Full 3D solver with per-cell materials and z-refinement. -->
 
-- [ ] Time-varying heat sources (duty cycles, power profiles, on/off patterns)
-- [ ] Parametric sweep engine (vary thickness, h, power, etc. and compare results)
-- [ ] Expanded material library with import/export support
-- [ ] PDF engineering report generation (thermal maps, probe data, stack summary, key metrics)
-- [ ] GUI overhaul for professional product feel (Zemax-style: clean, engineering-grade, intuitive)
-- [ ] Improved editing workflow (adding/editing layers, materials, sources)
-- [ ] Better results comparison and exploration in GUI
-- [ ] CLI feature parity in GUI (all CLI capabilities accessible from GUI)
-- [ ] One-click launch packaging (no admin access required, non-programmer friendly)
-- [ ] Additional validation test cases and comparison datasets
-- [ ] Visual polish (layout, responsiveness, modern look and feel)
+- [ ] Per-cell material assignment within a layer (lateral material zones)
+- [ ] Z-refinement (multiple z-nodes per layer thickness)
+- [ ] 3D network builder using per-cell conductivity lookups
+- [ ] ELED cross-section modeling (metal | FR4+LED | air | LGP at same z-level)
+- [ ] GUI material zone editor (define rectangular regions with different materials)
+- [ ] GUI z-refinement controls (per-layer node count)
+- [ ] 3D visualization with arbitrary z-plane slicing
+- [ ] Validation tests for 3D conduction (analytical benchmarks)
+- [ ] Backward compatibility (2.5D projects load and solve identically)
 
 ### Out of Scope
 
 - CFD / fluid flow modeling — this is an RC-network approximation tool, not a CFD solver
-- Temperature-dependent material properties — intentionally constant for speed and simplicity in this version
+- Temperature-dependent material properties — intentionally constant for speed and simplicity
 - Contact pressure-dependent interface resistance — beyond current model fidelity
 - Web-based UI — desktop PySide6 is the target platform
 - Mobile app — desktop engineering tool only
+- Unstructured/tetrahedral meshing — structured Cartesian grid with material zones is sufficient for display modules
+- Auto-mesh refinement — user controls resolution via nx/ny/nz parameters
 
 ## Context
 
@@ -81,6 +92,9 @@ Engineers can quickly set up a display stack, run thermal simulations, and get a
 | PDF over interactive HTML for reports | Target audience prefers formal documents for handoff/review | — Pending |
 | Parametric sweeps as core feature | Engineers need to compare design variants, not just single-point runs | — Pending |
 | One-click packaging priority | Non-programmer users, no admin access — adoption depends on easy install | — Pending |
+| 3D solver via RC-network extension | Same G=kA/L math, just more nodes — no need for FEM/CFD complexity | — Pending |
+| Per-cell materials before z-refinement | Lateral variation is the harder architectural change; z-refinement is trivial once per-cell works | — Pending |
+| Structured Cartesian grid only | Display modules are rectangular stacks; unstructured mesh adds complexity without value | — Pending |
 
 ---
-*Last updated: 2026-03-14 after initialization*
+*Last updated: 2026-03-16 after v2.0 milestone start*
