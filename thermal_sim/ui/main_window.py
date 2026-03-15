@@ -196,6 +196,13 @@ class MainWindow(QMainWindow):
         editor_layout = QVBoxLayout(editor_container)
         editor_layout.addWidget(self._build_top_controls())
         editor_layout.addWidget(self._build_editor_tabs())
+
+        # Panel dimension changes update auto-computed pitch labels
+        # (must be after both top_controls and editor_tabs are built)
+        self.width_spin.valueChanged.connect(self._update_dled_pitch_labels)
+        self.height_spin.valueChanged.connect(self._update_dled_pitch_labels)
+        self.width_spin.valueChanged.connect(self._update_eled_pitch_label)
+        self.height_spin.valueChanged.connect(self._update_eled_pitch_label)
         self._editor_dock = QDockWidget("Editor", self)
         self._editor_dock.setObjectName("EditorDock")
         self._editor_dock.setWidget(editor_container)
@@ -393,12 +400,6 @@ class MainWindow(QMainWindow):
 
         # Wire architecture combo signal (panels built in _build_led_arrays_tab)
         self.arch_combo.currentTextChanged.connect(self._on_architecture_changed)
-
-        # Panel dimension changes update auto-computed pitch labels
-        self.width_spin.valueChanged.connect(self._update_dled_pitch_labels)
-        self.height_spin.valueChanged.connect(self._update_dled_pitch_labels)
-        self.width_spin.valueChanged.connect(self._update_eled_pitch_label)
-        self.height_spin.valueChanged.connect(self._update_eled_pitch_label)
 
         return panel
 
