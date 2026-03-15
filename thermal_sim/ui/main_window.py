@@ -203,6 +203,9 @@ class MainWindow(QMainWindow):
         self.height_spin.valueChanged.connect(self._update_dled_pitch_labels)
         self.width_spin.valueChanged.connect(self._update_eled_pitch_label)
         self.height_spin.valueChanged.connect(self._update_eled_pitch_label)
+        # Mesh size changes update node count in status bar
+        self.nx_spin.valueChanged.connect(self._update_node_count_label)
+        self.ny_spin.valueChanged.connect(self._update_node_count_label)
         self._editor_dock = QDockWidget("Editor", self)
         self._editor_dock.setObjectName("EditorDock")
         self._editor_dock.setWidget(editor_container)
@@ -235,10 +238,12 @@ class MainWindow(QMainWindow):
         self._progress_bar.setMaximumWidth(200)
         self._progress_bar.setTextVisible(True)
         self._run_info_label = QLabel("")
+        self._node_count_label = QLabel("")
         sb.addPermanentWidget(self._path_label, stretch=2)
         sb.addPermanentWidget(self._solver_label, stretch=1)
         sb.addPermanentWidget(self._progress_bar, stretch=1)
         sb.addPermanentWidget(self._run_info_label, stretch=1)
+        sb.addPermanentWidget(self._node_count_label, stretch=1)
 
         self._draw_empty_states()
 
@@ -529,14 +534,29 @@ class MainWindow(QMainWindow):
         return tab
 
     def _build_layers_tab(self) -> QWidget:
-        tab, self.layers_table = self._build_table_tab(
-            ["Name", "Material", "Thickness [mm]", "Interface R to next [m\u00b2K/W]"]
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self.layers_table = TableDataParser._new_table(
+            ["Name", "Material", "Thickness [mm]", "Interface R to next [m\u00b2K/W]", "nz"]
         )
+        layout.addWidget(self.layers_table)
+        btn_row = QHBoxLayout()
+        add_btn = QPushButton("Add")
+        add_btn.setToolTip("Add a new row")
+        add_btn.clicked.connect(self._add_layer_row)
+        rm_btn = QPushButton("Remove")
+        rm_btn.setToolTip("Remove the selected row")
+        rm_btn.clicked.connect(lambda: self._remove_table_row(self.layers_table))
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(rm_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
         self._set_header_tooltips(self.layers_table, {
             "Name": "Unique layer identifier",
             "Material": "Material name (must match a defined material)",
             "Thickness [mm]": "Layer thickness in millimeters",
             "Interface R to next [m\u00b2K/W]": "Contact resistance between this layer and the next",
+            "nz": "Number of z-sublayers through thickness (z-refinement)",
         })
         self._wire_table_undo(self.layers_table)
         return tab
@@ -1127,6 +1147,8 @@ class MainWindow(QMainWindow):
         """Remove selected row and revalidate to clear any stale error entries."""
         TableDataParser.remove_selected_row(self, table)
         self._revalidate_table(table)
+        if table is self.layers_table:
+            self._update_node_count_label()
 
     # ------------------------------------------------------------------
     # Inline cell validation
@@ -1254,6 +1276,11 @@ class MainWindow(QMainWindow):
         TableDataParser.set_boundary_widgets(self.top_boundary_widgets, project.boundaries.top)
         TableDataParser.set_boundary_widgets(self.bottom_boundary_widgets, project.boundaries.bottom)
         TableDataParser.set_boundary_widgets(self.side_boundary_widgets, project.boundaries.side)
+
+        # Populate nz spinboxes for each layer row (column 4)
+        for row, layer in enumerate(project.layers):
+            self._set_layer_nz_spinbox(row, layer.nz)
+
         self._refresh_layer_choices(project)
         self._refresh_profile_choices(project)
 
@@ -1281,6 +1308,24 @@ class MainWindow(QMainWindow):
         self._undo_stack.setClean()
         self._update_title()
         self._update_path_label()
+        self._update_node_count_label()
+
+    def _set_layer_nz_spinbox(self, row: int, nz: int = 1) -> None:
+        """Create and install an nz QSpinBox cell widget for the given layers_table row."""
+        nz_spin = QSpinBox()
+        nz_spin.setRange(1, 50)
+        nz_spin.setValue(nz)
+        nz_spin.valueChanged.connect(self._update_node_count_label)
+        self.layers_table.setCellWidget(row, 4, nz_spin)
+
+    def _add_layer_row(self) -> None:
+        """Add a new row to the layers table with a fresh nz QSpinBox (default 1)."""
+        self._undo_stack.beginMacro("Add row")
+        TableDataParser._add_table_row(self.layers_table)
+        row = self.layers_table.rowCount() - 1
+        self._set_layer_nz_spinbox(row, nz=1)
+        self._undo_stack.endMacro()
+        self._update_node_count_label()
 
     def _load_default_materials(self) -> None:
         """Load built-in materials into the table; existing user materials are cleared."""
@@ -1675,6 +1720,20 @@ class MainWindow(QMainWindow):
             self._show_error("Invalid project", self._friendly_error(exc))
             return
 
+        # Warn before solving when node count exceeds 300k
+        node_count = sum(layer.nz for layer in project.layers) * project.mesh.nx * project.mesh.ny
+        if node_count > 300_000:
+            reply = QMessageBox.warning(
+                self,
+                "Large Model Warning",
+                f"The model has {node_count:,} nodes (>300k). Large models may take significantly"
+                " longer to solve.\n\nProceed anyway?",
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Ok:
+                return
+
         self.last_project = project
         self._refresh_layer_choices(project)
         self._refresh_profile_choices(project)
@@ -1727,6 +1786,9 @@ class MainWindow(QMainWindow):
         # Store map state for re-render on hotspot navigation.
         self._last_final_map = final_map
         self._last_layer_names = layer_names
+
+        # Refresh combo with z-sublayer entries derived from result's nz metadata
+        self._refresh_layer_choices(project, result=result)
 
         self._plot_manager.begin_batch()
         self._plot_manager.plot_probe_history(probe_times, probe_hist)
@@ -1880,19 +1942,28 @@ class MainWindow(QMainWindow):
 
     def _plot_map(self, final_map_c: np.ndarray, layer_names: list[str]) -> None:
         """Render the temperature map with annotated hotspot crosshairs and probe markers."""
-        layer_name = self.map_layer_combo.currentText()
-        layer_idx = (
-            layer_names.index(layer_name) if layer_name in layer_names else len(layer_names) - 1
-        )
+        combo_text = self.map_layer_combo.currentText()
+        # Extract the physical layer name (strip z-suffix if present)
+        layer_name = combo_text.split(" (z=")[0] if " (z=" in combo_text else combo_text
+
+        # Use userData as flat z-index when available, else fall back to layer_names lookup
+        flat_z_idx = self.map_layer_combo.currentData()
+        if flat_z_idx is None:
+            flat_z_idx = (
+                layer_names.index(layer_name) if layer_name in layer_names else len(layer_names) - 1
+            )
+        if flat_z_idx < 0 or flat_z_idx >= final_map_c.shape[0]:
+            flat_z_idx = final_map_c.shape[0] - 1
+
         width_m = self.width_spin.value() / 1000.0
         height_m = self.height_spin.value() / 1000.0
-        data = final_map_c[layer_idx]
+        data = final_map_c[flat_z_idx]
 
         # Compute per-layer hotspots (top 3) for annotation.
         result = self.last_steady_result or self.last_transient_result
         if result is not None:
             per_layer_hotspots = top_n_hottest_cells_for_layer(
-                final_map_c, layer_idx, layer_name, result.dx, result.dy, n=3
+                final_map_c, flat_z_idx, layer_name, result.dx, result.dy, n=3
             )
         else:
             per_layer_hotspots = None
@@ -1915,7 +1986,7 @@ class MainWindow(QMainWindow):
 
         im = plot_temperature_map_annotated(
             ax, data, width_m, height_m,
-            title=f"Temperature Map - {layer_name}",
+            title=f"Temperature Map - {combo_text}",
             hotspots=per_layer_hotspots,
             probes=layer_probes if layer_probes else None,
             selected_hotspot_rank=self._selected_hotspot_rank,
@@ -1935,7 +2006,19 @@ class MainWindow(QMainWindow):
         Switches the layer combo and re-renders the map with the selected hotspot
         highlighted, then switches to the Temperature Map tab.
         """
-        self.map_layer_combo.setCurrentText(layer_name)
+        # For multi-nz results the combo has entries like "LayerName (z=1/5)".
+        # Find the first entry whose text starts with the target layer name.
+        target_idx = -1
+        for i in range(self.map_layer_combo.count()):
+            entry = self.map_layer_combo.itemText(i)
+            base = entry.split(" (z=")[0]
+            if base == layer_name:
+                target_idx = i
+                break
+        if target_idx >= 0:
+            self.map_layer_combo.setCurrentIndex(target_idx)
+        else:
+            self.map_layer_combo.setCurrentText(layer_name)
         self._selected_hotspot_rank = rank
         # Switch to Temperature Map tab (index 0) and ensure plots dock is visible.
         self._plot_tabs.setCurrentIndex(0)
@@ -1981,10 +2064,42 @@ class MainWindow(QMainWindow):
                 return probe.x, probe.y
         return self.width_spin.value() / 2000.0, self.height_spin.value() / 2000.0
 
-    def _refresh_layer_choices(self, project: DisplayProject) -> None:
+    def _refresh_layer_choices(self, project: DisplayProject, result=None) -> None:
+        """Populate the map layer combo.
+
+        When *result* is None or has all nz=1, adds one item per layer (plain name).
+        When *result* has nz_per_layer with any value > 1, adds one item per z-sublayer
+        using userData to carry the flat z-index into the result temperature array.
+        """
         current = self.map_layer_combo.currentText()
+        self.map_layer_combo.blockSignals(True)
         self.map_layer_combo.clear()
-        self.map_layer_combo.addItems([layer.name for layer in project.layers])
+
+        has_nz_result = (
+            result is not None
+            and hasattr(result, "nz_per_layer")
+            and result.nz_per_layer is not None
+            and any(nz > 1 for nz in result.nz_per_layer)
+        )
+
+        if has_nz_result:
+            for layer_idx, layer in enumerate(project.layers):
+                nz = result.nz_per_layer[layer_idx]
+                z_offset = result.z_offsets[layer_idx]
+                if nz == 1:
+                    self.map_layer_combo.addItem(layer.name, userData=z_offset)
+                else:
+                    for z in range(nz):
+                        self.map_layer_combo.addItem(
+                            f"{layer.name} (z={z + 1}/{nz})", userData=z_offset + z
+                        )
+        else:
+            for layer_idx, layer in enumerate(project.layers):
+                self.map_layer_combo.addItem(layer.name, userData=layer_idx)
+
+        self.map_layer_combo.blockSignals(False)
+
+        # Restore previous selection by text, else select last item
         idx = self.map_layer_combo.findText(current)
         if idx >= 0:
             self.map_layer_combo.setCurrentIndex(idx)
@@ -2000,6 +2115,22 @@ class MainWindow(QMainWindow):
         idx = self.profile_point_combo.findText(current)
         if idx >= 0:
             self.profile_point_combo.setCurrentIndex(idx)
+
+    def _update_node_count_label(self) -> None:
+        """Recompute and display the total node count in the status bar."""
+        total_nz = 0
+        for row in range(self.layers_table.rowCount()):
+            nz_spin = self.layers_table.cellWidget(row, 4)
+            total_nz += nz_spin.value() if nz_spin is not None else 1
+        nx = self.nx_spin.value()
+        ny = self.ny_spin.value()
+        count = total_nz * nx * ny
+        if count > 300_000:
+            self._node_count_label.setText(f"Nodes: {count:,} \u26a0")
+            self._node_count_label.setStyleSheet("color: #ff6b6b;")
+        else:
+            self._node_count_label.setText(f"Nodes: {count:,}")
+            self._node_count_label.setStyleSheet("")
 
     def _fill_probe_table(self, probe_values: dict[str, float]) -> None:
         self._plot_manager.fill_probe_table(self.probe_table, probe_values)
@@ -2208,6 +2339,10 @@ class MainWindow(QMainWindow):
             project = TableDataParser.build_project_from_tables(
                 self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
             )
+        # Read nz spinbox values from the layers table (column 4 cell widgets)
+        for row, layer in enumerate(project.layers):
+            nz_spin = self.layers_table.cellWidget(row, 4)
+            layer.nz = nz_spin.value() if nz_spin is not None else 1
         # Attach power profiles from the profile sub-panel
         from thermal_sim.models.heat_source import PowerBreakpoint  # noqa: F401 (side-effect import for clarity)
         for row_idx, bps in self._source_profiles.items():
