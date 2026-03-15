@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from thermal_sim.models.material_zone import MaterialZone
 
 
 @dataclass
@@ -13,6 +15,7 @@ class Layer:
     material: str
     thickness: float
     interface_resistance_to_next: float = 0.0
+    zones: list[MaterialZone] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -25,12 +28,15 @@ class Layer:
             raise ValueError("Interface resistance must be >= 0.")
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "name": self.name,
             "material": self.material,
             "thickness": self.thickness,
             "interface_resistance_to_next": self.interface_resistance_to_next,
         }
+        if self.zones:
+            d["zones"] = [z.to_dict() for z in self.zones]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "Layer":
@@ -39,4 +45,5 @@ class Layer:
             material=data["material"],
             thickness=float(data["thickness"]),
             interface_resistance_to_next=float(data.get("interface_resistance_to_next", 0.0)),
+            zones=[MaterialZone.from_dict(z) for z in data.get("zones", [])],
         )
