@@ -102,3 +102,13 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Simulation Capabilities | 6/6 | Complete   | 2026-03-14 |
 | 4. Polish | 3/4 | In Progress | - |
 | 5. Distribution | 2/3 | In Progress|  |
+
+### Phase 6: Fix LED array generation and display stack generation for DLED and ELED architectures
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 5
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 6 to break down)
