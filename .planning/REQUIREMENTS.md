@@ -49,10 +49,10 @@
 
 ### Architecture Support (Phase 6)
 
-- [ ] **ARCH-01**: LEDArray supports grid (DLED), edge (ELED), and custom modes with expand() producing correct HeatSource lists
-- [ ] **ARCH-02**: DLED stack template provides complete layer/material/boundary/LED defaults for direct-lit architecture
-- [ ] **ARCH-03**: ELED stack template provides complete layer/material/boundary/LED defaults for edge-lit architecture
-- [ ] **ARCH-04**: DLED zone-based dimming with per-zone power assignment produces asymmetric thermal patterns
+- [x] **ARCH-01**: LEDArray supports grid (DLED), edge (ELED), and custom modes with expand() producing correct HeatSource lists
+- [x] **ARCH-02**: DLED stack template provides complete layer/material/boundary/LED defaults for direct-lit architecture
+- [x] **ARCH-03**: ELED stack template provides complete layer/material/boundary/LED defaults for edge-lit architecture
+- [x] **ARCH-04**: DLED zone-based dimming with per-zone power assignment produces asymmetric thermal patterns
 - [ ] **ARCH-05**: GUI architecture dropdown (DLED/ELED/Custom) auto-populates project from template
 - [ ] **ARCH-06**: LED Arrays tab adapts UI based on architecture selection (DLED grid panel, ELED edge panel, Custom table)
 

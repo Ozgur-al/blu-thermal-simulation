@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-15T18:17:03.059Z"
+progress:
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 24
+  completed_plans: 22
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-15T14:26:54.146Z"
 progress:
   total_phases: 6
@@ -93,6 +106,7 @@ Progress: [██████████] 100%
 | Phase 04-polish P03 | 2 | 2 tasks | 2 files |
 | Phase 05-distribution P01 | 3 | 2 tasks | 5 files |
 | Phase 05-distribution P02 | 3 | 2 tasks | 3 files |
+| Phase 06 P01 | 5 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -163,6 +177,10 @@ Recent decisions affecting current work:
 - [Phase 05-02]: build.py imports APP_VERSION from thermal_sim.core.paths — single version source of truth across app and build pipeline
 - [Phase 05-02]: MpCmdRun search uses sorted glob on Platform/* path first (Windows 11), falls back to Program Files — handles version churn without hardcoding
 - [Phase 05-02]: Signing skipped non-fatally when signtool or cert missing — build succeeds unsigned with warning; enables CI builds without Windows SDK
+- [Phase 06]: LEDMode dispatches in expand() via if/elif — explicit and debuggable
+- [Phase 06]: mode='custom' is the default for backward compat — old JSON files load without changes
+- [Phase 06]: stack_templates uses _filter_materials() helper — templates only ship materials they actually use
+- [Phase 06]: Both stack templates use load_builtin_library() (importlib.resources path) for PyInstaller compat
 
 ### Pending Todos
 
@@ -186,5 +204,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-15
-Stopped at: Completed 05-02-PLAN.md — ThermalSim.spec + build.py; verified 110 MB onedir bundle launches on build machine (DIST-01, DIST-02 satisfied)
+Stopped at: Completed 06-01-PLAN.md — extended LEDArray with grid/edge/custom modes and zone power; created stack_templates with dled_template and eled_template; 154 tests passing
 Resume file: None

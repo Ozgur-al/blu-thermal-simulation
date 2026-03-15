@@ -101,7 +101,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Zone-based dimming in DLED produces asymmetric thermal patterns matching the zone power distribution
   4. Existing Custom workflow and old JSON project files remain fully compatible
   5. The LED Arrays tab adapts its UI based on architecture: DLED shows grid/zone controls, ELED shows edge strip controls, Custom shows the existing table
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 06-01-PLAN.md -- Extend LEDArray model with grid/edge/custom modes + create stack_templates.py
@@ -120,4 +120,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Simulation Capabilities | 6/6 | Complete   | 2026-03-14 |
 | 4. Polish | 3/4 | In Progress | - |
 | 5. Distribution | 2/3 | In Progress|  |
-| 6. Architecture Support | 0/3 | Planned | - |
+| 6. Architecture Support | 1/3 | In Progress|  |
