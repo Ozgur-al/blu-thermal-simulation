@@ -75,9 +75,9 @@
 
 ### 3D GUI & Visualization
 
-- [ ] **GUI3D-01**: Z-plane slice selector in temperature map (slider to pick z-sublayer within a layer)
-- [ ] **GUI3D-02**: Live node count display in status bar, warning at >300k nodes before solve
-- [ ] **GUI3D-03**: Per-layer `nz` spinbox in Layers tab
+- [x] **GUI3D-01**: Z-plane slice selector in temperature map (slider to pick z-sublayer within a layer)
+- [x] **GUI3D-02**: Live node count display in status bar, warning at >300k nodes before solve
+- [x] **GUI3D-03**: Per-layer `nz` spinbox in Layers tab
 - [ ] **GUI3D-04**: Material zone editor per layer (add/remove rectangular zones with material assignment)
 - [ ] **GUI3D-05**: Zone preview overlay on temperature map showing material region boundaries
 
@@ -147,9 +147,9 @@
 | ZREF-03 | Phase 8 — Z-Refinement | Complete |
 | ZREF-04 | Phase 8 — Z-Refinement | Complete |
 | ZREF-05 | Phase 8 — Z-Refinement | Complete |
-| GUI3D-01 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
-| GUI3D-02 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
-| GUI3D-03 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
+| GUI3D-01 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
+| GUI3D-02 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
+| GUI3D-03 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
 | GUI3D-04 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
 | GUI3D-05 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
 | ELED-01 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |

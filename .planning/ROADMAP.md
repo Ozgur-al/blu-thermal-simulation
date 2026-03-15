@@ -136,7 +136,7 @@ Plans:
   5. A simulation of the ELED zoned project shows two heat paths active: higher temperature on the FR4+LED board zone (primary path to metal) and a secondary gradient toward the LGP
 **Plans:** 3 plans
 Plans:
-- [ ] 09-01-PLAN.md — Z-slice combo, nz spinbox in Layers tab, node count in status bar
+- [x] 09-01-PLAN.md — Z-slice combo, nz spinbox in Layers tab, node count in status bar
 - [ ] 09-02-PLAN.md — Material zone editor with preview canvas, zone overlay on temperature map
 - [ ] 09-03-PLAN.md — ELED cross-section zone preset with generate function and human verification
 
@@ -155,4 +155,4 @@ Phases execute in numeric order: 7 -> 8 -> 9
 | 6. Architecture Support | v1.0 | 3/3 | Complete | 2026-03-14 |
 | 7. 3D Solver Core | 2/2 | Complete   | 2026-03-15 | - |
 | 8. Z-Refinement | 3/3 | Complete   | 2026-03-15 | - |
-| 9. 3D GUI and ELED Zone Preset | v2.0 | 0/3 | Planning complete | - |
+| 9. 3D GUI and ELED Zone Preset | v2.0 | 1/3 | in_progress | 2026-03-15 |

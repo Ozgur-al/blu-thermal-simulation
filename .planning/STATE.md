@@ -31,16 +31,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-16)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Milestone v2.0 — Phase 8: Z-Refinement
+**Current focus:** Milestone v2.0 — Phase 9: 3D GUI and ELED Zone Preset
 
 ## Current Position
 
-Phase: 8 of 9 (Z-Refinement) — COMPLETE
-Plan: 3 of 3 (08-03 complete)
-Status: Ready for Phase 9
-Last activity: 2026-03-16 — 08-03 downstream consumers: z-aware postprocess, CSV export, CLI; 202 tests pass; ZREF-04 backward compat verified
+Phase: 9 of 9 (3D GUI and ELED Zone Preset) — in_progress
+Plan: 1 of 3 (09-01 complete)
+Status: in_progress
+Last activity: 2026-03-15 — 09-01 z-refinement GUI: nz spinbox column, z-sublayer combo, node count status bar, 300k warning; 202 tests pass
 
-Progress: [████████░░] 88%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -82,6 +82,9 @@ Progress: [████████░░] 88%
 - [Phase 08-z-refinement]: build_heat_source_vector recomputes z_offsets locally (does not take ThermalNetwork as argument) to keep public API unchanged
 - [Phase 08-z-refinement]: CSV export writes top sublayer per physical layer (not all z-sublayers) — consistent with default visualization convention
 - [Phase 08-z-refinement]: layer_stats() fallback logs a warning when z_offsets is None and total_z > n_layers — allows GUI callers to function correctly with nz=1 projects while documenting Phase 9 fix path
+- [Phase 09-3d-gui-and-eled-zone-preset]: nz column uses QSpinBox as cell widget (column 4) rather than a table item; _build_project_from_ui reads cellWidget(row, 4).value() after parse_layers_table
+- [Phase 09-3d-gui-and-eled-zone-preset]: _refresh_layer_choices(project, result=None) — result=None yields plain layer names; result with nz>1 yields z-sublayer entries with userData=flat_z_index
+- [Phase 09-3d-gui-and-eled-zone-preset]: _plot_map uses currentData() as flat z-index; falls back to layer_names.index() when userData is None for backward compat
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-16
-Stopped at: Completed 08-03-PLAN.md
-Resume file: .planning/phases/08-z-refinement/08-03-SUMMARY.md
+Last session: 2026-03-15
+Stopped at: Completed 09-01-PLAN.md
+Resume file: .planning/phases/09-3d-gui-and-eled-zone-preset/09-01-SUMMARY.md
