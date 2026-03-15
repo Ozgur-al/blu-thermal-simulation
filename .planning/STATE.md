@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
 status: unknown
+last_updated: "2026-03-15T23:26:00.948Z"
+progress:
+  total_phases: 9
+  completed_phases: 8
+  total_plans: 32
+  completed_plans: 31
+---
+
+---
+gsd_state_version: 1.0
+milestone: v2.0
+milestone_name: Full 3D Solver
+status: unknown
 last_updated: "2026-03-15T23:03:19.772Z"
 progress:
   total_phases: 9
@@ -89,6 +102,8 @@ Progress: [█████████░] 96%
 - [Phase 09-3d-gui-and-eled-zone-preset]: _layer_zones dict (layer_row -> list[dict]) mirrors _source_profiles pattern; stores SI metres internally, displays in mm in zone table
 - [Phase 09-3d-gui-and-eled-zone-preset]: _updating_zones flag (not blockSignals) guards recursive cellChanged — blockSignals would also suppress the combo changes
 - [Phase 09-3d-gui-and-eled-zone-preset]: zones= parameter on plot_temperature_map_annotated defaults to None — fully backward-compatible; ResultSnapshot.layer_zones uses getattr for older snapshots
+- [Phase 09-3d-gui-and-eled-zone-preset]: Use 'Air Gap' (not 'Air') for ELED zone air material — only Air Gap exists in materials_builtin.json; matches _AIR_GAP_KEY in network_builder.py
+- [Phase 09-3d-gui-and-eled-zone-preset]: generate_eled_zones() integration test uses edge_config='left_right' — only this config places LEDs in the x-axis FR4 zone columns; 'bottom' config places LEDs along y-axis and doesn't create lateral zone temperature contrast
 
 ### Pending Todos
 

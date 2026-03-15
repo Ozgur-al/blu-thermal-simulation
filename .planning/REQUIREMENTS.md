@@ -83,8 +83,8 @@
 
 ### ELED Architecture Fix
 
-- [ ] **ELED-01**: ELED template generates correct cross-section zones: metal frame, FR4+LED PCB, air gap, LGP as lateral material zones at the LGP z-level
-- [ ] **ELED-02**: ELED thermal model captures both heat paths: LED→FR4→metal (primary) and LED→air→LGP (secondary)
+- [x] **ELED-01**: ELED template generates correct cross-section zones: metal frame, FR4+LED PCB, air gap, LGP as lateral material zones at the LGP z-level
+- [x] **ELED-02**: ELED thermal model captures both heat paths: LED→FR4→metal (primary) and LED→air→LGP (secondary)
 
 ## Future Enhancements
 
@@ -152,8 +152,8 @@
 | GUI3D-03 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
 | GUI3D-04 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
 | GUI3D-05 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
-| ELED-01 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
-| ELED-02 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
+| ELED-01 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
+| ELED-02 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
 
 **Coverage:**
 - v1 requirements: 30 total (all complete)
