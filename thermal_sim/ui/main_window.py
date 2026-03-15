@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QStackedWidget,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -332,6 +333,19 @@ class MainWindow(QMainWindow):
         self.mode_combo.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.mode_combo.setToolTip("Steady-state solves for equilibrium; transient simulates over time")
 
+        # Row 0: Architecture selection
+        row0 = QHBoxLayout()
+        row0.setSpacing(4)
+        self.arch_combo = QComboBox()
+        self.arch_combo.addItems(["Custom", "DLED", "ELED"])
+        self.arch_combo.setToolTip(
+            "Select display backlight architecture to auto-populate stack and LED configuration"
+        )
+        row0.addWidget(QLabel("Architecture"))
+        row0.addWidget(self.arch_combo)
+        row0.addStretch()
+        outer.addLayout(row0)
+
         # Row 1: view controls
         row1 = QHBoxLayout()
         row1.setSpacing(4)
@@ -617,6 +631,15 @@ class MainWindow(QMainWindow):
         return tab
 
     def _build_led_arrays_tab(self) -> QWidget:
+        """Return a QStackedWidget with Custom (0), DLED (1), and ELED (2) panels."""
+        self._led_arrays_stack = QStackedWidget()
+        self._led_arrays_stack.addWidget(self._build_custom_led_panel())   # index 0
+        self._led_arrays_stack.addWidget(self._build_dled_panel())          # index 1
+        self._led_arrays_stack.addWidget(self._build_eled_panel())          # index 2
+        return self._led_arrays_stack
+
+    def _build_custom_led_panel(self) -> QWidget:
+        """Build the existing custom LED arrays table panel (unchanged behaviour)."""
         tab, self.led_arrays_table = self._build_table_tab(
             ["Name", "Layer", "Center x [mm]", "Center y [mm]", "Count x", "Count y",
              "Pitch x [mm]", "Pitch y [mm]", "Power per LED [W]",
@@ -639,6 +662,229 @@ class MainWindow(QMainWindow):
         })
         self._wire_table_undo(self.led_arrays_table)
         return tab
+
+    def _build_dled_panel(self) -> QWidget:
+        """Build the DLED-specific panel with grid config, edge offsets, zone dimming, and footprint."""
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.setSpacing(8)
+
+        # --- Grid Configuration ---
+        grid_box = QGroupBox("Grid Configuration")
+        grid_form = QFormLayout(grid_box)
+
+        self._dled_count_x = QSpinBox()
+        self._dled_count_x.setRange(1, 200)
+        self._dled_count_x.setValue(8)
+        self._dled_count_x.setToolTip("Number of LEDs in X direction")
+
+        self._dled_count_y = QSpinBox()
+        self._dled_count_y.setRange(1, 200)
+        self._dled_count_y.setValue(6)
+        self._dled_count_y.setToolTip("Number of LEDs in Y direction")
+
+        self._dled_pitch_x = TableDataParser._double_spin(0.1, 100.0, 20.0, decimals=2)
+        self._dled_pitch_x.setToolTip("Spacing between LED centers in X (mm)")
+
+        self._dled_pitch_y = TableDataParser._double_spin(0.1, 100.0, 15.0, decimals=2)
+        self._dled_pitch_y.setToolTip("Spacing between LED centers in Y (mm)")
+
+        self._dled_power = TableDataParser._double_spin(0.0, 100.0, 0.5, decimals=3)
+        self._dled_power.setToolTip("Power dissipated by each individual LED (W)")
+
+        grid_form.addRow("Count X", self._dled_count_x)
+        grid_form.addRow("Count Y", self._dled_count_y)
+        grid_form.addRow("Pitch X [mm]", self._dled_pitch_x)
+        grid_form.addRow("Pitch Y [mm]", self._dled_pitch_y)
+        grid_form.addRow("Power per LED [W]", self._dled_power)
+        layout.addWidget(grid_box)
+
+        # --- Edge Offsets ---
+        offsets_box = QGroupBox("Edge Offsets [mm]")
+        offsets_form = QFormLayout(offsets_box)
+
+        self._dled_offset_top = TableDataParser._double_spin(0.0, 500.0, 10.0, decimals=2)
+        self._dled_offset_top.setToolTip("Distance from top panel edge to LED active area")
+
+        self._dled_offset_bottom = TableDataParser._double_spin(0.0, 500.0, 10.0, decimals=2)
+        self._dled_offset_bottom.setToolTip("Distance from bottom panel edge to LED active area")
+
+        self._dled_offset_left = TableDataParser._double_spin(0.0, 500.0, 18.0, decimals=2)
+        self._dled_offset_left.setToolTip("Distance from left panel edge to LED active area")
+
+        self._dled_offset_right = TableDataParser._double_spin(0.0, 500.0, 18.0, decimals=2)
+        self._dled_offset_right.setToolTip("Distance from right panel edge to LED active area")
+
+        offsets_form.addRow("Top [mm]", self._dled_offset_top)
+        offsets_form.addRow("Bottom [mm]", self._dled_offset_bottom)
+        offsets_form.addRow("Left [mm]", self._dled_offset_left)
+        offsets_form.addRow("Right [mm]", self._dled_offset_right)
+        layout.addWidget(offsets_box)
+
+        # --- Zone Dimming ---
+        zone_box = QGroupBox("Zone Dimming")
+        zone_layout = QVBoxLayout(zone_box)
+        zone_count_row = QFormLayout()
+
+        self._dled_zone_count_x = QSpinBox()
+        self._dled_zone_count_x.setRange(1, 20)
+        self._dled_zone_count_x.setValue(1)
+        self._dled_zone_count_x.setToolTip("Number of dimming zones in X direction")
+
+        self._dled_zone_count_y = QSpinBox()
+        self._dled_zone_count_y.setRange(1, 20)
+        self._dled_zone_count_y.setValue(1)
+        self._dled_zone_count_y.setToolTip("Number of dimming zones in Y direction")
+
+        zone_count_row.addRow("Zone count X", self._dled_zone_count_x)
+        zone_count_row.addRow("Zone count Y", self._dled_zone_count_y)
+        zone_layout.addLayout(zone_count_row)
+
+        self._dled_zone_table = QTableWidget(1, 2)
+        self._dled_zone_table.setHorizontalHeaderLabels(["Zone", "Power [W]"])
+        self._dled_zone_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._dled_zone_table.verticalHeader().setVisible(False)
+        self._dled_zone_table.setAlternatingRowColors(True)
+        self._dled_zone_table.setMaximumHeight(160)
+        self._dled_zone_table.setItem(0, 0, QTableWidgetItem("Z(1,1)"))
+        self._dled_zone_table.setItem(0, 1, QTableWidgetItem("0.5"))
+        zone_layout.addWidget(self._dled_zone_table)
+        layout.addWidget(zone_box)
+
+        # --- LED Footprint ---
+        foot_box = QGroupBox("LED Footprint")
+        foot_form = QFormLayout(foot_box)
+
+        self._dled_footprint_shape = QComboBox()
+        self._dled_footprint_shape.addItems(["rectangle", "circle"])
+        self._dled_footprint_shape.setToolTip("LED footprint geometry")
+
+        self._dled_led_width = TableDataParser._double_spin(0.0, 100.0, 3.0, decimals=3)
+        self._dled_led_width.setToolTip("Individual LED width (mm)")
+
+        self._dled_led_height = TableDataParser._double_spin(0.0, 100.0, 3.0, decimals=3)
+        self._dled_led_height.setToolTip("Individual LED height (mm)")
+
+        self._dled_led_radius = TableDataParser._double_spin(0.0, 100.0, 1.5, decimals=3)
+        self._dled_led_radius.setToolTip("Individual LED radius (mm, used when shape is circle)")
+
+        foot_form.addRow("Shape", self._dled_footprint_shape)
+        foot_form.addRow("Width [mm]", self._dled_led_width)
+        foot_form.addRow("Height [mm]", self._dled_led_height)
+        foot_form.addRow("Radius [mm]", self._dled_led_radius)
+        layout.addWidget(foot_box)
+
+        layout.addStretch()
+        scroll.setWidget(inner)
+        outer_layout.addWidget(scroll)
+
+        # Connect zone count changes to rebuild table
+        self._dled_zone_count_x.valueChanged.connect(self._rebuild_zone_table)
+        self._dled_zone_count_y.valueChanged.connect(self._rebuild_zone_table)
+
+        return outer
+
+    def _build_eled_panel(self) -> QWidget:
+        """Build the ELED-specific panel with edge configuration, strip parameters, and footprint."""
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.setSpacing(8)
+
+        # --- Edge Configuration ---
+        edge_box = QGroupBox("Edge Configuration")
+        edge_form = QFormLayout(edge_box)
+
+        self._eled_edge_config = QComboBox()
+        self._eled_edge_config.addItems(["bottom", "top", "left/right", "all"])
+        self._eled_edge_config.setToolTip("Which panel edges carry LEDs")
+
+        self._eled_count = QSpinBox()
+        self._eled_count.setRange(1, 200)
+        self._eled_count.setValue(20)
+        self._eled_count.setToolTip("Number of LEDs along a horizontal edge (count_x) / vertical edge (count_y)")
+
+        self._eled_pitch = TableDataParser._double_spin(0.1, 100.0, 8.0, decimals=3)
+        self._eled_pitch.setToolTip("Spacing between LED centers along the edge (mm)")
+
+        self._eled_edge_offset = TableDataParser._double_spin(0.1, 50.0, 5.0, decimals=3)
+        self._eled_edge_offset.setToolTip("Distance from panel edge to LED center (mm)")
+
+        self._eled_power = TableDataParser._double_spin(0.0, 100.0, 0.3, decimals=3)
+        self._eled_power.setToolTip("Power dissipated by each individual LED (W)")
+
+        edge_form.addRow("Edge", self._eled_edge_config)
+        edge_form.addRow("Count along edge", self._eled_count)
+        edge_form.addRow("Pitch [mm]", self._eled_pitch)
+        edge_form.addRow("Edge offset [mm]", self._eled_edge_offset)
+        edge_form.addRow("Power per LED [W]", self._eled_power)
+        layout.addWidget(edge_box)
+
+        # --- LED Footprint ---
+        foot_box = QGroupBox("LED Footprint")
+        foot_form = QFormLayout(foot_box)
+
+        self._eled_footprint_shape = QComboBox()
+        self._eled_footprint_shape.addItems(["rectangle", "circle"])
+        self._eled_footprint_shape.setToolTip("LED footprint geometry")
+
+        self._eled_led_width = TableDataParser._double_spin(0.0, 100.0, 2.0, decimals=3)
+        self._eled_led_width.setToolTip("Individual LED width (mm)")
+
+        self._eled_led_height = TableDataParser._double_spin(0.0, 100.0, 1.0, decimals=3)
+        self._eled_led_height.setToolTip("Individual LED height (mm)")
+
+        self._eled_led_radius = TableDataParser._double_spin(0.0, 100.0, 1.0, decimals=3)
+        self._eled_led_radius.setToolTip("Individual LED radius (mm, used when shape is circle)")
+
+        foot_form.addRow("Shape", self._eled_footprint_shape)
+        foot_form.addRow("Width [mm]", self._eled_led_width)
+        foot_form.addRow("Height [mm]", self._eled_led_height)
+        foot_form.addRow("Radius [mm]", self._eled_led_radius)
+        layout.addWidget(foot_box)
+
+        layout.addStretch()
+        scroll.setWidget(inner)
+        outer_layout.addWidget(scroll)
+
+        return outer
+
+    def _rebuild_zone_table(self) -> None:
+        """Rebuild the DLED zone power table when zone counts change."""
+        # Preserve existing values
+        old_count = self._dled_zone_table.rowCount()
+        old_powers: dict[int, str] = {}
+        for r in range(old_count):
+            item = self._dled_zone_table.item(r, 1)
+            old_powers[r] = item.text() if item else "0.5"
+
+        zone_count_x = self._dled_zone_count_x.value()
+        zone_count_y = self._dled_zone_count_y.value()
+        new_count = zone_count_x * zone_count_y
+
+        self._dled_zone_table.blockSignals(True)
+        self._dled_zone_table.setRowCount(new_count)
+        for idx in range(new_count):
+            col = (idx % zone_count_x) + 1
+            row = (idx // zone_count_x) + 1
+            label = f"Z({row},{col})"
+            power_val = old_powers.get(idx, "0.5")
+            self._dled_zone_table.setItem(idx, 0, QTableWidgetItem(label))
+            self._dled_zone_table.setItem(idx, 1, QTableWidgetItem(power_val))
+        self._dled_zone_table.blockSignals(False)
 
     def _build_probes_tab(self) -> QWidget:
         tab, self.probes_table = self._build_table_tab(["Name", "Layer", "x [mm]", "y [mm]"])
