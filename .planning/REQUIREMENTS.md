@@ -1,9 +1,9 @@
-# Requirements: Thermal Simulator Phase 4
+# Requirements: Thermal Simulator
 
 **Defined:** 2026-03-14
 **Core Value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access.
 
-## v1 Requirements
+## v1 Requirements (Complete)
 
 ### GUI Foundation
 
@@ -47,7 +47,7 @@
 - [x] **DIST-02**: Bundle works without admin access on managed Windows machines
 - [x] **DIST-03**: Resource path helper centralized for packaged and dev builds
 
-### Architecture Support (Phase 6)
+### Architecture Support
 
 - [x] **ARCH-01**: LEDArray supports grid (DLED), edge (ELED), and custom modes with expand() producing correct HeatSource lists
 - [x] **ARCH-02**: DLED stack template provides complete layer/material/boundary/LED defaults for direct-lit architecture
@@ -58,7 +58,35 @@
 
 ## v2 Requirements
 
-### Future Enhancements
+### 3D Solver Core
+
+- [ ] **SOLV-01**: Network builder supports per-cell material assignment via MaterialZone rectangular descriptors rasterized at build time
+- [ ] **SOLV-02**: Lateral conductance between cells of different materials uses harmonic-mean formula
+- [ ] **SOLV-03**: NodeLayout abstraction centralizes node indexing for variable z-nodes per layer
+- [ ] **SOLV-04**: Existing v1.0 projects load and solve with identical temperatures (backward-compat regression test)
+
+### Z-Refinement
+
+- [ ] **ZREF-01**: Layer model supports `nz` field (default 1) for multiple z-nodes through thickness
+- [ ] **ZREF-02**: Internal z-z links within a layer use `dz/(k*A)` with no interface resistance
+- [ ] **ZREF-03**: Interface resistance applies only at true layer boundaries, not internal z-sublayers
+- [ ] **ZREF-04**: Steady-state and transient solvers handle 3D node count and reshape results correctly
+- [ ] **ZREF-05**: Analytical validation test: single-layer slab with nz=5 matches 1D through-thickness profile
+
+### 3D GUI & Visualization
+
+- [ ] **GUI3D-01**: Z-plane slice selector in temperature map (slider to pick z-sublayer within a layer)
+- [ ] **GUI3D-02**: Live node count display in status bar, warning at >300k nodes before solve
+- [ ] **GUI3D-03**: Per-layer `nz` spinbox in Layers tab
+- [ ] **GUI3D-04**: Material zone editor per layer (add/remove rectangular zones with material assignment)
+- [ ] **GUI3D-05**: Zone preview overlay on temperature map showing material region boundaries
+
+### ELED Architecture Fix
+
+- [ ] **ELED-01**: ELED template generates correct cross-section zones: metal frame, FR4+LED PCB, air gap, LGP as lateral material zones at the LGP z-level
+- [ ] **ELED-02**: ELED thermal model captures both heat paths: LED→FR4→metal (primary) and LED→air→LGP (secondary)
+
+## Future Enhancements
 
 - **TMPL-01**: New From Template dialog with thumbnail previews of example projects
 - **KEYS-01**: Comprehensive keyboard shortcut map covering all operations
@@ -71,28 +99,26 @@
 |---------|--------|
 | Temperature-dependent material properties | Requires nonlinear solver loop; 10x complexity for marginal accuracy in 25-120°C operating range |
 | CFD / fluid flow modeling | Intentionally an RC-network approximation tool, not a CFD solver |
+| Unstructured/tetrahedral meshing | Structured Cartesian grid with material zones sufficient for display modules |
+| Polygon material zones | Rectangular zones cover all display module geometries (strips, patches, edge regions) |
 | Web-based UI or report viewer | Desktop PySide6 is the target; PDF is the sharing artifact |
-| Cloud sync / multi-user collaboration | Out of scope for internal desktop tool distributed via file share |
-| 3D visualization / CAD import | Physics model is 2.5D layered; 3D geometry would invalidate the RC-network approach |
-| Auto-mesh refinement / convergence loops | Tool's value is sub-second solves; expose grid resolution as user parameter instead |
-| Built-in Python scripting console | CLI is already the scripting interface |
-| Real-time live-updating simulation | Transient solves take 10-60s; use explicit Run button with progress instead |
+| Auto-mesh refinement | Tool's value is fast solves; expose grid resolution as user parameter instead |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GUI-01 | Phase 1 — Foundation | Complete (01-01, 01-02) |
-| GUI-02 | Phase 1 — Foundation | Complete (01-03) |
-| GUI-03 | Phase 1 — Foundation | Complete (01-02) |
-| GUI-04 | Phase 1 — Foundation | Complete (01-02) |
-| GUI-05 | Phase 1 — Foundation | Complete (01-03) |
-| GUI-06 | Phase 1 — Foundation | Complete (01-03) |
-| GUI-07 | Phase 1 — Foundation | Complete (01-03) |
-| RSLT-01 | Phase 2 — Results | Complete (02-01) |
-| RSLT-02 | Phase 2 — Results | Complete (02-01) |
-| RSLT-03 | Phase 2 — Results | Complete (02-01) |
-| RSLT-04 | Phase 2 — Results | Complete (02-03) |
+| GUI-01 | Phase 1 — Foundation | Complete |
+| GUI-02 | Phase 1 — Foundation | Complete |
+| GUI-03 | Phase 1 — Foundation | Complete |
+| GUI-04 | Phase 1 — Foundation | Complete |
+| GUI-05 | Phase 1 — Foundation | Complete |
+| GUI-06 | Phase 1 — Foundation | Complete |
+| GUI-07 | Phase 1 — Foundation | Complete |
+| RSLT-01 | Phase 2 — Results | Complete |
+| RSLT-02 | Phase 2 — Results | Complete |
+| RSLT-03 | Phase 2 — Results | Complete |
+| RSLT-04 | Phase 2 — Results | Complete |
 | SIM-01 | Phase 3 — Simulation Capabilities | Complete |
 | SIM-02 | Phase 3 — Simulation Capabilities | Complete |
 | SIM-03 | Phase 3 — Simulation Capabilities | Complete |
@@ -106,18 +132,35 @@
 | DIST-01 | Phase 5 — Distribution | Complete |
 | DIST-02 | Phase 5 — Distribution | Complete |
 | DIST-03 | Phase 5 — Distribution | Complete |
-| ARCH-01 | Phase 6 — Architecture Support | Planned (06-01) |
-| ARCH-02 | Phase 6 — Architecture Support | Planned (06-01) |
-| ARCH-03 | Phase 6 — Architecture Support | Planned (06-01) |
-| ARCH-04 | Phase 6 — Architecture Support | Planned (06-01) |
-| ARCH-05 | Phase 6 — Architecture Support | Planned (06-02) |
-| ARCH-06 | Phase 6 — Architecture Support | Planned (06-02) |
+| ARCH-01 | Phase 6 — Architecture Support | Complete |
+| ARCH-02 | Phase 6 — Architecture Support | Complete |
+| ARCH-03 | Phase 6 — Architecture Support | Complete |
+| ARCH-04 | Phase 6 — Architecture Support | Complete |
+| ARCH-05 | Phase 6 — Architecture Support | Complete |
+| ARCH-06 | Phase 6 — Architecture Support | Complete |
+| SOLV-01 | — | Pending |
+| SOLV-02 | — | Pending |
+| SOLV-03 | — | Pending |
+| SOLV-04 | — | Pending |
+| ZREF-01 | — | Pending |
+| ZREF-02 | — | Pending |
+| ZREF-03 | — | Pending |
+| ZREF-04 | — | Pending |
+| ZREF-05 | — | Pending |
+| GUI3D-01 | — | Pending |
+| GUI3D-02 | — | Pending |
+| GUI3D-03 | — | Pending |
+| GUI3D-04 | — | Pending |
+| GUI3D-05 | — | Pending |
+| ELED-01 | — | Pending |
+| ELED-02 | — | Pending |
 
 **Coverage:**
-- v1 requirements: 30 total
-- Mapped to phases: 30
-- Unmapped: 0
+- v1 requirements: 30 total (all complete)
+- v2 requirements: 16 total
+- Mapped to phases: 30 (v1) + 0 (v2, pending roadmap)
+- Unmapped: 16
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-15 after Phase 6 planning — ARCH-01 through ARCH-06 added*
+*Last updated: 2026-03-16 after v2.0 milestone start — SOLV, ZREF, GUI3D, ELED requirements added*
