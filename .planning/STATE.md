@@ -168,6 +168,10 @@ Recent decisions affecting current work:
 
 None.
 
+### Roadmap Evolution
+
+- Phase 6 added: Fix LED array generation and display stack generation for DLED and ELED architectures
+
 ### Blockers/Concerns
 
 - [Phase 3]: Sweep memory — estimate ~350 MB for 10-run transient sweep; validate with tracemalloc early in Phase 3 before it becomes an emergency
