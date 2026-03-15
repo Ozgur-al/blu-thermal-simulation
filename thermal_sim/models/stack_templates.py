@@ -214,6 +214,62 @@ def eled_template(
     }
 
 
+def generate_eled_zones(
+    panel_width: float,
+    panel_height: float,
+    frame_width_left: float,
+    pcb_width_left: float,
+    air_gap_left: float,
+    frame_width_right: float,
+    pcb_width_right: float,
+    air_gap_right: float,
+) -> list:
+    """Return MaterialZone list for ELED LGP cross-section.
+
+    Physical arrangement (left-to-right):
+    [frame | PCB+LED | air gap | LGP bulk | air gap | PCB+LED | frame]
+
+    Parameters are in SI metres. Zones with width <= 0 are omitted.
+
+    Raises ValueError if the sum of left/right zone widths exceeds panel_width.
+    """
+    from thermal_sim.models.material_zone import MaterialZone
+
+    total_edge = (
+        frame_width_left + pcb_width_left + air_gap_left
+        + frame_width_right + pcb_width_right + air_gap_right
+    )
+    lgp_bulk_width = panel_width - total_edge
+    if lgp_bulk_width <= 0:
+        raise ValueError(
+            f"ELED zone widths ({total_edge:.4f} m) "
+            f"exceed panel width ({panel_width:.4f} m). Reduce zone widths."
+        )
+
+    zones = []
+    x = 0.0
+    for material, w in [
+        ("Steel",    frame_width_left),
+        ("FR4",      pcb_width_left),
+        ("Air Gap",  air_gap_left),
+        ("PMMA",     lgp_bulk_width),
+        ("Air Gap",  air_gap_right),
+        ("FR4",      pcb_width_right),
+        ("Steel",    frame_width_right),
+    ]:
+        if w > 0:
+            zones.append(MaterialZone(
+                material=material, x=x, y=0.0, width=w, height=panel_height
+            ))
+        x += w
+    return zones
+
+
+# Materials required for ELED cross-section zones.
+# All are present in the builtin materials library.
+ELED_ZONE_MATERIALS = {"Steel", "FR4", "Air Gap", "PMMA"}
+
+
 def _filter_materials(layers: list[Layer]) -> dict:
     """Return only the builtin materials referenced by the given layer list."""
     library = load_builtin_library()

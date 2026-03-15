@@ -942,6 +942,56 @@ class MainWindow(QMainWindow):
         foot_form.addRow("Radius [mm]", self._eled_led_radius)
         layout.addWidget(foot_box)
 
+        # --- Cross-Section Zones ---
+        zone_box = QGroupBox("Cross-Section Zones")
+        zone_form = QFormLayout(zone_box)
+
+        self._eled_frame_width_left = TableDataParser._double_spin(0.0, 100.0, 3.0, decimals=2)
+        self._eled_frame_width_left.setToolTip(
+            "Width of the metal frame on the left edge (mm). "
+            "Physically: the bezel steel that holds the panel."
+        )
+        self._eled_pcb_width_left = TableDataParser._double_spin(0.0, 100.0, 5.0, decimals=2)
+        self._eled_pcb_width_left.setToolTip(
+            "Width of the FR4 PCB+LED board on the left edge (mm). "
+            "Physically: the circuit board carrying edge LEDs."
+        )
+        self._eled_air_gap_left = TableDataParser._double_spin(0.0, 100.0, 1.0, decimals=2)
+        self._eled_air_gap_left.setToolTip(
+            "Width of the air gap between the left LED board and LGP bulk (mm). "
+            "Physically: the standoff air space."
+        )
+        self._eled_frame_width_right = TableDataParser._double_spin(0.0, 100.0, 3.0, decimals=2)
+        self._eled_frame_width_right.setToolTip(
+            "Width of the metal frame on the right edge (mm). "
+            "Physically: the bezel steel that holds the panel."
+        )
+        self._eled_pcb_width_right = TableDataParser._double_spin(0.0, 100.0, 5.0, decimals=2)
+        self._eled_pcb_width_right.setToolTip(
+            "Width of the FR4 PCB+LED board on the right edge (mm). "
+            "Physically: the circuit board carrying edge LEDs."
+        )
+        self._eled_air_gap_right = TableDataParser._double_spin(0.0, 100.0, 1.0, decimals=2)
+        self._eled_air_gap_right.setToolTip(
+            "Width of the air gap between the right LED board and LGP bulk (mm). "
+            "Physically: the standoff air space."
+        )
+
+        zone_form.addRow("Frame width (left) [mm]", self._eled_frame_width_left)
+        zone_form.addRow("PCB+LED width (left) [mm]", self._eled_pcb_width_left)
+        zone_form.addRow("Air gap (left) [mm]", self._eled_air_gap_left)
+        zone_form.addRow("Frame width (right) [mm]", self._eled_frame_width_right)
+        zone_form.addRow("PCB+LED width (right) [mm]", self._eled_pcb_width_right)
+        zone_form.addRow("Air gap (right) [mm]", self._eled_air_gap_right)
+
+        self._eled_generate_zones_btn = QPushButton("Generate Zones")
+        self._eled_generate_zones_btn.setToolTip(
+            "Generate cross-section material zones for the LGP layer from the width values above"
+        )
+        self._eled_generate_zones_btn.clicked.connect(self._on_generate_eled_zones)
+        zone_form.addRow(self._eled_generate_zones_btn)
+        layout.addWidget(zone_box)
+
         layout.addStretch()
         scroll.setWidget(inner)
         outer_layout.addWidget(scroll)
@@ -1014,6 +1064,97 @@ class MainWindow(QMainWindow):
             usable = w - 2 * offset  # show horizontal pitch
         pitch = usable / (count - 1) if count > 1 else 0.0
         self._eled_pitch_label.setText(f"{pitch:.2f}")
+
+    def _on_generate_eled_zones(self) -> None:
+        """Generate ELED cross-section material zones for the LGP layer.
+
+        Reads the six zone-width spinboxes (mm), calls generate_eled_zones(),
+        injects missing materials, stores zones in _layer_zones, and refreshes
+        the zone sub-panel if the LGP layer is currently selected.
+        """
+        from thermal_sim.models.stack_templates import ELED_ZONE_MATERIALS, generate_eled_zones
+
+        # Find the LGP layer row
+        lgp_row = -1
+        for r in range(self.layers_table.rowCount()):
+            name_item = self.layers_table.item(r, 0)
+            if name_item and name_item.text().strip() == "LGP":
+                lgp_row = r
+                break
+
+        if lgp_row < 0:
+            QMessageBox.warning(
+                self,
+                "LGP Layer Not Found",
+                "No layer named 'LGP' found.\n\n"
+                "Generate the ELED template first (select ELED architecture), "
+                "then click Generate Zones.",
+            )
+            return
+
+        # Read panel dimensions (mm -> metres)
+        panel_width = self.width_spin.value() / 1000.0
+        panel_height = self.height_spin.value() / 1000.0
+
+        # Read zone widths (mm -> metres)
+        frame_w_left = self._eled_frame_width_left.value() / 1000.0
+        pcb_w_left = self._eled_pcb_width_left.value() / 1000.0
+        air_g_left = self._eled_air_gap_left.value() / 1000.0
+        frame_w_right = self._eled_frame_width_right.value() / 1000.0
+        pcb_w_right = self._eled_pcb_width_right.value() / 1000.0
+        air_g_right = self._eled_air_gap_right.value() / 1000.0
+
+        try:
+            zones = generate_eled_zones(
+                panel_width=panel_width,
+                panel_height=panel_height,
+                frame_width_left=frame_w_left,
+                pcb_width_left=pcb_w_left,
+                air_gap_left=air_g_left,
+                frame_width_right=frame_w_right,
+                pcb_width_right=pcb_w_right,
+                air_gap_right=air_g_right,
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "Zone Width Error", str(exc))
+            return
+
+        # Inject missing ELED zone materials from the builtin library
+        library = load_builtin_library()
+        existing_mat_names = set()
+        for r in range(self.materials_table.rowCount()):
+            name = TableDataParser._cell_text(self.materials_table, r, 0)
+            if name:
+                existing_mat_names.add(name)
+
+        self.materials_table.blockSignals(True)
+        for mat_name in ELED_ZONE_MATERIALS:
+            if mat_name not in existing_mat_names and mat_name in library:
+                self._add_material_row(library[mat_name], "Built-in")
+        self.materials_table.blockSignals(False)
+
+        # Convert MaterialZone objects to the dict format used by _layer_zones
+        zone_dicts = [
+            {
+                "material": z.material,
+                "x": z.x,
+                "y": z.y,
+                "width": z.width,
+                "height": z.height,
+            }
+            for z in zones
+        ]
+        self._layer_zones[lgp_row] = zone_dicts
+
+        # Refresh the zone sub-panel if the LGP layer is currently selected
+        selected = self.layers_table.currentRow()
+        if selected == lgp_row and self._zone_panel.isVisible():
+            self._populate_zone_table(lgp_row)
+            self._refresh_zone_preview(lgp_row)
+
+        self.statusBar().showMessage(
+            f"ELED zones generated for LGP layer ({len(zones)} zones)", 5000
+        )
 
     def _build_probes_tab(self) -> QWidget:
         tab, self.probes_table = self._build_table_tab(["Name", "Layer", "x [mm]", "y [mm]"])
