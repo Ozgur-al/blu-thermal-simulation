@@ -107,6 +107,10 @@ def _make_temperature_map_page(snapshot: ResultSnapshot, layer_idx: int, layer_n
         n=3,
     )
 
+    # Look up zones for this layer (may be absent in older snapshots)
+    layer_zones_map = getattr(snapshot, "layer_zones", {})
+    layer_zone_list = layer_zones_map.get(layer_name) or None
+
     im = plot_temperature_map_annotated(
         ax,
         layer_slice,
@@ -115,6 +119,7 @@ def _make_temperature_map_page(snapshot: ResultSnapshot, layer_idx: int, layer_n
         title=f"Temperature Map — {layer_name}",
         hotspots=per_layer_hotspots,
         probes=snapshot.probes if snapshot.probes else None,
+        zones=layer_zone_list,
     )
 
     cbar = fig.colorbar(im, ax=ax)

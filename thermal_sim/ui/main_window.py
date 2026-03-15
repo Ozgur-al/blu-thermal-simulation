@@ -1957,6 +1957,13 @@ class MainWindow(QMainWindow):
         else:
             hotspots = top_n_hottest_cells_transient(self.last_transient_result, n=10)
 
+        # Collect layer zones for PDF/comparison overlay
+        layer_zones = {
+            layer.name: list(layer.zones)
+            for layer in project.layers
+            if layer.zones
+        }
+
         return ResultSnapshot(
             name=name,
             mode=self._sim_mode,
@@ -1974,6 +1981,7 @@ class MainWindow(QMainWindow):
             width_m=project.width,
             height_m=project.height,
             probes=list(project.probes),
+            layer_zones=layer_zones,
         )
 
     def _save_snapshot(self) -> None:
@@ -2055,6 +2063,14 @@ class MainWindow(QMainWindow):
             if p.layer == layer_name
         ]
 
+        # Collect zones for the current physical layer.
+        current_zones = None
+        if self.last_project:
+            for layer in self.last_project.layers:
+                if layer.name == layer_name:
+                    current_zones = layer.zones if layer.zones else None
+                    break
+
         canvas = self._plot_manager.map_canvas
         ax = canvas.axes
 
@@ -2071,6 +2087,7 @@ class MainWindow(QMainWindow):
             hotspots=per_layer_hotspots,
             probes=layer_probes if layer_probes else None,
             selected_hotspot_rank=self._selected_hotspot_rank,
+            zones=current_zones,
         )
         canvas._colorbar = canvas.figure.colorbar(im, ax=ax, label="Temperature [\u00b0C]")
         canvas._image = im

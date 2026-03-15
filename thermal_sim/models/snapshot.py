@@ -28,3 +28,4 @@ class ResultSnapshot:
     width_m: float
     height_m: float
     probes: list = field(default_factory=list)    # list of Probe objects for map annotations
+    layer_zones: dict = field(default_factory=dict)  # {layer_name: list[MaterialZone]} for map overlays

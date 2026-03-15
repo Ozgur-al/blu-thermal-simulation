@@ -49,10 +49,12 @@ def plot_temperature_map_annotated(
     hotspots: list[dict] | None = None,    # per-layer hotspots with x_m, y_m, temperature_c
     probes: list | None = None,             # Probe objects with name, x, y
     selected_hotspot_rank: int | None = None,  # 1-based rank to highlight
+    zones: list | None = None,              # list[MaterialZone] | None — zone overlays
 ):
     """Render annotated temperature map onto an existing axes.
 
-    Draws the heatmap with optional crosshair hotspot annotations and probe markers.
+    Draws the heatmap with optional crosshair hotspot annotations, probe markers,
+    and dashed zone boundary overlays.
     Used by both the GUI canvas and PDF export.
     Coordinates are converted from metres to millimetres for display.
     """
@@ -94,6 +96,31 @@ def plot_temperature_map_annotated(
                     markeredgewidth=0.8, markeredgecolor="black", zorder=5)
             ax.text(px, py + 0.015 * h_mm, probe.name,
                     fontsize=6, color="cyan", ha="center", va="bottom")
+
+    # Zone overlays: dashed white rectangles with material labels
+    if zones:
+        from matplotlib.patches import Rectangle
+        for zone in zones:
+            x_mm = zone.x * 1000.0
+            y_mm = zone.y * 1000.0
+            w_zone_mm = zone.width * 1000.0
+            h_zone_mm = zone.height * 1000.0
+            rect = Rectangle(
+                (x_mm, y_mm), w_zone_mm, h_zone_mm,
+                linewidth=1.2,
+                edgecolor="white",
+                linestyle="--",
+                facecolor="none",
+                zorder=6,
+            )
+            ax.add_patch(rect)
+            ax.text(
+                x_mm + 0.5, y_mm + 0.5,
+                zone.material,
+                fontsize=6, color="white",
+                va="bottom", ha="left",
+                zorder=7,
+            )
 
     return im  # Return for colorbar attachment if caller needs it
 
