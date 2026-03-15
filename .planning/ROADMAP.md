@@ -118,7 +118,11 @@
   2. Within-layer z-z links carry no interface resistance term; the inter-layer boundary between two different layers carries the full interface resistance — both verified by the analytical test
   3. The steady-state and transient solvers produce correct result arrays for a mixed-nz project (e.g., nz=[1, 3, 2] across three layers) without shape errors or index mismatches
   4. A project with all nz=1 (no z-refinement) produces identical temperatures after Phase 8 as it did after Phase 7 — backward compat holds through z-refinement addition
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 08-01-PLAN.md — Model z-fields (nz, z_position) + result z-metadata + ZREF-05 analytical test
+- [ ] 08-02-PLAN.md — Network builder z-refinement + solver reshape
+- [ ] 08-03-PLAN.md — Postprocessing z-adaptation + backward compat regression
 
 ### Phase 9: 3D GUI and ELED Zone Preset
 **Goal**: Engineers can control z-refinement and material zones through the GUI without editing JSON, view any z-plane of the 3D result, and get a correctly zoned ELED cross-section model from the architecture dropdown with no manual zone entry
@@ -150,5 +154,5 @@ Phases execute in numeric order: 7 -> 8 -> 9
 | 5. Distribution | v1.0 | 3/3 | Complete | 2026-03-14 |
 | 6. Architecture Support | v1.0 | 3/3 | Complete | 2026-03-14 |
 | 7. 3D Solver Core | v2.0 | 0/2 | Planning complete | - |
-| 8. Z-Refinement | v2.0 | 0/TBD | Not started | - |
+| 8. Z-Refinement | v2.0 | 0/3 | Planning complete | - |
 | 9. 3D GUI and ELED Zone Preset | v2.0 | 0/3 | Planning complete | - |
