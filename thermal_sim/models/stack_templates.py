@@ -180,8 +180,11 @@ def eled_template(
         pitch_y=pitch_y,
         power_per_led_w=0.3,
         footprint_shape="rectangle",
-        led_width=0.002,
-        led_height=0.001,
+        # Use half-pitch footprint so each LED covers its local LGP area.
+        # This ensures overlap with at least one mesh cell at any reasonable
+        # mesh density (nx >= 20, ny >= 15 on a 300x200 mm panel).
+        led_width=pitch_x * 0.5,
+        led_height=pitch_y * 0.5,
         mode="edge",
         edge_config=edge_config,
         edge_offset=0.005,
