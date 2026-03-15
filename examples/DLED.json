@@ -1,0 +1,264 @@
+{
+  "name": "Display Module - Uniform Backlight",
+  "width": 0.3,
+  "height": 0.12,
+  "layers": [
+    {
+      "name": "Back Cover",
+      "material": "Aluminum",
+      "thickness": 0.0008,
+      "interface_resistance_to_next": 0.0
+    },
+    {
+      "name": "Metal Frame",
+      "material": "Steel",
+      "thickness": 0.001,
+      "interface_resistance_to_next": 0.0
+    },
+    {
+      "name": "LED Board",
+      "material": "FR4",
+      "thickness": 0.001,
+      "interface_resistance_to_next": 0.0
+    },
+    {
+      "name": "Diffuser",
+      "material": "PC",
+      "thickness": 0.002,
+      "interface_resistance_to_next": 0.0
+    },
+    {
+      "name": "BEF",
+      "material": "PC",
+      "thickness": 0.0003,
+      "interface_resistance_to_next": 0.0
+    },
+    {
+      "name": "OCA",
+      "material": "OCA",
+      "thickness": 0.00015,
+      "interface_resistance_to_next": 0.0
+    },
+    {
+      "name": "Display Cell",
+      "material": "Glass",
+      "thickness": 0.0011,
+      "interface_resistance_to_next": 0.0
+    },
+    {
+      "name": "Cover Glass",
+      "material": "Glass",
+      "thickness": 0.0018,
+      "interface_resistance_to_next": 0.0
+    }
+  ],
+  "materials": {
+    "Glass": {
+      "name": "Glass",
+      "k_in_plane": 1.05,
+      "k_through": 1.05,
+      "density": 2500.0,
+      "specific_heat": 840.0,
+      "emissivity": 0.92
+    },
+    "OCA": {
+      "name": "OCA",
+      "k_in_plane": 0.25,
+      "k_through": 0.25,
+      "density": 980.0,
+      "specific_heat": 1800.0,
+      "emissivity": 0.95
+    },
+    "PC": {
+      "name": "PC",
+      "k_in_plane": 0.2,
+      "k_through": 0.2,
+      "density": 1210.0,
+      "specific_heat": 1250.0,
+      "emissivity": 0.94
+    },
+    "Aluminum": {
+      "name": "Aluminum",
+      "k_in_plane": 205.0,
+      "k_through": 205.0,
+      "density": 2700.0,
+      "specific_heat": 897.0,
+      "emissivity": 0.1
+    },
+    "Steel": {
+      "name": "Steel",
+      "k_in_plane": 16.0,
+      "k_through": 16.0,
+      "density": 7850.0,
+      "specific_heat": 490.0,
+      "emissivity": 0.6
+    },
+    "FR4": {
+      "name": "FR4",
+      "k_in_plane": 0.35,
+      "k_through": 0.3,
+      "density": 1900.0,
+      "specific_heat": 1100.0,
+      "emissivity": 0.9
+    }
+  },
+  "heat_sources": [],
+  "led_arrays": [
+    {
+      "name": "DLED Array",
+      "layer": "LED Board",
+      "center_x": 0.15,
+      "center_y": 0.06,
+      "count_x": 32,
+      "count_y": 12,
+      "pitch_x": 0.03333,
+      "pitch_y": 0.02857,
+      "power_per_led_w": 0.056,
+      "footprint_shape": "rectangle",
+      "led_width": 0.0015,
+      "led_height": 0.0015,
+      "led_radius": 0.0015,
+      "mode": "grid",
+      "offset_top": 0.005,
+      "offset_bottom": 0.005,
+      "offset_left": 0.005,
+      "offset_right": 0.005,
+      "zone_count_x": 16,
+      "zone_count_y": 6,
+      "zone_powers": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "edge_config": "bottom",
+      "edge_offset": 0.005,
+      "panel_width": 0.3,
+      "panel_height": 0.12
+    }
+  ],
+  "boundaries": {
+    "top": {
+      "ambient_c": 25.0,
+      "convection_h": 8.0,
+      "include_radiation": true,
+      "emissivity_override": null
+    },
+    "bottom": {
+      "ambient_c": 25.0,
+      "convection_h": 8.0,
+      "include_radiation": true,
+      "emissivity_override": null
+    },
+    "side": {
+      "ambient_c": 25.0,
+      "convection_h": 25.0,
+      "include_radiation": true,
+      "emissivity_override": null
+    }
+  },
+  "mesh": {
+    "nx": 64,
+    "ny": 24
+  },
+  "transient": {
+    "time_step_s": 0.2,
+    "total_time_s": 120.0,
+    "output_interval_s": 2.0,
+    "method": "implicit_euler"
+  },
+  "initial_temperature_c": 25.0,
+  "probes": []
+}
