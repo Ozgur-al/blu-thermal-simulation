@@ -9,6 +9,8 @@ import numpy as np
 
 ShapeType = Literal["full", "rectangle", "circle"]
 LedFootprintType = Literal["rectangle", "circle"]
+LEDMode = Literal["grid", "edge", "custom"]
+EdgeConfig = Literal["bottom", "top", "left_right", "all"]
 
 
 @dataclass
@@ -116,7 +118,13 @@ class HeatSource:
 
 @dataclass
 class LEDArray:
-    """Template describing an LED array that expands to many heat sources."""
+    """Template describing an LED array that expands to many heat sources.
+
+    Supports three expansion modes:
+      - "custom" (default): legacy center_x/center_y grid placement.
+      - "grid": panel-aware 2D grid with per-side edge offsets and zone-based power.
+      - "edge": discrete LEDs placed along one or more panel edges.
+    """
 
     name: str
     layer: str
@@ -131,6 +139,20 @@ class LEDArray:
     led_width: float | None = None
     led_height: float | None = None
     led_radius: float | None = None
+
+    # --- new fields (all default to backward-compat values) ---
+    mode: LEDMode = "custom"
+    offset_top: float = 0.0
+    offset_bottom: float = 0.0
+    offset_left: float = 0.0
+    offset_right: float = 0.0
+    zone_count_x: int = 1
+    zone_count_y: int = 1
+    zone_powers: list[float] = field(default_factory=list)
+    edge_config: EdgeConfig = "bottom"
+    edge_offset: float = 0.005  # 5 mm default
+    panel_width: float = 0.0
+    panel_height: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -158,12 +180,78 @@ class LEDArray:
             if self.led_radius is None or self.led_radius <= 0.0:
                 raise ValueError("Circle LED footprint needs led_radius > 0.")
 
+        # Validate new fields for non-custom modes
+        if self.mode == "grid":
+            if self.panel_width <= 0.0 or self.panel_height <= 0.0:
+                raise ValueError("panel_width and panel_height must be > 0 for mode='grid'.")
+        elif self.mode == "edge":
+            if self.panel_width <= 0.0 or self.panel_height <= 0.0:
+                raise ValueError("panel_width and panel_height must be > 0 for mode='edge'.")
+            if self.edge_config in ("bottom", "top", "all") and self.count_x < 1:
+                raise ValueError("count_x >= 1 required for horizontal edges.")
+            if self.edge_config in ("left_right", "all") and self.count_y < 1:
+                raise ValueError("count_y >= 1 required for vertical edges.")
+
     @property
     def total_power_w(self) -> float:
+        if self.mode == "grid":
+            expected_zones = self.zone_count_x * self.zone_count_y
+            if self.zone_powers and len(self.zone_powers) == expected_zones:
+                # Count LEDs per zone and sum zone_power * count
+                total = 0.0
+                leds_per_zone_x = self.count_x / self.zone_count_x
+                leds_per_zone_y = self.count_y / self.zone_count_y
+                for zy in range(self.zone_count_y):
+                    for zx in range(self.zone_count_x):
+                        zone_idx = zy * self.zone_count_x + zx
+                        # Count actual LEDs in this zone
+                        ix_start = round(zx * leds_per_zone_x)
+                        ix_end = round((zx + 1) * leds_per_zone_x)
+                        iy_start = round(zy * leds_per_zone_y)
+                        iy_end = round((zy + 1) * leds_per_zone_y)
+                        n = (ix_end - ix_start) * (iy_end - iy_start)
+                        total += n * self.zone_powers[zone_idx]
+                return total
+        elif self.mode == "edge":
+            n = self._edge_led_count()
+            return n * self.power_per_led_w
+        # Default (custom) or fallback
         return self.count_x * self.count_y * self.power_per_led_w
+
+    def _edge_led_count(self) -> int:
+        """Return total number of LEDs for edge mode."""
+        cfg = self.edge_config
+        n = 0
+        if cfg in ("bottom", "top", "all"):
+            n += self.count_x * 2 if cfg == "all" else self.count_x
+            # Adjust: for "all" we already doubled horizontal; need to add vertical below
+        if cfg in ("left_right", "all"):
+            n += self.count_y * 2
+        return n
+
+    def _edge_led_count(self) -> int:  # noqa: F811  (redefined to fix logic)
+        """Return total number of LEDs for edge mode."""
+        cfg = self.edge_config
+        n = 0
+        if cfg in ("bottom", "top"):
+            n = self.count_x
+        elif cfg == "left_right":
+            n = self.count_y * 2
+        elif cfg == "all":
+            n = self.count_x * 2 + self.count_y * 2
+        return n
 
     def expand(self) -> list[HeatSource]:
         """Expand array template into one source per LED."""
+        if self.mode == "grid":
+            return self._expand_grid()
+        elif self.mode == "edge":
+            return self._expand_edge()
+        else:
+            return self._expand_custom()
+
+    def _expand_custom(self) -> list[HeatSource]:
+        """Legacy expand: center_x/center_y based grid placement."""
         sources: list[HeatSource] = []
         x0 = self.center_x - 0.5 * (self.count_x - 1) * self.pitch_x
         y0 = self.center_y - 0.5 * (self.count_y - 1) * self.pitch_y
@@ -186,6 +274,126 @@ class LEDArray:
                 )
         return sources
 
+    def _expand_grid(self) -> list[HeatSource]:
+        """Panel-aware 2D grid placement with edge offsets and optional zone power."""
+        sources: list[HeatSource] = []
+
+        # Usable area within offsets
+        x_start = self.offset_left
+        x_end = self.panel_width - self.offset_right
+        y_start = self.offset_bottom
+        y_end = self.panel_height - self.offset_top
+
+        # Center the grid within the usable area
+        usable_w = x_end - x_start
+        usable_h = y_end - y_start
+        grid_w = (self.count_x - 1) * self.pitch_x
+        grid_h = (self.count_y - 1) * self.pitch_y
+        x0 = x_start + (usable_w - grid_w) / 2.0
+        y0 = y_start + (usable_h - grid_h) / 2.0
+
+        # Determine zone power lookup
+        expected_zones = self.zone_count_x * self.zone_count_y
+        use_zones = (
+            self.zone_powers
+            and len(self.zone_powers) == expected_zones
+            and self.zone_count_x >= 1
+            and self.zone_count_y >= 1
+        )
+
+        leds_per_zone_x = self.count_x / self.zone_count_x if use_zones else 1
+        leds_per_zone_y = self.count_y / self.zone_count_y if use_zones else 1
+
+        for iy in range(self.count_y):
+            for ix in range(self.count_x):
+                x = x0 + ix * self.pitch_x
+                y = y0 + iy * self.pitch_y
+
+                if use_zones:
+                    zone_xi = min(int(ix / leds_per_zone_x), self.zone_count_x - 1)
+                    zone_yi = min(int(iy / leds_per_zone_y), self.zone_count_y - 1)
+                    zone_idx = zone_yi * self.zone_count_x + zone_xi
+                    power = self.zone_powers[zone_idx]
+                else:
+                    power = self.power_per_led_w
+
+                sources.append(
+                    HeatSource(
+                        name=f"{self.name}_r{iy + 1}_c{ix + 1}",
+                        layer=self.layer,
+                        power_w=power,
+                        shape=self.footprint_shape,
+                        x=x,
+                        y=y,
+                        width=self.led_width if self.footprint_shape == "rectangle" else None,
+                        height=self.led_height if self.footprint_shape == "rectangle" else None,
+                        radius=self.led_radius if self.footprint_shape == "circle" else None,
+                    )
+                )
+        return sources
+
+    def _expand_edge(self) -> list[HeatSource]:
+        """Place discrete LEDs along configured panel edges (clamped to panel bounds)."""
+        sources: list[HeatSource] = []
+        cfg = self.edge_config
+        pw = self.panel_width
+        ph = self.panel_height
+        offset = self.edge_offset
+
+        def clamp(v: float, lo: float, hi: float) -> float:
+            return max(lo, min(hi, v))
+
+        def make_led(name: str, x: float, y: float) -> HeatSource:
+            return HeatSource(
+                name=name,
+                layer=self.layer,
+                power_w=self.power_per_led_w,
+                shape=self.footprint_shape,
+                x=clamp(x, 0.0, pw),
+                y=clamp(y, 0.0, ph),
+                width=self.led_width if self.footprint_shape == "rectangle" else None,
+                height=self.led_height if self.footprint_shape == "rectangle" else None,
+                radius=self.led_radius if self.footprint_shape == "circle" else None,
+            )
+
+        # Horizontal edges (bottom / top): count_x LEDs spaced along x axis
+        def horizontal_strip(y_pos: float, tag: str) -> list[HeatSource]:
+            strip: list[HeatSource] = []
+            if self.count_x == 1:
+                xs = [pw / 2.0]
+            else:
+                x0 = offset
+                x1 = pw - offset
+                step = (x1 - x0) / (self.count_x - 1)
+                xs = [x0 + i * step for i in range(self.count_x)]
+            for i, x in enumerate(xs):
+                strip.append(make_led(f"{self.name}_{tag}_{i + 1}", x, y_pos))
+            return strip
+
+        # Vertical edges (left / right): count_y LEDs spaced along y axis
+        def vertical_strip(x_pos: float, tag: str) -> list[HeatSource]:
+            strip: list[HeatSource] = []
+            if self.count_y == 1:
+                ys = [ph / 2.0]
+            else:
+                y0 = offset
+                y1 = ph - offset
+                step = (y1 - y0) / (self.count_y - 1)
+                ys = [y0 + i * step for i in range(self.count_y)]
+            for i, y in enumerate(ys):
+                strip.append(make_led(f"{self.name}_{tag}_{i + 1}", x_pos, y))
+            return strip
+
+        if cfg in ("bottom", "all"):
+            sources.extend(horizontal_strip(offset, "bot"))
+        if cfg in ("top", "all"):
+            sources.extend(horizontal_strip(ph - offset, "top"))
+        if cfg in ("left_right", "all"):
+            sources.extend(vertical_strip(offset, "left"))
+            sources.extend(vertical_strip(pw - offset, "right"))
+
+        return sources
+
     def to_dict(self) -> dict:
         return {
             "name": self.name,
@@ -201,6 +409,19 @@ class LEDArray:
             "led_width": self.led_width,
             "led_height": self.led_height,
             "led_radius": self.led_radius,
+            # new fields
+            "mode": self.mode,
+            "offset_top": self.offset_top,
+            "offset_bottom": self.offset_bottom,
+            "offset_left": self.offset_left,
+            "offset_right": self.offset_right,
+            "zone_count_x": self.zone_count_x,
+            "zone_count_y": self.zone_count_y,
+            "zone_powers": self.zone_powers,
+            "edge_config": self.edge_config,
+            "edge_offset": self.edge_offset,
+            "panel_width": self.panel_width,
+            "panel_height": self.panel_height,
         }
 
     @classmethod
@@ -219,4 +440,17 @@ class LEDArray:
             led_width=None if data.get("led_width") is None else float(data["led_width"]),
             led_height=None if data.get("led_height") is None else float(data["led_height"]),
             led_radius=None if data.get("led_radius") is None else float(data["led_radius"]),
+            # new fields — use .get() with defaults for backward compatibility
+            mode=data.get("mode", "custom"),
+            offset_top=float(data.get("offset_top", 0.0)),
+            offset_bottom=float(data.get("offset_bottom", 0.0)),
+            offset_left=float(data.get("offset_left", 0.0)),
+            offset_right=float(data.get("offset_right", 0.0)),
+            zone_count_x=int(data.get("zone_count_x", 1)),
+            zone_count_y=int(data.get("zone_count_y", 1)),
+            zone_powers=list(data.get("zone_powers", [])),
+            edge_config=data.get("edge_config", "bottom"),
+            edge_offset=float(data.get("edge_offset", 0.005)),
+            panel_width=float(data.get("panel_width", 0.0)),
+            panel_height=float(data.get("panel_height", 0.0)),
         )
