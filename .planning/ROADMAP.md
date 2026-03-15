@@ -106,7 +106,7 @@
   3. The conductance at the boundary between two zone materials equals the harmonic mean of their individual conductances — verified by a unit test against a hand-calculated value
   4. Node indexing for a project with nz=1 everywhere uses the new NodeLayout abstraction and produces the same flat index as the old formula
 **Plans:** 2 plans
-- [ ] 07-01-PLAN.md — Regression baseline + MaterialZone model + Layer.zones field
+- [x] 07-01-PLAN.md — Regression baseline + MaterialZone model + Layer.zones field
 - [ ] 07-02-PLAN.md — NodeLayout + per-cell harmonic-mean conductance + zone rasterization in builder
 
 ### Phase 8: Z-Refinement
@@ -153,6 +153,6 @@ Phases execute in numeric order: 7 -> 8 -> 9
 | 4. Polish | v1.0 | 4/4 | Complete | 2026-03-14 |
 | 5. Distribution | v1.0 | 3/3 | Complete | 2026-03-14 |
 | 6. Architecture Support | v1.0 | 3/3 | Complete | 2026-03-14 |
-| 7. 3D Solver Core | v2.0 | 0/2 | Planning complete | - |
+| 7. 3D Solver Core | v2.0 | 1/2 | In progress | - |
 | 8. Z-Refinement | v2.0 | 0/3 | Planning complete | - |
 | 9. 3D GUI and ELED Zone Preset | v2.0 | 0/3 | Planning complete | - |

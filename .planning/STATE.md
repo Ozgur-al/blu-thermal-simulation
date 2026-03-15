@@ -23,24 +23,24 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 ## Current Position
 
 Phase: 7 of 9 (3D Solver Core)
-Plan: — of TBD
-Status: Ready to plan
-Last activity: 2026-03-16 — v2.0 roadmap created (Phases 7-9)
+Plan: 1 of 3 (07-01 complete)
+Status: In progress
+Last activity: 2026-03-16 — 07-01 regression safety net and MaterialZone model complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0 (v2.0)
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 1 (v2.0)
+- Average duration: 14 min
+- Total execution time: 0.23 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 07-3d-solver-core | 1 | 14 min | 14 min |
 
 *Updated after each plan completion*
 
@@ -53,6 +53,9 @@ Progress: [░░░░░░░░░░] 0%
 - Backward-compat regression test is the Phase 7 entry gate — write before touching any builder code
 - Structured Cartesian grid only — no unstructured/tetrahedral mesh
 - Vectorized NumPy conductance assembly required — no Python loops per cell in builder hot path
+- DLED.json mesh: 450x300 causes UMFPACK OOM segfault in transient solve (1.08M nodes); reduced to 64x24 for regression baselines
+- Layer.to_dict() omits 'zones' key entirely when zones=[] to preserve old JSON round-trip fidelity
+- MaterialZone follows Material frozen dataclass pattern: __post_init__ validation + to_dict/from_dict
 
 ### Pending Todos
 
@@ -66,5 +69,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-3d-gui-and-eled-zone-preset/09-CONTEXT.md
+Stopped at: Completed 07-01-PLAN.md
+Resume file: .planning/phases/07-3d-solver-core/07-01-SUMMARY.md
