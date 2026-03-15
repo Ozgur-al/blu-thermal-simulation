@@ -390,6 +390,10 @@ class MainWindow(QMainWindow):
 
         outer.addLayout(row1)
         outer.addLayout(row2)
+
+        # Wire architecture combo signal (panels built in _build_led_arrays_tab)
+        self.arch_combo.currentTextChanged.connect(self._on_architecture_changed)
+
         return panel
 
     def _build_editor_tabs(self) -> QTabWidget:
@@ -1208,6 +1212,12 @@ class MainWindow(QMainWindow):
         self._validation_errors.clear()
         for table in editable_tables:
             self._revalidate_table(table)
+
+        # Reset architecture to Custom when loading a project from disk
+        self.arch_combo.blockSignals(True)
+        self.arch_combo.setCurrentText("Custom")
+        self.arch_combo.blockSignals(False)
+        self._led_arrays_stack.setCurrentIndex(0)
 
         self._undo_stack.clear()
         self._undo_stack.setClean()
@@ -2120,16 +2130,306 @@ class MainWindow(QMainWindow):
         }
 
     def _build_project_from_ui(self) -> DisplayProject:
-        project = TableDataParser.build_project_from_tables(
-            self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
-        )
+        arch = self.arch_combo.currentText()
+        if arch in ("DLED", "ELED"):
+            # Build project from arch-specific spinboxes; layers/materials/boundaries from tables
+            project = TableDataParser.build_project_from_tables(
+                self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
+            )
+            project.led_arrays = self._build_led_arrays_from_arch_panel()
+        else:
+            project = TableDataParser.build_project_from_tables(
+                self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
+            )
         # Attach power profiles from the profile sub-panel
-        from thermal_sim.models.heat_source import PowerBreakpoint
+        from thermal_sim.models.heat_source import PowerBreakpoint  # noqa: F401 (side-effect import for clarity)
         for row_idx, bps in self._source_profiles.items():
             if row_idx < len(project.heat_sources) and len(bps) >= 2:
                 src = project.heat_sources[row_idx]
                 src.power_profile = list(bps)
         return project
+
+    def _on_architecture_changed(self, arch: str) -> None:
+        """Switch LED panel and apply template when the architecture combo changes."""
+        index = {"Custom": 0, "DLED": 1, "ELED": 2}.get(arch, 0)
+        self._led_arrays_stack.setCurrentIndex(index)
+        if arch == "Custom":
+            return  # Keep existing data unchanged
+
+        # Convert current panel dimensions from mm to metres
+        w = self.width_spin.value() / 1000.0
+        h = self.height_spin.value() / 1000.0
+
+        from thermal_sim.models.stack_templates import dled_template, eled_template
+        if arch == "DLED":
+            template_data = dled_template(w, h)
+        else:
+            edge_cfg = self._eled_edge_config.currentText().lower().replace("/", "_")
+            template_data = eled_template(w, h, edge_config=edge_cfg)
+
+        self._apply_template(template_data)
+
+    def _apply_template(self, template_data: dict) -> None:
+        """Populate the full UI from a stack template dict.
+
+        Layers, materials, and boundaries are loaded via _populate_ui_from_project.
+        The active DLED/ELED panel spinboxes are then seeded from template LED array data.
+        """
+        from thermal_sim.models.project import DisplayProject, MeshConfig, TransientConfig
+
+        # Build a temporary project using template data + current spinbox values
+        temp_project = DisplayProject(
+            name=self.project_name_edit.text() or "Template",
+            width=self.width_spin.value() / 1000.0,
+            height=self.height_spin.value() / 1000.0,
+            mesh=MeshConfig(nx=self.nx_spin.value(), ny=self.ny_spin.value()),
+            transient=TransientConfig(
+                time_step_s=self.dt_spin.value(),
+                total_time_s=self.total_time_spin.value(),
+                output_interval_s=self.output_interval_spin.value(),
+            ),
+            initial_temperature_c=self.initial_temp_spin.value(),
+            layers=template_data["layers"],
+            materials=template_data["materials"],
+            heat_sources=[],
+            led_arrays=template_data["led_arrays"],
+            boundaries=template_data["boundaries"],
+            probes=[],
+        )
+
+        # Block signals before bulk update to prevent spurious undo commands
+        editable_tables = [
+            self.materials_table,
+            self.layers_table,
+            self.sources_table,
+            self.led_arrays_table,
+            self.probes_table,
+        ]
+        for table in editable_tables:
+            table.blockSignals(True)
+
+        # Block arch_combo so _populate_ui_from_project's reset to Custom is bypassed here
+        self.arch_combo.blockSignals(True)
+        arch_was = self.arch_combo.currentText()
+
+        self._populate_ui_from_project(temp_project)
+
+        # Restore arch selection (populate resets it to Custom)
+        self.arch_combo.blockSignals(True)
+        self.arch_combo.setCurrentText(arch_was)
+        self.arch_combo.blockSignals(False)
+
+        for table in editable_tables:
+            table.blockSignals(False)
+
+        # Seed the active arch panel spinboxes from the template LED array
+        led_arrays = template_data.get("led_arrays", [])
+        if led_arrays:
+            la = led_arrays[0]
+            if arch_was == "DLED":
+                self._dled_count_x.blockSignals(True)
+                self._dled_count_x.setValue(la.count_x)
+                self._dled_count_x.blockSignals(False)
+
+                self._dled_count_y.blockSignals(True)
+                self._dled_count_y.setValue(la.count_y)
+                self._dled_count_y.blockSignals(False)
+
+                self._dled_pitch_x.blockSignals(True)
+                self._dled_pitch_x.setValue(la.pitch_x * 1000.0)
+                self._dled_pitch_x.blockSignals(False)
+
+                self._dled_pitch_y.blockSignals(True)
+                self._dled_pitch_y.setValue(la.pitch_y * 1000.0)
+                self._dled_pitch_y.blockSignals(False)
+
+                self._dled_power.blockSignals(True)
+                self._dled_power.setValue(la.power_per_led_w)
+                self._dled_power.blockSignals(False)
+
+                self._dled_offset_top.blockSignals(True)
+                self._dled_offset_top.setValue(la.offset_top * 1000.0)
+                self._dled_offset_top.blockSignals(False)
+
+                self._dled_offset_bottom.blockSignals(True)
+                self._dled_offset_bottom.setValue(la.offset_bottom * 1000.0)
+                self._dled_offset_bottom.blockSignals(False)
+
+                self._dled_offset_left.blockSignals(True)
+                self._dled_offset_left.setValue(la.offset_left * 1000.0)
+                self._dled_offset_left.blockSignals(False)
+
+                self._dled_offset_right.blockSignals(True)
+                self._dled_offset_right.setValue(la.offset_right * 1000.0)
+                self._dled_offset_right.blockSignals(False)
+
+                self._dled_zone_count_x.blockSignals(True)
+                self._dled_zone_count_x.setValue(la.zone_count_x)
+                self._dled_zone_count_x.blockSignals(False)
+
+                self._dled_zone_count_y.blockSignals(True)
+                self._dled_zone_count_y.setValue(la.zone_count_y)
+                self._dled_zone_count_y.blockSignals(False)
+
+                self._rebuild_zone_table()
+
+                if la.footprint_shape:
+                    idx = self._dled_footprint_shape.findText(la.footprint_shape)
+                    if idx >= 0:
+                        self._dled_footprint_shape.setCurrentIndex(idx)
+                if la.led_width is not None:
+                    self._dled_led_width.setValue(la.led_width * 1000.0)
+                if la.led_height is not None:
+                    self._dled_led_height.setValue(la.led_height * 1000.0)
+                if la.led_radius is not None:
+                    self._dled_led_radius.setValue(la.led_radius * 1000.0)
+
+            elif arch_was == "ELED":
+                edge_text = la.edge_config.replace("_", "/")
+                idx = self._eled_edge_config.findText(edge_text)
+                if idx < 0:
+                    idx = self._eled_edge_config.findText(la.edge_config)
+                if idx >= 0:
+                    self._eled_edge_config.blockSignals(True)
+                    self._eled_edge_config.setCurrentIndex(idx)
+                    self._eled_edge_config.blockSignals(False)
+
+                self._eled_count.blockSignals(True)
+                self._eled_count.setValue(la.count_x)
+                self._eled_count.blockSignals(False)
+
+                self._eled_pitch.blockSignals(True)
+                self._eled_pitch.setValue(la.pitch_x * 1000.0)
+                self._eled_pitch.blockSignals(False)
+
+                self._eled_edge_offset.blockSignals(True)
+                self._eled_edge_offset.setValue(la.edge_offset * 1000.0)
+                self._eled_edge_offset.blockSignals(False)
+
+                self._eled_power.blockSignals(True)
+                self._eled_power.setValue(la.power_per_led_w)
+                self._eled_power.blockSignals(False)
+
+                if la.footprint_shape:
+                    idx = self._eled_footprint_shape.findText(la.footprint_shape)
+                    if idx >= 0:
+                        self._eled_footprint_shape.setCurrentIndex(idx)
+                if la.led_width is not None:
+                    self._eled_led_width.setValue(la.led_width * 1000.0)
+                if la.led_height is not None:
+                    self._eled_led_height.setValue(la.led_height * 1000.0)
+                if la.led_radius is not None:
+                    self._eled_led_radius.setValue(la.led_radius * 1000.0)
+
+        # Restore LED stack page (populate reset it to index 0)
+        index = {"Custom": 0, "DLED": 1, "ELED": 2}.get(arch_was, 0)
+        self._led_arrays_stack.setCurrentIndex(index)
+
+        # Clear undo stack — silent replacement per design decision
+        self._undo_stack.clear()
+
+        # Re-validate
+        self._validation_errors.clear()
+        for table in editable_tables:
+            self._revalidate_table(table)
+
+    def _build_led_arrays_from_arch_panel(self) -> list:
+        """Build LEDArray list from DLED or ELED spinbox panel values (mm -> SI)."""
+        from thermal_sim.models.heat_source import LEDArray
+        arch = self.arch_combo.currentText()
+        w = self.width_spin.value() / 1000.0
+        h = self.height_spin.value() / 1000.0
+
+        if arch == "DLED":
+            count_x = self._dled_count_x.value()
+            count_y = self._dled_count_y.value()
+            pitch_x = self._dled_pitch_x.value() / 1000.0
+            pitch_y = self._dled_pitch_y.value() / 1000.0
+            power = self._dled_power.value()
+            offset_top = self._dled_offset_top.value() / 1000.0
+            offset_bottom = self._dled_offset_bottom.value() / 1000.0
+            offset_left = self._dled_offset_left.value() / 1000.0
+            offset_right = self._dled_offset_right.value() / 1000.0
+            zone_count_x = self._dled_zone_count_x.value()
+            zone_count_y = self._dled_zone_count_y.value()
+
+            # Read zone powers from table
+            zone_powers: list[float] = []
+            for r in range(self._dled_zone_table.rowCount()):
+                item = self._dled_zone_table.item(r, 1)
+                try:
+                    zone_powers.append(float(item.text()) if item else power)
+                except (ValueError, AttributeError):
+                    zone_powers.append(power)
+
+            footprint_shape = self._dled_footprint_shape.currentText()
+            led_width = self._dled_led_width.value() / 1000.0
+            led_height = self._dled_led_height.value() / 1000.0
+            led_radius = self._dled_led_radius.value() / 1000.0
+
+            led_array = LEDArray(
+                name="DLED Array",
+                layer="LED Board",
+                center_x=w / 2.0,
+                center_y=h / 2.0,
+                count_x=count_x,
+                count_y=count_y,
+                pitch_x=pitch_x,
+                pitch_y=pitch_y,
+                power_per_led_w=power,
+                footprint_shape=footprint_shape,
+                led_width=led_width,
+                led_height=led_height,
+                led_radius=led_radius,
+                mode="grid",
+                panel_width=w,
+                panel_height=h,
+                offset_top=offset_top,
+                offset_bottom=offset_bottom,
+                offset_left=offset_left,
+                offset_right=offset_right,
+                zone_count_x=zone_count_x,
+                zone_count_y=zone_count_y,
+                zone_powers=zone_powers,
+            )
+            return [led_array]
+
+        elif arch == "ELED":
+            count = self._eled_count.value()
+            pitch = self._eled_pitch.value() / 1000.0
+            edge_offset = self._eled_edge_offset.value() / 1000.0
+            power = self._eled_power.value()
+            edge_text = self._eled_edge_config.currentText()
+            edge_cfg = edge_text.replace("/", "_")
+
+            footprint_shape = self._eled_footprint_shape.currentText()
+            led_width = self._eled_led_width.value() / 1000.0
+            led_height = self._eled_led_height.value() / 1000.0
+            led_radius = self._eled_led_radius.value() / 1000.0
+
+            led_array = LEDArray(
+                name="ELED Array",
+                layer="LGP",
+                center_x=w / 2.0,
+                center_y=h / 2.0,
+                count_x=count,
+                count_y=count,
+                pitch_x=pitch,
+                pitch_y=pitch,
+                power_per_led_w=power,
+                footprint_shape=footprint_shape,
+                led_width=led_width,
+                led_height=led_height,
+                led_radius=led_radius,
+                mode="edge",
+                edge_config=edge_cfg,
+                edge_offset=edge_offset,
+                panel_width=w,
+                panel_height=h,
+            )
+            return [led_array]
+
+        return []
 
     def _validate_project(self) -> list[str]:
         """Delegate to TableDataParser.validate_tables()."""
