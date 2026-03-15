@@ -112,7 +112,7 @@ def test_led_array_custom_mode_identical_to_no_mode() -> None:
 # --------------------------------------------------------------------------
 
 def test_led_array_grid_mode_first_led_at_offset_position() -> None:
-    """mode='grid' places first LED at (offset_left + pitch/2, offset_bottom + pitch/2) within panel."""
+    """mode='grid' auto-computes pitch and places first LED at offset edge."""
     arr = LEDArray(
         name="GRID",
         layer="LED Board",
@@ -120,8 +120,8 @@ def test_led_array_grid_mode_first_led_at_offset_position() -> None:
         center_y=0.0,
         count_x=4,
         count_y=3,
-        pitch_x=0.05,
-        pitch_y=0.05,
+        pitch_x=0.0,  # ignored for grid mode (auto-computed)
+        pitch_y=0.0,
         power_per_led_w=0.5,
         footprint_shape="rectangle",
         led_width=0.003,
@@ -137,20 +137,20 @@ def test_led_array_grid_mode_first_led_at_offset_position() -> None:
     expanded = arr.expand()
     assert len(expanded) == 12  # 4*3
 
-    # First LED in row 1 col 1
+    # First LED at start of usable area
     first = expanded[0]
-    # usable width after offsets = 0.3 - 0.02 - 0.02 = 0.26; 4 LEDs spaced 0.05 apart
-    # x0 = offset_left + (usable_w - (count_x-1)*pitch_x) / 2
-    usable_w = 0.3 - 0.02 - 0.02
-    x0 = 0.02 + (usable_w - 3 * 0.05) / 2
-    usable_h = 0.2 - 0.01 - 0.01
-    y0 = 0.01 + (usable_h - 2 * 0.05) / 2
-    assert first.x == pytest.approx(x0, abs=1e-9)
-    assert first.y == pytest.approx(y0, abs=1e-9)
+    assert first.x == pytest.approx(0.02, abs=1e-9)  # offset_left
+    assert first.y == pytest.approx(0.01, abs=1e-9)  # offset_bottom
+
+    # Auto-computed pitch: usable_w / (count-1)
+    usable_w = 0.3 - 0.02 - 0.02  # 0.26
+    expected_pitch_x = usable_w / 3  # ~0.0867
+    second = expanded[1]  # iy=0, ix=1
+    assert second.x == pytest.approx(0.02 + expected_pitch_x, abs=1e-9)
 
 
-def test_led_array_grid_mode_last_led_within_bounds() -> None:
-    """mode='grid': last LED position stays within panel bounds."""
+def test_led_array_grid_mode_last_led_at_offset_boundary() -> None:
+    """mode='grid': last LED sits exactly at the far offset boundary."""
     arr = LEDArray(
         name="GRID",
         layer="LED Board",
@@ -158,8 +158,8 @@ def test_led_array_grid_mode_last_led_within_bounds() -> None:
         center_y=0.0,
         count_x=4,
         count_y=3,
-        pitch_x=0.05,
-        pitch_y=0.05,
+        pitch_x=0.0,  # ignored for grid mode
+        pitch_y=0.0,
         power_per_led_w=0.5,
         footprint_shape="rectangle",
         led_width=0.003,
@@ -174,8 +174,8 @@ def test_led_array_grid_mode_last_led_within_bounds() -> None:
     )
     expanded = arr.expand()
     last = expanded[-1]
-    assert last.x <= 0.3 - 0.02
-    assert last.y <= 0.2 - 0.01
+    assert last.x == pytest.approx(0.3 - 0.02, abs=1e-9)  # panel_width - offset_right
+    assert last.y == pytest.approx(0.2 - 0.01, abs=1e-9)  # panel_height - offset_top
 
 
 def test_led_array_grid_zone_power_assignment() -> None:
@@ -187,8 +187,8 @@ def test_led_array_grid_zone_power_assignment() -> None:
         center_y=0.0,
         count_x=4,
         count_y=4,
-        pitch_x=0.05,
-        pitch_y=0.05,
+        pitch_x=0.0,  # ignored for grid mode (auto-computed)
+        pitch_y=0.0,
         power_per_led_w=0.5,
         footprint_shape="rectangle",
         led_width=0.003,
@@ -231,8 +231,8 @@ def test_led_array_grid_empty_zone_powers_uses_uniform() -> None:
         center_y=0.0,
         count_x=2,
         count_y=2,
-        pitch_x=0.05,
-        pitch_y=0.05,
+        pitch_x=0.0,  # ignored for grid mode
+        pitch_y=0.0,
         power_per_led_w=0.5,
         footprint_shape="rectangle",
         led_width=0.003,
@@ -466,8 +466,8 @@ def test_led_array_total_power_grid_with_zones() -> None:
         center_y=0.0,
         count_x=4,
         count_y=4,
-        pitch_x=0.05,
-        pitch_y=0.05,
+        pitch_x=0.0,  # ignored for grid mode
+        pitch_y=0.0,
         power_per_led_w=0.5,
         footprint_shape="rectangle",
         led_width=0.003,
@@ -507,3 +507,47 @@ def test_led_array_total_power_edge_all() -> None:
     )
     # bottom: 5, top: 5, left: 4, right: 4 = 18 LEDs
     assert arr.total_power_w == pytest.approx(18 * 0.3)
+
+
+def test_led_array_grid_dense_32x12_all_within_bounds() -> None:
+    """Dense 32x12 grid on 300x120mm panel — all LEDs within panel bounds (auto-pitch)."""
+    arr = LEDArray(
+        name="DLED Array",
+        layer="LED Board",
+        center_x=0.0,
+        center_y=0.0,
+        count_x=32,
+        count_y=12,
+        pitch_x=0.0,  # auto-computed
+        pitch_y=0.0,
+        power_per_led_w=0.5,
+        footprint_shape="rectangle",
+        led_width=0.003,
+        led_height=0.003,
+        mode="grid",
+        panel_width=0.300,
+        panel_height=0.120,
+        offset_left=0.010,
+        offset_right=0.010,
+        offset_top=0.005,
+        offset_bottom=0.005,
+    )
+    expanded = arr.expand()
+    assert len(expanded) == 32 * 12
+
+    # All LEDs within panel bounds
+    for src in expanded:
+        assert 0.0 <= src.x <= 0.300, f"LED {src.name} x={src.x} out of bounds"
+        assert 0.0 <= src.y <= 0.120, f"LED {src.name} y={src.y} out of bounds"
+
+    # First LED at offset position, last at panel - offset
+    assert expanded[0].x == pytest.approx(0.010, abs=1e-9)
+    assert expanded[0].y == pytest.approx(0.005, abs=1e-9)
+    assert expanded[-1].x == pytest.approx(0.290, abs=1e-9)
+    assert expanded[-1].y == pytest.approx(0.115, abs=1e-9)
+
+    # Auto-computed pitch
+    expected_pitch_x = 0.280 / 31  # ~9.03mm
+    expected_pitch_y = 0.110 / 11  # 10.0mm
+    assert expanded[1].x - expanded[0].x == pytest.approx(expected_pitch_x, abs=1e-9)
+    assert expanded[32].y - expanded[0].y == pytest.approx(expected_pitch_y, abs=1e-9)

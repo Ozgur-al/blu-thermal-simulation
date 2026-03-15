@@ -161,12 +161,14 @@ class LEDArray:
             raise ValueError("LED array layer must not be empty.")
         if self.count_x < 1 or self.count_y < 1:
             raise ValueError("LED array counts must be >= 1.")
-        if self.pitch_x < 0.0 or self.pitch_y < 0.0:
-            raise ValueError("LED array pitch must be >= 0.")
-        if self.count_x > 1 and self.pitch_x <= 0.0:
-            raise ValueError("pitch_x must be > 0 when count_x > 1.")
-        if self.count_y > 1 and self.pitch_y <= 0.0:
-            raise ValueError("pitch_y must be > 0 when count_y > 1.")
+        # Pitch validation only for custom mode (grid/edge auto-compute pitch)
+        if self.mode == "custom":
+            if self.pitch_x < 0.0 or self.pitch_y < 0.0:
+                raise ValueError("LED array pitch must be >= 0.")
+            if self.count_x > 1 and self.pitch_x <= 0.0:
+                raise ValueError("pitch_x must be > 0 when count_x > 1.")
+            if self.count_y > 1 and self.pitch_y <= 0.0:
+                raise ValueError("pitch_y must be > 0 when count_y > 1.")
         if self.power_per_led_w < 0.0:
             raise ValueError("power_per_led_w must be >= 0.")
         if self.footprint_shape not in ("rectangle", "circle"):
@@ -222,17 +224,6 @@ class LEDArray:
         """Return total number of LEDs for edge mode."""
         cfg = self.edge_config
         n = 0
-        if cfg in ("bottom", "top", "all"):
-            n += self.count_x * 2 if cfg == "all" else self.count_x
-            # Adjust: for "all" we already doubled horizontal; need to add vertical below
-        if cfg in ("left_right", "all"):
-            n += self.count_y * 2
-        return n
-
-    def _edge_led_count(self) -> int:  # noqa: F811  (redefined to fix logic)
-        """Return total number of LEDs for edge mode."""
-        cfg = self.edge_config
-        n = 0
         if cfg in ("bottom", "top"):
             n = self.count_x
         elif cfg == "left_right":
@@ -275,7 +266,11 @@ class LEDArray:
         return sources
 
     def _expand_grid(self) -> list[HeatSource]:
-        """Panel-aware 2D grid placement with edge offsets and optional zone power."""
+        """Panel-aware 2D grid placement with edge offsets and optional zone power.
+
+        Pitch is auto-computed from usable area and LED count so LEDs always
+        fill the active area evenly.
+        """
         sources: list[HeatSource] = []
 
         # Usable area within offsets
@@ -284,13 +279,16 @@ class LEDArray:
         y_start = self.offset_bottom
         y_end = self.panel_height - self.offset_top
 
-        # Center the grid within the usable area
         usable_w = x_end - x_start
         usable_h = y_end - y_start
-        grid_w = (self.count_x - 1) * self.pitch_x
-        grid_h = (self.count_y - 1) * self.pitch_y
-        x0 = x_start + (usable_w - grid_w) / 2.0
-        y0 = y_start + (usable_h - grid_h) / 2.0
+
+        # Auto-compute pitch from usable area and count
+        pitch_x = usable_w / (self.count_x - 1) if self.count_x > 1 else 0.0
+        pitch_y = usable_h / (self.count_y - 1) if self.count_y > 1 else 0.0
+
+        # First LED at start of usable area (or centered for single LED)
+        x0 = x_start if self.count_x > 1 else x_start + usable_w / 2.0
+        y0 = y_start if self.count_y > 1 else y_start + usable_h / 2.0
 
         # Determine zone power lookup
         expected_zones = self.zone_count_x * self.zone_count_y
@@ -306,8 +304,8 @@ class LEDArray:
 
         for iy in range(self.count_y):
             for ix in range(self.count_x):
-                x = x0 + ix * self.pitch_x
-                y = y0 + iy * self.pitch_y
+                x = x0 + ix * pitch_x
+                y = y0 + iy * pitch_y
 
                 if use_zones:
                     zone_xi = min(int(ix / leds_per_zone_x), self.zone_count_x - 1)

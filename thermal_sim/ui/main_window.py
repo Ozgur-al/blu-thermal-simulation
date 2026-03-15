@@ -394,6 +394,12 @@ class MainWindow(QMainWindow):
         # Wire architecture combo signal (panels built in _build_led_arrays_tab)
         self.arch_combo.currentTextChanged.connect(self._on_architecture_changed)
 
+        # Panel dimension changes update auto-computed pitch labels
+        self.width_spin.valueChanged.connect(self._update_dled_pitch_labels)
+        self.height_spin.valueChanged.connect(self._update_dled_pitch_labels)
+        self.width_spin.valueChanged.connect(self._update_eled_pitch_label)
+        self.height_spin.valueChanged.connect(self._update_eled_pitch_label)
+
         return panel
 
     def _build_editor_tabs(self) -> QTabWidget:
@@ -694,19 +700,19 @@ class MainWindow(QMainWindow):
         self._dled_count_y.setValue(6)
         self._dled_count_y.setToolTip("Number of LEDs in Y direction")
 
-        self._dled_pitch_x = TableDataParser._double_spin(0.1, 100.0, 20.0, decimals=2)
-        self._dled_pitch_x.setToolTip("Spacing between LED centers in X (mm)")
+        self._dled_pitch_x_label = QLabel("—")
+        self._dled_pitch_x_label.setToolTip("Auto-computed spacing between LED centers in X (mm)")
 
-        self._dled_pitch_y = TableDataParser._double_spin(0.1, 100.0, 15.0, decimals=2)
-        self._dled_pitch_y.setToolTip("Spacing between LED centers in Y (mm)")
+        self._dled_pitch_y_label = QLabel("—")
+        self._dled_pitch_y_label.setToolTip("Auto-computed spacing between LED centers in Y (mm)")
 
         self._dled_power = TableDataParser._double_spin(0.0, 100.0, 0.5, decimals=3)
         self._dled_power.setToolTip("Power dissipated by each individual LED (W)")
 
         grid_form.addRow("Count X", self._dled_count_x)
         grid_form.addRow("Count Y", self._dled_count_y)
-        grid_form.addRow("Pitch X [mm]", self._dled_pitch_x)
-        grid_form.addRow("Pitch Y [mm]", self._dled_pitch_y)
+        grid_form.addRow("Pitch X [mm]", self._dled_pitch_x_label)
+        grid_form.addRow("Pitch Y [mm]", self._dled_pitch_y_label)
         grid_form.addRow("Power per LED [W]", self._dled_power)
         layout.addWidget(grid_box)
 
@@ -793,6 +799,14 @@ class MainWindow(QMainWindow):
         self._dled_zone_count_x.valueChanged.connect(self._rebuild_zone_table)
         self._dled_zone_count_y.valueChanged.connect(self._rebuild_zone_table)
 
+        # Connect count/offset changes to update computed pitch labels
+        self._dled_count_x.valueChanged.connect(self._update_dled_pitch_labels)
+        self._dled_count_y.valueChanged.connect(self._update_dled_pitch_labels)
+        self._dled_offset_left.valueChanged.connect(self._update_dled_pitch_labels)
+        self._dled_offset_right.valueChanged.connect(self._update_dled_pitch_labels)
+        self._dled_offset_top.valueChanged.connect(self._update_dled_pitch_labels)
+        self._dled_offset_bottom.valueChanged.connect(self._update_dled_pitch_labels)
+
         return outer
 
     def _build_eled_panel(self) -> QWidget:
@@ -821,8 +835,8 @@ class MainWindow(QMainWindow):
         self._eled_count.setValue(20)
         self._eled_count.setToolTip("Number of LEDs along a horizontal edge (count_x) / vertical edge (count_y)")
 
-        self._eled_pitch = TableDataParser._double_spin(0.1, 100.0, 8.0, decimals=3)
-        self._eled_pitch.setToolTip("Spacing between LED centers along the edge (mm)")
+        self._eled_pitch_label = QLabel("—")
+        self._eled_pitch_label.setToolTip("Auto-computed spacing between LED centers along the edge (mm)")
 
         self._eled_edge_offset = TableDataParser._double_spin(0.1, 50.0, 5.0, decimals=3)
         self._eled_edge_offset.setToolTip("Distance from panel edge to LED center (mm)")
@@ -832,7 +846,7 @@ class MainWindow(QMainWindow):
 
         edge_form.addRow("Edge", self._eled_edge_config)
         edge_form.addRow("Count along edge", self._eled_count)
-        edge_form.addRow("Pitch [mm]", self._eled_pitch)
+        edge_form.addRow("Pitch [mm]", self._eled_pitch_label)
         edge_form.addRow("Edge offset [mm]", self._eled_edge_offset)
         edge_form.addRow("Power per LED [W]", self._eled_power)
         layout.addWidget(edge_box)
@@ -864,6 +878,13 @@ class MainWindow(QMainWindow):
         scroll.setWidget(inner)
         outer_layout.addWidget(scroll)
 
+        # Connect count/offset/edge config changes to update computed pitch label
+        self._eled_count.valueChanged.connect(self._update_eled_pitch_label)
+        self._eled_edge_offset.valueChanged.connect(self._update_eled_pitch_label)
+        self._eled_edge_config.currentTextChanged.connect(
+            lambda _: self._update_eled_pitch_label()
+        )
+
         return outer
 
     def _rebuild_zone_table(self) -> None:
@@ -889,6 +910,42 @@ class MainWindow(QMainWindow):
             self._dled_zone_table.setItem(idx, 0, QTableWidgetItem(label))
             self._dled_zone_table.setItem(idx, 1, QTableWidgetItem(power_val))
         self._dled_zone_table.blockSignals(False)
+
+    def _update_dled_pitch_labels(self) -> None:
+        """Recompute and display auto-calculated pitch for DLED grid."""
+        w = self.width_spin.value()   # mm
+        h = self.height_spin.value()  # mm
+        ol = self._dled_offset_left.value()
+        or_ = self._dled_offset_right.value()
+        ot = self._dled_offset_top.value()
+        ob = self._dled_offset_bottom.value()
+        cx = self._dled_count_x.value()
+        cy = self._dled_count_y.value()
+
+        usable_w = w - ol - or_
+        usable_h = h - ot - ob
+        pitch_x = usable_w / (cx - 1) if cx > 1 else 0.0
+        pitch_y = usable_h / (cy - 1) if cy > 1 else 0.0
+        self._dled_pitch_x_label.setText(f"{pitch_x:.2f}")
+        self._dled_pitch_y_label.setText(f"{pitch_y:.2f}")
+
+    def _update_eled_pitch_label(self) -> None:
+        """Recompute and display auto-calculated pitch for ELED edge strip."""
+        w = self.width_spin.value()   # mm
+        h = self.height_spin.value()  # mm
+        count = self._eled_count.value()
+        offset = self._eled_edge_offset.value()
+
+        # Pitch along the longer relevant edge dimension
+        edge_cfg = self._eled_edge_config.currentText().lower().replace("/", "_")
+        if edge_cfg in ("bottom", "top"):
+            usable = w - 2 * offset
+        elif edge_cfg == "left_right":
+            usable = h - 2 * offset
+        else:  # "all"
+            usable = w - 2 * offset  # show horizontal pitch
+        pitch = usable / (count - 1) if count > 1 else 0.0
+        self._eled_pitch_label.setText(f"{pitch:.2f}")
 
     def _build_probes_tab(self) -> QWidget:
         tab, self.probes_table = self._build_table_tab(["Name", "Layer", "x [mm]", "y [mm]"])
@@ -2235,13 +2292,8 @@ class MainWindow(QMainWindow):
                 self._dled_count_y.setValue(la.count_y)
                 self._dled_count_y.blockSignals(False)
 
-                self._dled_pitch_x.blockSignals(True)
-                self._dled_pitch_x.setValue(la.pitch_x * 1000.0)
-                self._dled_pitch_x.blockSignals(False)
-
-                self._dled_pitch_y.blockSignals(True)
-                self._dled_pitch_y.setValue(la.pitch_y * 1000.0)
-                self._dled_pitch_y.blockSignals(False)
+                # Pitch labels updated after all spinboxes are set
+                self._update_dled_pitch_labels()
 
                 self._dled_power.blockSignals(True)
                 self._dled_power.setValue(la.power_per_led_w)
@@ -2298,9 +2350,8 @@ class MainWindow(QMainWindow):
                 self._eled_count.setValue(la.count_x)
                 self._eled_count.blockSignals(False)
 
-                self._eled_pitch.blockSignals(True)
-                self._eled_pitch.setValue(la.pitch_x * 1000.0)
-                self._eled_pitch.blockSignals(False)
+                # Pitch label updated after all spinboxes are set
+                self._update_eled_pitch_label()
 
                 self._eled_edge_offset.blockSignals(True)
                 self._eled_edge_offset.setValue(la.edge_offset * 1000.0)
@@ -2325,6 +2376,18 @@ class MainWindow(QMainWindow):
         index = {"Custom": 0, "DLED": 1, "ELED": 2}.get(arch_was, 0)
         self._led_arrays_stack.setCurrentIndex(index)
 
+        # Auto-adjust mesh density so cells are ≤ LED footprint size
+        if led_arrays:
+            la = led_arrays[0]
+            w_mm = self.width_spin.value()
+            h_mm = self.height_spin.value()
+            led_w_mm = (la.led_width or 0.003) * 1000.0
+            led_h_mm = (la.led_height or 0.003) * 1000.0
+            min_nx = max(int(w_mm / led_w_mm) + 1, self.nx_spin.value())
+            min_ny = max(int(h_mm / led_h_mm) + 1, self.ny_spin.value())
+            self.nx_spin.setValue(min_nx)
+            self.ny_spin.setValue(min_ny)
+
         # Clear undo stack — silent replacement per design decision
         self._undo_stack.clear()
 
@@ -2343,8 +2406,6 @@ class MainWindow(QMainWindow):
         if arch == "DLED":
             count_x = self._dled_count_x.value()
             count_y = self._dled_count_y.value()
-            pitch_x = self._dled_pitch_x.value() / 1000.0
-            pitch_y = self._dled_pitch_y.value() / 1000.0
             power = self._dled_power.value()
             offset_top = self._dled_offset_top.value() / 1000.0
             offset_bottom = self._dled_offset_bottom.value() / 1000.0
@@ -2374,8 +2435,8 @@ class MainWindow(QMainWindow):
                 center_y=h / 2.0,
                 count_x=count_x,
                 count_y=count_y,
-                pitch_x=pitch_x,
-                pitch_y=pitch_y,
+                pitch_x=0.0,  # auto-computed by model from panel/offsets/count
+                pitch_y=0.0,
                 power_per_led_w=power,
                 footprint_shape=footprint_shape,
                 led_width=led_width,
@@ -2396,7 +2457,6 @@ class MainWindow(QMainWindow):
 
         elif arch == "ELED":
             count = self._eled_count.value()
-            pitch = self._eled_pitch.value() / 1000.0
             edge_offset = self._eled_edge_offset.value() / 1000.0
             power = self._eled_power.value()
             edge_text = self._eled_edge_config.currentText()
@@ -2414,8 +2474,8 @@ class MainWindow(QMainWindow):
                 center_y=h / 2.0,
                 count_x=count,
                 count_y=count,
-                pitch_x=pitch,
-                pitch_y=pitch,
+                pitch_x=0.0,  # auto-computed by model
+                pitch_y=0.0,
                 power_per_led_w=power,
                 footprint_shape=footprint_shape,
                 led_width=led_width,
