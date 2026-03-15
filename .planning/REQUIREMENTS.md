@@ -138,29 +138,29 @@
 | ARCH-04 | Phase 6 — Architecture Support | Complete |
 | ARCH-05 | Phase 6 — Architecture Support | Complete |
 | ARCH-06 | Phase 6 — Architecture Support | Complete |
-| SOLV-01 | — | Pending |
-| SOLV-02 | — | Pending |
-| SOLV-03 | — | Pending |
-| SOLV-04 | — | Pending |
-| ZREF-01 | — | Pending |
-| ZREF-02 | — | Pending |
-| ZREF-03 | — | Pending |
-| ZREF-04 | — | Pending |
-| ZREF-05 | — | Pending |
-| GUI3D-01 | — | Pending |
-| GUI3D-02 | — | Pending |
-| GUI3D-03 | — | Pending |
-| GUI3D-04 | — | Pending |
-| GUI3D-05 | — | Pending |
-| ELED-01 | — | Pending |
-| ELED-02 | — | Pending |
+| SOLV-01 | Phase 7 — 3D Solver Core | Pending |
+| SOLV-02 | Phase 7 — 3D Solver Core | Pending |
+| SOLV-03 | Phase 7 — 3D Solver Core | Pending |
+| SOLV-04 | Phase 7 — 3D Solver Core | Pending |
+| ZREF-01 | Phase 8 — Z-Refinement | Pending |
+| ZREF-02 | Phase 8 — Z-Refinement | Pending |
+| ZREF-03 | Phase 8 — Z-Refinement | Pending |
+| ZREF-04 | Phase 8 — Z-Refinement | Pending |
+| ZREF-05 | Phase 8 — Z-Refinement | Pending |
+| GUI3D-01 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
+| GUI3D-02 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
+| GUI3D-03 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
+| GUI3D-04 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
+| GUI3D-05 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
+| ELED-01 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
+| ELED-02 | Phase 9 — 3D GUI and ELED Zone Preset | Pending |
 
 **Coverage:**
 - v1 requirements: 30 total (all complete)
 - v2 requirements: 16 total
-- Mapped to phases: 30 (v1) + 0 (v2, pending roadmap)
-- Unmapped: 16
+- Mapped to phases: 30 (v1) + 16 (v2)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-16 after v2.0 milestone start — SOLV, ZREF, GUI3D, ELED requirements added*
+*Last updated: 2026-03-16 — v2.0 roadmap created, all 16 v2 requirements mapped to Phases 7-9*

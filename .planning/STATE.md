@@ -5,7 +5,7 @@ milestone_name: full-3d-solver
 status: planning
 last_updated: "2026-03-16"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,35 +18,41 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-16)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Milestone v2.0 — Full 3D Solver
+**Current focus:** Milestone v2.0 — Phase 7: 3D Solver Core
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-16 — Milestone v2.0 started
+Phase: 7 of 9 (3D Solver Core)
+Plan: — of TBD
+Status: Ready to plan
+Last activity: 2026-03-16 — v2.0 roadmap created (Phases 7-9)
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0 (v2.0)
+- Average duration: —
+- Total execution time: 0 hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
-### From v1.0
-
-- 2.5D RC-network solver works well for uniform layers
-- Cell-overlap source masking enables coarse meshes with small LED footprints
-- ELED template architecture is incorrect — LEDs should be on FR4 PCB adhered to metal cover, not on LGP
-- The 2.5D model fundamentally can't represent lateral material variation within a layer
-- Per-cell materials needed for ELED cross-section: metal | FR4+LED | air | LGP at same z-level
-- Z-refinement (multiple z-nodes per layer) is straightforward once per-cell materials work
-- Network builder already works cell-by-cell for heat sources — extending to per-cell materials is same pattern
-- At 90x60 mesh, solver runs in <1s; 150x100 in ~5s; memory/speed fine up to ~200k nodes
-- Grid mode auto-computes pitch from panel geometry — no manual pitch input needed
-- spsolve (SuperLU) is single-threaded; CG didn't converge well at 1M nodes — keep direct solver, rely on reasonable mesh sizes
-
 ### Decisions
 
-- Per-cell materials is the harder architectural change; z-refinement is trivial once per-cell works
-- Structured Cartesian grid only — no unstructured/tetrahedral mesh needed for display modules
-- Same G=kA/L RC-network math — not switching to FEM/CFD
+- Per-cell materials is the harder architectural change; z-refinement is trivial once per-cell works (drives Phase 7 before Phase 8)
+- NodeLayout abstraction must be centralized before any z-refinement code — silently wrong otherwise
+- Backward-compat regression test is the Phase 7 entry gate — write before touching any builder code
+- Structured Cartesian grid only — no unstructured/tetrahedral mesh
+- Vectorized NumPy conductance assembly required — no Python loops per cell in builder hot path
 
 ### Pending Todos
 
@@ -54,5 +60,11 @@ None.
 
 ### Blockers/Concerns
 
-- Per-cell material lookup changes the hot path in network_builder.py — need benchmarks to ensure no regression at typical mesh sizes
-- JSON backward compat: old projects (no material zones, no z-refinement) must load and solve identically
+- Phase 9 ELED preset: verify that Phase 6 ELED stack template exposes frame width, LED board width, and air gap width as named fields before committing to preset implementation approach (one-file inspection at Phase 9 planning start)
+- CSV export format versioning: adding z-slice index to exports will break existing CSV readers — plan a format version bump before Phase 8 is declared complete
+
+## Session Continuity
+
+Last session: 2026-03-16
+Stopped at: Roadmap created — Phases 7, 8, 9 defined with requirements and success criteria
+Resume file: None
