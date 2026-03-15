@@ -30,8 +30,8 @@ class NodeLayout:
     """Maps (layer, ix, iy, iz) tuples to flat node indices.
 
     For Phase 7 (nz=1 everywhere), ``layer_offsets[l] = l * n_per_layer``.
-    The ``iz`` parameter is unused but reserved for Phase 8 z-refinement,
-    which will vary nz per layer and change layer_offsets accordingly.
+    Phase 8 z-refinement varies nz per layer; layer_offsets[l] is the index
+    of the *first z-sublayer* of layer l (i.e. z_offsets[l] * n_per_layer).
     """
 
     nx: int
@@ -67,6 +67,9 @@ class ThermalNetwork:
     n_layers: int
     layer_names: list[str]
     layout: NodeLayout
+    n_z_nodes: int           # total z-sublayer count: sum(layer.nz for layer in layers)
+    nz_per_layer: list[int]  # [layer.nz for each layer]
+    z_offsets: list[int]     # cumulative offsets, length n_layers+1
 
     @property
     def b_vector(self) -> np.ndarray:
@@ -75,7 +78,7 @@ class ThermalNetwork:
 
     @property
     def n_nodes(self) -> int:
-        return self.layout.n_nodes
+        return self.n_z_nodes * self.grid.nx * self.grid.ny
 
 
 # ---------------------------------------------------------------------------
@@ -184,8 +187,17 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
     n_per_layer = grid.nx * grid.ny
     area = grid.cell_area
 
-    # Build NodeLayout (Phase 7: nz=1, uniform layer offsets).
-    layer_offsets = tuple(l * n_per_layer for l in range(n_layers))
+    # Compute z_offsets: cumulative sublayer counts across layers.
+    nz_per_layer = [layer.nz for layer in project.layers]
+    z_offsets: list[int] = [0]
+    for nz_val in nz_per_layer:
+        z_offsets.append(z_offsets[-1] + nz_val)
+    n_z_nodes = z_offsets[-1]  # total z-sublayers across all layers
+    n_nodes = n_z_nodes * n_per_layer
+
+    # Build NodeLayout — layer_offsets[l] = first node index for layer l's
+    # bottom-most z-sublayer (= z_offsets[l] * n_per_layer).
+    layer_offsets = tuple(z_offsets[l] * n_per_layer for l in range(n_layers))
     layout = NodeLayout(
         nx=grid.nx,
         ny=grid.ny,
@@ -193,7 +205,6 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
         n_layers=n_layers,
         layer_offsets=layer_offsets,
     )
-    n_nodes = layout.n_nodes
 
     # COO triplet accumulators for sparse matrix assembly.
     coo_rows: list[np.ndarray] = []
@@ -246,91 +257,115 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
         maps = _rasterize_zones(layer, project.materials, grid)
         zone_maps.append(maps)
 
-    # Node thermal capacities (per-cell from zone maps).
+    # Node thermal capacities: per-cell, per-sublayer.
     for l_idx, layer in enumerate(project.layers):
         _, _, density_cp_map = zone_maps[l_idx]
-        c_per_cell = density_cp_map * layer.thickness * area  # (ny, nx)
-        start = layout.layer_offsets[l_idx]
-        c_vec[start : start + n_per_layer] = c_per_cell.ravel()
+        dz_sub = layer.thickness / layer.nz
+        c_per_cell = density_cp_map * dz_sub * area  # (ny, nx)
+        for k in range(layer.nz):
+            z_global = z_offsets[l_idx] + k
+            start = z_global * n_per_layer
+            c_vec[start : start + n_per_layer] = c_per_cell.ravel()
 
-    # Lateral conduction inside each layer.
-    # flat_idx = iy * nx + ix;  node = layer_offsets[l] + flat_idx
+    # Lateral conduction inside each z-sublayer.
+    # flat_idx = iy * nx + ix;  node = z_global * n_per_layer + flat_idx
     iy_all = np.repeat(np.arange(grid.ny), grid.nx)   # shape (n_per_layer,)
     ix_all = np.tile(np.arange(grid.nx), grid.ny)     # shape (n_per_layer,)
 
     for l_idx, layer in enumerate(project.layers):
         k_ip_map, _, _ = zone_maps[l_idx]  # (ny, nx)
-        base = layout.layer_offsets[l_idx]
+        dz_sub = layer.thickness / layer.nz
 
-        # Per-cell conductance arrays (ny, nx)
-        g_x_per_cell = k_ip_map * layer.thickness * grid.dy / grid.dx
-        g_y_per_cell = k_ip_map * layer.thickness * grid.dx / grid.dy
+        # Per-cell conductance arrays (ny, nx) — use dz_sub for cross-section
+        g_x_per_cell = k_ip_map * dz_sub * grid.dy / grid.dx
+        g_y_per_cell = k_ip_map * dz_sub * grid.dx / grid.dy
 
         # Horizontal links: (ix, iy) -- (ix+1, iy)  where ix < nx-1
-        # Reshape to (ny, nx) for slicing
         g_left  = g_x_per_cell[:, :-1]   # (ny, nx-1)
         g_right = g_x_per_cell[:, 1:]    # (ny, nx-1)
-        # Harmonic mean: for equal values HM = same value (backward-compatible)
         denom_x = g_left + g_right
-        # Where denom is zero (both sides are zero k), set link conductance to 0
         g_x_link = np.where(denom_x > 0.0, 2.0 * g_left * g_right / denom_x, 0.0)
-        # (ny, nx-1) — ravel into (ny*(nx-1),)
         g_x_flat = g_x_link.ravel()
 
-        # Build flat indices for left/right pairs
-        # For ix in 0..nx-2, iy in 0..ny-1:
-        # flat_left = iy*nx + ix,  flat_right = iy*nx + ix+1
         mask_x = ix_all < (grid.nx - 1)
         flat_left = (iy_all[mask_x] * grid.nx + ix_all[mask_x])
         flat_right = flat_left + 1
-        _add_link_vectorized(base + flat_left, base + flat_right, g_x_flat)
 
         # Vertical links: (ix, iy) -- (ix, iy+1)  where iy < ny-1
         g_bottom_y = g_y_per_cell[:-1, :]   # (ny-1, nx)
         g_top_y    = g_y_per_cell[1:,  :]   # (ny-1, nx)
         denom_y = g_bottom_y + g_top_y
         g_y_link = np.where(denom_y > 0.0, 2.0 * g_bottom_y * g_top_y / denom_y, 0.0)
-        g_y_flat = g_y_link.ravel()  # (ny-1)*nx
+        g_y_flat = g_y_link.ravel()
 
         mask_y = iy_all < (grid.ny - 1)
         flat_bottom_y = (iy_all[mask_y] * grid.nx + ix_all[mask_y])
         flat_top_y = flat_bottom_y + grid.nx
-        _add_link_vectorized(base + flat_bottom_y, base + flat_top_y, g_y_flat)
 
-    # Through-thickness conduction between adjacent layers.
+        for k in range(layer.nz):
+            z_global = z_offsets[l_idx] + k
+            base = z_global * n_per_layer
+            _add_link_vectorized(base + flat_left, base + flat_right, g_x_flat)
+            _add_link_vectorized(base + flat_bottom_y, base + flat_top_y, g_y_flat)
+
+    # INTRA-LAYER z-z links (ZREF-02): G = k_through * area / dz_sub.
+    # No interface resistance — these are within-layer sublayer pairs.
     flat_all_layer = np.arange(n_per_layer)
+    for l_idx, layer in enumerate(project.layers):
+        if layer.nz <= 1:
+            continue
+        _, k_through_map, _ = zone_maps[l_idx]   # (ny, nx)
+        dz_sub = layer.thickness / layer.nz
+        # Per-cell intra-layer z conductance: G = k_through * area / dz_sub
+        g_z_intra = (k_through_map * area / dz_sub).ravel()  # (n_per_layer,)
+        for k in range(layer.nz - 1):
+            z_lower = z_offsets[l_idx] + k
+            z_upper = z_offsets[l_idx] + k + 1
+            n1 = z_lower * n_per_layer + flat_all_layer
+            n2 = z_upper * n_per_layer + flat_all_layer
+            _add_link_vectorized(n1, n2, g_z_intra)
+
+    # INTER-LAYER z-z links (ZREF-03): half-dz + R_interface formula.
+    # Connects topmost sublayer of layer l to bottommost sublayer of layer l+1.
     for l_idx in range(n_layers - 1):
         lower = project.layers[l_idx]
         upper = project.layers[l_idx + 1]
         _, k_through_lower, _ = zone_maps[l_idx]      # (ny, nx)
         _, k_through_upper, _ = zone_maps[l_idx + 1]  # (ny, nx)
+        dz_lower = lower.thickness / lower.nz
+        dz_upper = upper.thickness / upper.nz
 
-        # Per-cell resistance arrays, then per-cell conductance
-        r_lower = lower.thickness / (2.0 * k_through_lower * area)      # (ny, nx)
-        r_upper = upper.thickness / (2.0 * k_through_upper * area)      # (ny, nx)
-        r_interface = lower.interface_resistance_to_next / area          # scalar
-        g_z = 1.0 / (r_lower + r_interface + r_upper)                   # (ny, nx)
+        # Per-cell resistance: half-cell conduction + interface + half-cell conduction
+        r_lower = dz_lower / (2.0 * k_through_lower * area)   # (ny, nx)
+        r_upper = dz_upper / (2.0 * k_through_upper * area)   # (ny, nx)
+        r_interface = lower.interface_resistance_to_next / area  # scalar
+        g_z = (1.0 / (r_lower + r_interface + r_upper)).ravel()  # (n_per_layer,)
 
-        n1 = layout.layer_offsets[l_idx]     + flat_all_layer
-        n2 = layout.layer_offsets[l_idx + 1] + flat_all_layer
-        _add_link_vectorized(n1, n2, g_z.ravel())
+        z_top_lower = z_offsets[l_idx + 1] - 1   # topmost sublayer of lower layer
+        z_bot_upper = z_offsets[l_idx + 1]        # bottommost sublayer of upper layer
+        n1 = z_top_lower * n_per_layer + flat_all_layer
+        n2 = z_bot_upper * n_per_layer + flat_all_layer
+        _add_link_vectorized(n1, n2, g_z)
 
     # Top/bottom ambient sinks.
+    # Top BC: attached to topmost z-sublayer of top layer.
+    # Bottom BC: attached to bottommost z-sublayer (z_global=0) of bottom layer.
     top_layer = project.layers[-1]
     bot_layer = project.layers[0]
     _, k_through_top_map, _ = zone_maps[n_layers - 1]   # (ny, nx)
     _, k_through_bot_map, _ = zone_maps[0]              # (ny, nx)
 
-    # Emissivity: use layer material emissivity as uniform scalar for top/bottom
-    # (zone rasterization doesn't track emissivity — using layer base material)
     top_mat = project.material_for_layer(n_layers - 1)
     bot_mat = project.material_for_layer(0)
 
-    # Per-cell surface conductance for top boundary
+    dz_sub_top = top_layer.thickness / top_layer.nz
+    dz_sub_bot = bot_layer.thickness / bot_layer.nz
+
+    # Per-cell surface conductance for top boundary (uses dz_sub_top / 2 as conduction distance)
     g_top_map = _surface_sink_conductance_array(
         boundary=project.boundaries.top,
         emissivity=top_mat.emissivity,
-        conduction_distance_map=top_layer.thickness / 2.0,
+        conduction_distance_map=dz_sub_top / 2.0,
         conductivity_map=k_through_top_map,
         area=area,
     )  # (ny, nx) or scalar
@@ -338,13 +373,13 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
     g_bot_map = _surface_sink_conductance_array(
         boundary=project.boundaries.bottom,
         emissivity=bot_mat.emissivity,
-        conduction_distance_map=bot_layer.thickness / 2.0,
+        conduction_distance_map=dz_sub_bot / 2.0,
         conductivity_map=k_through_bot_map,
         area=area,
     )  # (ny, nx) or scalar
 
-    # Top layer nodes.
-    top_indices = layout.layer_offsets[n_layers - 1] + flat_all_layer
+    # Top layer nodes: topmost z-sublayer of the top layer.
+    top_indices = (n_z_nodes - 1) * n_per_layer + flat_all_layer
     g_top_flat = g_top_map.ravel() if isinstance(g_top_map, np.ndarray) else g_top_map
     if isinstance(g_top_flat, np.ndarray):
         mask_top = g_top_flat > 0.0
@@ -359,7 +394,7 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
         coo_data.append(np.full(n_per_layer, g_top_flat, dtype=float))
         b_boundary[top_indices] += g_top_flat * project.boundaries.top.ambient_c
 
-    # Bottom layer nodes.
+    # Bottom layer nodes: bottommost z-sublayer (z_global=0).
     bot_indices = flat_all_layer  # 0 * n_per_layer + flat
     g_bot_flat = g_bot_map.ravel() if isinstance(g_bot_map, np.ndarray) else g_bot_map
     if isinstance(g_bot_flat, np.ndarray):
@@ -375,71 +410,71 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
         coo_data.append(np.full(n_per_layer, g_bot_flat, dtype=float))
         b_boundary[bot_indices] += g_bot_flat * project.boundaries.bottom.ambient_c
 
-    # Side ambient sinks (all layers, perimeter cells only).
+    # Side ambient sinks: iterate over all z-sublayers per layer.
+    # Side BC area uses dz_sub (sublayer thickness) not layer.thickness.
     side_amb = project.boundaries.side.ambient_c
+
+    # Pre-compute edge flat indices (depend only on grid dimensions).
+    left_flat  = np.arange(grid.ny) * grid.nx           # iy*nx + 0
+    right_flat = np.arange(grid.ny) * grid.nx + (grid.nx - 1)
+    bottom_flat = np.arange(grid.nx)                    # 0*nx + ix
+    top_flat    = (grid.ny - 1) * grid.nx + np.arange(grid.nx)
+
     for l_idx, layer in enumerate(project.layers):
         k_ip_map, _, _ = zone_maps[l_idx]  # (ny, nx)
-        base = layout.layer_offsets[l_idx]
         mat = project.material_for_layer(l_idx)
+        dz_sub = layer.thickness / layer.nz
 
-        # Left/right edges: conductance driven by k_in_plane at edge cells
-        # left edge: ix=0, all iy   -> k_ip_map[:, 0]  shape (ny,)
-        # right edge: ix=nx-1, all iy -> k_ip_map[:, -1] shape (ny,)
-        left_flat  = np.arange(grid.ny) * grid.nx           # iy*nx + 0
-        right_flat = np.arange(grid.ny) * grid.nx + (grid.nx - 1)
-
-        # Per-cell x-edge conductance for left column
+        # Per-cell x-edge conductance for left column (area = dz_sub * dy)
         g_x_left = _surface_sink_conductance_array(
             boundary=project.boundaries.side,
             emissivity=mat.emissivity,
             conduction_distance_map=grid.dx / 2.0,
             conductivity_map=k_ip_map[:, 0],
-            area=layer.thickness * grid.dy,
+            area=dz_sub * grid.dy,
         )  # shape (ny,) or scalar
         g_x_right = _surface_sink_conductance_array(
             boundary=project.boundaries.side,
             emissivity=mat.emissivity,
             conduction_distance_map=grid.dx / 2.0,
             conductivity_map=k_ip_map[:, -1],
-            area=layer.thickness * grid.dy,
+            area=dz_sub * grid.dy,
         )  # shape (ny,) or scalar
-
-        _apply_edge_sink(
-            coo_rows, coo_cols, coo_data, b_boundary,
-            base + left_flat, g_x_left, side_amb,
-        )
-        _apply_edge_sink(
-            coo_rows, coo_cols, coo_data, b_boundary,
-            base + right_flat, g_x_right, side_amb,
-        )
-
-        # Bottom/top edges: conductance driven by k_in_plane at edge cells
-        bottom_flat = np.arange(grid.nx)                       # 0*nx + ix
-        top_flat    = (grid.ny - 1) * grid.nx + np.arange(grid.nx)
-
         g_y_bottom = _surface_sink_conductance_array(
             boundary=project.boundaries.side,
             emissivity=mat.emissivity,
             conduction_distance_map=grid.dy / 2.0,
             conductivity_map=k_ip_map[0, :],
-            area=layer.thickness * grid.dx,
+            area=dz_sub * grid.dx,
         )  # shape (nx,) or scalar
         g_y_top = _surface_sink_conductance_array(
             boundary=project.boundaries.side,
             emissivity=mat.emissivity,
             conduction_distance_map=grid.dy / 2.0,
             conductivity_map=k_ip_map[-1, :],
-            area=layer.thickness * grid.dx,
+            area=dz_sub * grid.dx,
         )  # shape (nx,) or scalar
 
-        _apply_edge_sink(
-            coo_rows, coo_cols, coo_data, b_boundary,
-            base + bottom_flat, g_y_bottom, side_amb,
-        )
-        _apply_edge_sink(
-            coo_rows, coo_cols, coo_data, b_boundary,
-            base + top_flat, g_y_top, side_amb,
-        )
+        for k in range(layer.nz):
+            z_global = z_offsets[l_idx] + k
+            base = z_global * n_per_layer
+
+            _apply_edge_sink(
+                coo_rows, coo_cols, coo_data, b_boundary,
+                base + left_flat, g_x_left, side_amb,
+            )
+            _apply_edge_sink(
+                coo_rows, coo_cols, coo_data, b_boundary,
+                base + right_flat, g_x_right, side_amb,
+            )
+            _apply_edge_sink(
+                coo_rows, coo_cols, coo_data, b_boundary,
+                base + bottom_flat, g_y_bottom, side_amb,
+            )
+            _apply_edge_sink(
+                coo_rows, coo_cols, coo_data, b_boundary,
+                base + top_flat, g_y_top, side_amb,
+            )
 
     # Assemble COO -> CSR in one shot.
     if coo_rows:
@@ -452,7 +487,7 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
     else:
         a_mat = csr_matrix((n_nodes, n_nodes), dtype=float)
 
-    _apply_heat_sources(project, grid, b_sources, layout)
+    _apply_heat_sources(project, grid, b_sources, z_offsets, nz_per_layer)
     return ThermalNetwork(
         a_matrix=a_mat,
         b_boundary=b_boundary,
@@ -462,6 +497,9 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
         n_layers=n_layers,
         layer_names=[layer.name for layer in project.layers],
         layout=layout,
+        n_z_nodes=n_z_nodes,
+        nz_per_layer=nz_per_layer,
+        z_offsets=z_offsets,
     )
 
 
@@ -511,9 +549,13 @@ def build_heat_source_vector(
     When ``time_s`` is provided, each source is scaled by its
     ``power_at_time(time_s)`` instead of its static ``power_w``.
     """
+    nz_per_layer = [layer.nz for layer in project.layers]
+    z_offsets_loc: list[int] = [0]
+    for nz_val in nz_per_layer:
+        z_offsets_loc.append(z_offsets_loc[-1] + nz_val)
+    n_z_nodes = z_offsets_loc[-1]
     n_per_layer = grid.nx * grid.ny
-    n_layers = len(project.layers)
-    n_nodes = n_layers * n_per_layer
+    n_nodes = n_z_nodes * n_per_layer
     b_vec = np.zeros(n_nodes, dtype=float)
 
     x_centers = grid.x_centers()
@@ -530,10 +572,25 @@ def build_heat_source_vector(
         iy_arr, ix_arr = np.where(mask)
         if iy_arr.size == 0:
             continue  # Already validated during initial network build
+        n_cells = iy_arr.size
         power = source.power_at_time(time_s) if time_s is not None else source.power_w
-        power_per_node = power / iy_arr.size
-        linear = layer_idx * n_per_layer + iy_arr * grid.nx + ix_arr
-        np.add.at(b_vec, linear, power_per_node)
+        z_pos = getattr(source, 'z_position', 'top')
+        nz = nz_per_layer[layer_idx]
+        z_base = z_offsets_loc[layer_idx]
+        if z_pos == 'distributed':
+            power_per_node = power / (nz * n_cells)
+            for k in range(nz):
+                z_global = z_base + k
+                linear = z_global * n_per_layer + iy_arr * grid.nx + ix_arr
+                np.add.at(b_vec, linear, power_per_node)
+        else:
+            if z_pos == 'bottom':
+                z_global = z_base
+            else:  # 'top' or default
+                z_global = z_base + nz - 1
+            power_per_node = power / n_cells
+            linear = z_global * n_per_layer + iy_arr * grid.nx + ix_arr
+            np.add.at(b_vec, linear, power_per_node)
 
     return b_vec
 
@@ -547,7 +604,8 @@ def _apply_heat_sources(
     project: DisplayProject,
     grid: Grid2D,
     b_vec: np.ndarray,
-    layout: NodeLayout,
+    z_offsets: list[int],
+    nz_per_layer: list[int],
 ) -> None:
     x_centers = grid.x_centers()
     y_centers = grid.y_centers()
@@ -557,7 +615,7 @@ def _apply_heat_sources(
     layer_index_cache: dict[str, int] = {
         layer.name: idx for idx, layer in enumerate(project.layers)
     }
-    n_per_layer = layout.n_per_layer
+    n_per_layer = grid.nx * grid.ny
 
     for source in project.expanded_heat_sources():
         layer_idx = layer_index_cache[source.layer]
@@ -568,9 +626,24 @@ def _apply_heat_sources(
                 f"Heat source '{source.name}' does not overlap any mesh cell. "
                 "Increase mesh density or adjust source geometry."
             )
-        power_per_node = source.power_w / iy_arr.size
-        linear = layout.layer_offsets[layer_idx] + iy_arr * grid.nx + ix_arr
-        np.add.at(b_vec, linear, power_per_node)
+        n_cells = iy_arr.size
+        z_pos = getattr(source, 'z_position', 'top')
+        nz = nz_per_layer[layer_idx]
+        z_base = z_offsets[layer_idx]
+        if z_pos == 'distributed':
+            power_per_node = source.power_w / (nz * n_cells)
+            for k in range(nz):
+                z_global = z_base + k
+                linear = z_global * n_per_layer + iy_arr * grid.nx + ix_arr
+                np.add.at(b_vec, linear, power_per_node)
+        else:
+            if z_pos == 'bottom':
+                z_global = z_base
+            else:  # 'top' or default
+                z_global = z_base + nz - 1
+            power_per_node = source.power_w / n_cells
+            linear = z_global * n_per_layer + iy_arr * grid.nx + ix_arr
+            np.add.at(b_vec, linear, power_per_node)
 
 
 def _source_mask(
