@@ -17,6 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Simulation Capabilities** - Parametric sweep engine, time-varying heat sources, expanded validation (completed 2026-03-14)
 - [ ] **Phase 4: Polish** - Qt Material theme, QDockWidget layout, inline validation feedback
 - [ ] **Phase 5: Distribution** - PyInstaller one-folder bundle, resource path helper, launch verification
+- [ ] **Phase 6: Architecture Support** - DLED and ELED display stack templates, architecture-aware LED array generation, GUI workflow
 
 ## Phase Details
 
@@ -90,10 +91,27 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] 05-02-PLAN.md -- PyInstaller spec file, build.py automation, bundle build and verification
 - [ ] 05-03-PLAN.md -- Human verification checkpoint for all Phase 5 requirements
 
+### Phase 6: Architecture Support — DLED and ELED
+**Goal**: Engineers can select a display backlight architecture (direct-lit or edge-lit) and get a pre-populated project with correct layer stack, materials, LED configuration, and boundary conditions — ready to simulate without manual setup
+**Depends on**: Phase 5
+**Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05, ARCH-06
+**Success Criteria** (what must be TRUE):
+  1. User can select DLED from the architecture dropdown and get a complete layer stack (Back Cover through Cover Glass), LED grid with edge offsets and zone dimming, and enhanced side boundary for the metal frame
+  2. User can select ELED and get a complete layer stack with LGP, edge LED strips on configured edges (bottom/top/left-right/all), and enhanced side boundary
+  3. Zone-based dimming in DLED produces asymmetric thermal patterns matching the zone power distribution
+  4. Existing Custom workflow and old JSON project files remain fully compatible
+  5. The LED Arrays tab adapts its UI based on architecture: DLED shows grid/zone controls, ELED shows edge strip controls, Custom shows the existing table
+**Plans:** 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md -- Extend LEDArray model with grid/edge/custom modes + create stack_templates.py
+- [ ] 06-02-PLAN.md -- GUI architecture dropdown, DLED/ELED/Custom panels, template application wiring
+- [ ] 06-03-PLAN.md -- Integration tests and human verification of complete workflow
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -102,13 +120,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Simulation Capabilities | 6/6 | Complete   | 2026-03-14 |
 | 4. Polish | 3/4 | In Progress | - |
 | 5. Distribution | 2/3 | In Progress|  |
-
-### Phase 6: Fix LED array generation and display stack generation for DLED and ELED architectures
-
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 5
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (run /gsd:plan-phase 6 to break down)
+| 6. Architecture Support | 0/3 | Planned | - |
