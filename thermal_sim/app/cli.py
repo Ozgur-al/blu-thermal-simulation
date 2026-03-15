@@ -144,8 +144,13 @@ def _run_steady(
     layer_idx = _layer_index(result.layer_names, plot_layer)
     if plot:
         try:
+            # Get top sublayer for the selected layer
+            if result.z_offsets is not None:
+                z_plot = result.z_offsets[layer_idx + 1] - 1  # topmost sublayer
+            else:
+                z_plot = layer_idx
             plot_temperature_map(
-                temperature_map_c=result.temperatures_c[layer_idx],
+                temperature_map_c=result.temperatures_c[z_plot],
                 width_m=project.width,
                 height_m=project.height,
                 title=f"Steady Map - {result.layer_names[layer_idx]}",
@@ -156,7 +161,12 @@ def _run_steady(
 
     print(f"Project: {project.name}")
     print("Mode: steady")
-    print(f"Mesh: {project.mesh.nx} x {project.mesh.ny} x {len(project.layers)} layers")
+    nz_info = ""
+    if hasattr(result, 'nz_per_layer') and result.nz_per_layer:
+        total_z = sum(result.nz_per_layer)
+        if total_z > len(project.layers):
+            nz_info = f" ({total_z} z-nodes)"
+    print(f"Mesh: {project.mesh.nx} x {project.mesh.ny} x {len(project.layers)} layers{nz_info}")
     print(f"Tmin / Tavg / Tmax [C]: {stats.min_c:.2f} / {stats.avg_c:.2f} / {stats.max_c:.2f}")
     if probe_values:
         print("Probe temperatures [C]:")
@@ -184,6 +194,7 @@ def _run_transient(
         dx=result.dx,
         dy=result.dy,
         output_path=output_dir / "temperature_map.csv",
+        z_offsets=getattr(result, 'z_offsets', None),
     )
     if probe_history:
         export_probe_temperatures_vs_time(result.times_s, probe_history, output_dir / "probe_temperatures_vs_time.csv")
@@ -191,8 +202,13 @@ def _run_transient(
     layer_idx = _layer_index(result.layer_names, plot_layer)
     if plot:
         try:
+            # Get top sublayer for the selected layer
+            if result.z_offsets is not None:
+                z_plot = result.z_offsets[layer_idx + 1] - 1  # topmost sublayer
+            else:
+                z_plot = layer_idx
             plot_temperature_map(
-                temperature_map_c=result.final_temperatures_c[layer_idx],
+                temperature_map_c=result.final_temperatures_c[z_plot],
                 width_m=project.width,
                 height_m=project.height,
                 title=f"Transient Final Map - {result.layer_names[layer_idx]}",

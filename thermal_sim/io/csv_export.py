@@ -12,12 +12,14 @@ from thermal_sim.solvers.steady_state import SteadyStateResult
 
 def export_temperature_map(result: SteadyStateResult, output_path: str | Path) -> None:
     """Export temperatures as a long-format CSV table."""
+    z_offsets = getattr(result, 'z_offsets', None)
     export_temperature_map_array(
         temperature_map_c=result.temperatures_c,
         layer_names=result.layer_names,
         dx=result.dx,
         dy=result.dy,
         output_path=output_path,
+        z_offsets=z_offsets,
     )
 
 
@@ -27,23 +29,32 @@ def export_temperature_map_array(
     dx: float,
     dy: float,
     output_path: str | Path,
+    z_offsets: list[int] | None = None,
 ) -> None:
-    """Export [layer, y, x] temperatures as a long-format CSV table."""
+    """Export [total_z, y, x] temperatures as a long-format CSV table.
+
+    Exports the top sublayer per physical layer (default visualization layer).
+    When z_offsets is None, falls back to assuming one z-node per layer.
+    """
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    n_layers, ny, nx = temperature_map_c.shape
-    if n_layers != len(layer_names):
-        raise ValueError("layer_names length must match the first dimension of temperature_map_c.")
+    total_z, ny, nx = temperature_map_c.shape
+    if z_offsets is None:
+        z_offsets = list(range(len(layer_names) + 1))
 
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["layer", "x_m", "y_m", "temperature_c"])
         for l_idx, layer_name in enumerate(layer_names):
+            z0 = z_offsets[l_idx]
+            z1 = z_offsets[l_idx + 1]
+            # Export top sublayer per layer (default visualization layer)
+            top_z = z1 - 1
             for iy in range(ny):
                 y = (iy + 0.5) * dy
                 for ix in range(nx):
                     x = (ix + 0.5) * dx
-                    writer.writerow([layer_name, x, y, float(temperature_map_c[l_idx, iy, ix])])
+                    writer.writerow([layer_name, x, y, float(temperature_map_c[top_z, iy, ix])])
 
 
 def export_probe_temperatures(probe_values: dict[str, float], output_path: str | Path) -> None:
