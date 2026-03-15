@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
 status: in_progress
-last_updated: "2026-03-16T22:50:09Z"
+last_updated: "2026-03-16T22:57:37Z"
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 32
-  completed_plans: 27
+  completed_plans: 28
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 
 ## Current Position
 
-Phase: 8 of 9 (Z-Refinement)
-Plan: 2 of 3 (08-02 complete)
-Status: In progress
-Last activity: 2026-03-16 — 08-02 z-refinement core physics: intra/inter-layer z-z links, sublayer BCs, z_position heat sources, ZREF-05 and ZREF-03 pass
+Phase: 8 of 9 (Z-Refinement) — COMPLETE
+Plan: 3 of 3 (08-03 complete)
+Status: Ready for Phase 9
+Last activity: 2026-03-16 — 08-03 downstream consumers: z-aware postprocess, CSV export, CLI; 202 tests pass; ZREF-04 backward compat verified
 
-Progress: [████░░░░░░] 31%
+Progress: [████████░░] 88%
 
 ## Performance Metrics
 
@@ -41,7 +41,7 @@ Progress: [████░░░░░░] 31%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 07-3d-solver-core | 2 | 20 min | 10 min |
-| 08-z-refinement | 2 | 8 min | 4 min |
+| 08-z-refinement | 3 | 20 min | 7 min |
 
 *Updated after each plan completion*
 
@@ -67,6 +67,8 @@ Progress: [████░░░░░░] 31%
 - [Phase 08-z-refinement]: NodeLayout.layer_offsets updated to z_offsets[l]*n_per_layer so node() method works correctly for nz>1 layers without API changes
 - [Phase 08-z-refinement]: Side BC conductance computed once per physical layer, applied per sublayer — correct because each sublayer has the same material map
 - [Phase 08-z-refinement]: build_heat_source_vector recomputes z_offsets locally (does not take ThermalNetwork as argument) to keep public API unchanged
+- [Phase 08-z-refinement]: CSV export writes top sublayer per physical layer (not all z-sublayers) — consistent with default visualization convention
+- [Phase 08-z-refinement]: layer_stats() fallback logs a warning when z_offsets is None and total_z > n_layers — allows GUI callers to function correctly with nz=1 projects while documenting Phase 9 fix path
 
 ### Pending Todos
 
@@ -80,5 +82,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 08-02-PLAN.md
-Resume file: .planning/phases/08-z-refinement/08-02-SUMMARY.md
+Stopped at: Completed 08-03-PLAN.md
+Resume file: .planning/phases/08-z-refinement/08-03-SUMMARY.md
