@@ -257,7 +257,7 @@ def build_heat_source_vector(
 
     for source in project.expanded_heat_sources():
         layer_idx = layer_index_cache[source.layer]
-        mask = _source_mask(source, xx, yy)
+        mask = _source_mask(source, xx, yy, grid.dx, grid.dy)
         iy_arr, ix_arr = np.where(mask)
         if iy_arr.size == 0:
             continue  # Already validated during initial network build
@@ -287,7 +287,7 @@ def _apply_heat_sources(
 
     for source in project.expanded_heat_sources():
         layer_idx = layer_index_cache[source.layer]
-        mask = _source_mask(source, xx, yy)
+        mask = _source_mask(source, xx, yy, grid.dx, grid.dy)
         iy_arr, ix_arr = np.where(mask)
         if iy_arr.size == 0:
             raise ValueError(
@@ -299,17 +299,41 @@ def _apply_heat_sources(
         np.add.at(b_vec, linear, power_per_node)
 
 
-def _source_mask(source: HeatSource, xx: np.ndarray, yy: np.ndarray) -> np.ndarray:
+def _source_mask(
+    source: HeatSource, xx: np.ndarray, yy: np.ndarray, dx: float, dy: float,
+) -> np.ndarray:
+    """Return boolean mask of cells overlapping the heat source.
+
+    Uses cell-rectangle overlap (AABB intersection) instead of
+    point-in-source, so small sources on coarse meshes still hit at
+    least one cell.
+    """
     if source.shape == "full":
         return np.ones_like(xx, dtype=bool)
     if source.shape == "rectangle":
-        x0 = source.x - source.width / 2.0
-        x1 = source.x + source.width / 2.0
-        y0 = source.y - source.height / 2.0
-        y1 = source.y + source.height / 2.0
-        return (xx >= x0) & (xx <= x1) & (yy >= y0) & (yy <= y1)
+        # Source bounds
+        sx0 = source.x - source.width / 2.0
+        sx1 = source.x + source.width / 2.0
+        sy0 = source.y - source.height / 2.0
+        sy1 = source.y + source.height / 2.0
+        # Cell bounds: center ± half-cell
+        half_dx = dx / 2.0
+        half_dy = dy / 2.0
+        # AABB overlap: cell overlaps source if no separating axis
+        return (
+            (xx + half_dx > sx0) & (xx - half_dx < sx1) &
+            (yy + half_dy > sy0) & (yy - half_dy < sy1)
+        )
     if source.shape == "circle":
-        return (xx - source.x) ** 2 + (yy - source.y) ** 2 <= source.radius**2
+        # For circles, keep center-in-circle but also include cells whose
+        # nearest edge is within the radius
+        cx, cy, r = source.x, source.y, source.radius
+        half_dx = dx / 2.0
+        half_dy = dy / 2.0
+        # Nearest point on cell to circle center
+        nearest_x = np.clip(cx, xx - half_dx, xx + half_dx)
+        nearest_y = np.clip(cy, yy - half_dy, yy + half_dy)
+        return (nearest_x - cx) ** 2 + (nearest_y - cy) ** 2 <= r**2
     raise ValueError(f"Unsupported heat source shape: {source.shape}")
 
 

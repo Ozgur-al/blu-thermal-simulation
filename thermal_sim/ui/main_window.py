@@ -1637,7 +1637,7 @@ class MainWindow(QMainWindow):
     def _on_run_started(self) -> None:
         """Disable Run action and show progress bar when a simulation starts."""
         self._run_action.setEnabled(False)
-        self._cancel_action.setEnabled(True)
+        self._cancel_action.setEnabled(self._sim_mode != "steady")
         self._progress_bar.setValue(0)
         self._progress_bar.setVisible(True)
         self._solver_label.setText("Running\u2026")
@@ -1645,13 +1645,22 @@ class MainWindow(QMainWindow):
     def _on_run_ended(self) -> None:
         """Re-enable Run action and hide progress bar when a simulation ends."""
         self._cancel_action.setEnabled(False)
+        self._progress_bar.setRange(0, 100)
         self._progress_bar.setVisible(False)
         # Use _update_validation_status so run stays disabled when errors exist
         self._update_validation_status()
 
     def _on_progress(self, percent: int, message: str) -> None:
-        """Update progress bar and center label from worker progress signal."""
-        self._progress_bar.setValue(percent)
+        """Update progress bar and center label from worker progress signal.
+
+        A percent of -1 switches the bar to indeterminate (pulsing) mode,
+        used for steady-state where the solve duration is unknown.
+        """
+        if percent < 0:
+            self._progress_bar.setRange(0, 0)  # indeterminate pulsing
+        else:
+            self._progress_bar.setRange(0, 100)
+            self._progress_bar.setValue(percent)
         self._solver_label.setText(message)
 
     def _run_simulation(self) -> None:
@@ -2376,18 +2385,6 @@ class MainWindow(QMainWindow):
         # Restore LED stack page (populate reset it to index 0)
         index = {"Custom": 0, "DLED": 1, "ELED": 2}.get(arch_was, 0)
         self._led_arrays_stack.setCurrentIndex(index)
-
-        # Auto-adjust mesh density so cells are ≤ LED footprint size
-        if led_arrays:
-            la = led_arrays[0]
-            w_mm = self.width_spin.value()
-            h_mm = self.height_spin.value()
-            led_w_mm = (la.led_width or 0.003) * 1000.0
-            led_h_mm = (la.led_height or 0.003) * 1000.0
-            min_nx = max(int(w_mm / led_w_mm) + 1, self.nx_spin.value())
-            min_ny = max(int(h_mm / led_h_mm) + 1, self.ny_spin.value())
-            self.nx_spin.setValue(min_nx)
-            self.ny_spin.setValue(min_ny)
 
         # Clear undo stack — silent replacement per design decision
         self._undo_stack.clear()
