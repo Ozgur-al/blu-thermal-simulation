@@ -52,6 +52,7 @@ from thermal_sim.core.material_library import (
     export_materials,
     import_materials,
     load_builtin_library,
+    load_interface_presets,
     load_materials_json,
 )
 from thermal_sim.core.paths import APP_VERSION, get_examples_dir, get_output_dir
@@ -672,6 +673,10 @@ class MainWindow(QMainWindow):
         })
         self._wire_table_undo(self.layers_table)
 
+        # Right-click on interface resistance column → preset picker
+        self.layers_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.layers_table.customContextMenuRequested.connect(self._layers_table_context_menu)
+
         # Zone sub-panel (appears when a layer row is selected)
         self._zone_panel = QGroupBox("Material Zones")
         zone_layout = QVBoxLayout(self._zone_panel)
@@ -1197,7 +1202,7 @@ class MainWindow(QMainWindow):
             t = entry.get("thickness", 0.0)
             if entry.get("material") == material and not found:
                 next_entry = edge_data[idx + 1] if idx + 1 < len(edge_data) else None
-                if material == "FR4" and next_entry is not None:
+                if "FR4" in material and next_entry is not None:
                     offset_m += t
                     placement_desc = f"{material}/{next_entry.get('material', 'next')} interface"
                 else:
@@ -1794,6 +1799,31 @@ class MainWindow(QMainWindow):
         nz_spin.setValue(nz)
         nz_spin.valueChanged.connect(self._update_node_count_label)
         self.layers_table.setCellWidget(row, 4, nz_spin)
+
+    def _layers_table_context_menu(self, pos) -> None:
+        """Show interface resistance presets when right-clicking column 3."""
+        item = self.layers_table.itemAt(pos)
+        if item is None or item.column() != 3:
+            return
+        row = item.row()
+        try:
+            presets = load_interface_presets()
+        except Exception:
+            return
+        menu = QMenu(self)
+        for name, info in presets.items():
+            typical = info["typical"]
+            desc = info.get("description", "")
+            lo = info.get("range_low", typical)
+            hi = info.get("range_high", typical)
+            label = f"{name}  ({typical:g} m\u00b2K/W, range {lo:g}\u2013{hi:g})"
+            action = menu.addAction(label)
+            action.setToolTip(desc)
+            action.setData((row, typical))
+        chosen = menu.exec(self.layers_table.viewport().mapToGlobal(pos))
+        if chosen is not None:
+            r, val = chosen.data()
+            self.layers_table.setItem(r, 3, QTableWidgetItem(f"{val:g}"))
 
     def _add_layer_row(self) -> None:
         """Add a new row to the layers table with a fresh nz QSpinBox (default 1)."""
@@ -3063,7 +3093,7 @@ class MainWindow(QMainWindow):
             ]
             led_path = [
                 {"material": "Steel", "thickness": mt},
-                {"material": "FR4", "thickness": 0.005},
+                {"material": "FR4 Core", "thickness": 0.005},
                 {"material": "Air Gap", "thickness": at},
             ]
             for row in range(n_layers):
@@ -3077,7 +3107,7 @@ class MainWindow(QMainWindow):
                     edge: [dict(e) for e in (led_path if edge in led_edges else frame_only)]
                     for edge in ("bottom", "top", "left", "right")
                 }
-            self._ensure_material_rows(("Steel", "Air Gap", "FR4"))
+            self._ensure_material_rows(("Steel", "Air Gap", "FR4 Core"))
         else:
             uniform = {
                 edge: [
@@ -4085,6 +4115,12 @@ class VoxelMainWindow(QMainWindow):
         save_as_action.triggered.connect(self._save_project_as)
         file_menu.addAction(save_as_action)
 
+        file_menu.addSeparator()
+        gen_action = QAction("&Generate Display Stack...", self)
+        gen_action.setToolTip("Open parametric display stack generator wizard")
+        gen_action.triggered.connect(self._open_stack_generator)
+        file_menu.addAction(gen_action)
+
         run_menu = self.menuBar().addMenu("&Run")
 
         self._run_action = QAction("&Run Simulation", self)
@@ -4119,6 +4155,11 @@ class VoxelMainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self._run_action)
         toolbar.addAction(self._cancel_action)
+        toolbar.addSeparator()
+        gen_toolbar_action = QAction("Generate Stack", self)
+        gen_toolbar_action.setToolTip("Open parametric display stack generator wizard")
+        gen_toolbar_action.triggered.connect(self._open_stack_generator)
+        toolbar.addAction(gen_toolbar_action)
 
     def _connect_signals(self) -> None:
         self._sim_controller.run_started.connect(self._on_run_started)
@@ -4208,6 +4249,22 @@ class VoxelMainWindow(QMainWindow):
             path = path.with_suffix(".json")
         self._write_project(path)
         settings.setValue("last_open_dir", str(path.parent))
+
+    def _open_stack_generator(self) -> None:
+        """Open the parametric display stack generator wizard."""
+        from thermal_sim.ui.stack_generator_wizard import StackGeneratorWizard
+        from PySide6.QtWidgets import QDialog
+        wizard = StackGeneratorWizard(self._materials, parent=self)
+        if wizard.exec() == QDialog.DialogCode.Accepted:
+            project = wizard.generated_project()
+            if project is not None:
+                # Merge generated materials into library
+                self._materials.update(project.materials)
+                self._populate_mat_table()
+                self._block_editor.update_material_list(self._materials)
+                # Load project into editor (replaces all blocks)
+                self._block_editor.load_project(project)
+                self._update_3d_structure()
 
     def _write_project(self, path: Path) -> None:
         from thermal_sim.io.voxel_project_io import save_voxel_project
