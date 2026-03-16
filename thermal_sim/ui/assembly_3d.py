@@ -104,8 +104,18 @@ def build_assembly_blocks(project: "DisplayProject") -> list[dict]:
             "is_zone": False,
         })
 
-        # Zone overlays (including edge_layers if present)
+        # Zone overlays (edge_layers + manual zones)
         zones = list(getattr(layer, "zones", []))
+
+        # Generate edge layer zones (if any) and prepend to manual zones
+        edge_layers_dict = getattr(layer, "edge_layers", {})
+        if edge_layers_dict:
+            try:
+                from thermal_sim.models.stack_templates import generate_edge_zones
+                edge_zones = generate_edge_zones(layer, project.width, project.height)
+                zones = edge_zones + zones  # edge first, manual wins on overlap
+            except (ValueError, ImportError):
+                pass  # skip if edge layers are invalid or import fails
 
         for zone in zones:
             zmat = zone.material
