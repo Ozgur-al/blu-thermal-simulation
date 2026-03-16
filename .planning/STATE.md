@@ -2,6 +2,19 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
+status: unknown
+last_updated: "2026-03-16T17:43:34.313Z"
+progress:
+  total_phases: 11
+  completed_phases: 10
+  total_plans: 43
+  completed_plans: 42
+---
+
+---
+gsd_state_version: 1.0
+milestone: v2.0
+milestone_name: Full 3D Solver
 status: complete
 last_updated: "2026-03-16T15:12:00Z"
 progress:
@@ -50,6 +63,8 @@ Progress: [██████████] 100%
 | Phase 11-voxel-3d-solver | 1 | 4 min | 4 min |
 | Phase 11-voxel-3d-solver P02 | 1 | 6 min | 6 min |
 | Phase 11-voxel-3d-solver P05 | 7 min | 1 tasks | 1 files |
+| Phase 11 P07 | 4 | 2 tasks | 3 files |
+| Phase 11-voxel-3d-solver P06 | 4 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -106,6 +121,9 @@ Progress: [██████████] 100%
 - [Phase 11-voxel-3d-solver P04]: block_actors dict (name -> actor) tracks block actors for per-block visibility toggle without full scene rebuild
 - [Phase 11-voxel-3d-solver]: Air Gap material fallback in build_voxel_network via .get() so projects without explicit Air Gap still work; default k=0.026 W/mK
 - [Phase 11-voxel-3d-solver]: Source shape-filter fallback: when shape filter yields zero cells (source smaller than mesh cell), distribute power uniformly to all block-face cells preserving energy conservation
+- [Phase 11-voxel-3d-solver]: diagnose_powered_block_contacts uses cell-centre containment bounds matching _apply_block_power for consistency; grid-boundary faces attributed to _DEFAULT_AIR
+- [Phase 11-voxel-3d-solver]: validate_blocks reads via self._read_blocks() with no mesh/solver — pure AABB geometry; returns list[str] for caller to present
+- [Phase 11-voxel-3d-solver]: BoundaryGroup.faces defaults to ['all'] for backward compat; first-match semantics in face selection; _face_matches_group nested in build_voxel_network
 
 ### Roadmap Evolution
 
@@ -123,5 +141,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 11-05-PLAN.md — Phase 11 complete (awaiting Task 2 human-verify checkpoint)
-Resume file: .planning/phases/11-voxel-3d-solver/11-05-SUMMARY.md
+Stopped at: Completed 11-07-PLAN.md — powered block contact diagnostics and block geometry validation
+Resume file: .planning/phases/11-voxel-3d-solver/11-07-SUMMARY.md
