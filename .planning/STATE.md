@@ -35,12 +35,12 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 
 ## Current Position
 
-Phase: 11 of 11 (Voxel-Based 3D Solver) — complete
-Plan: 5 of 5 (11-05 complete)
-Status: complete
-Last activity: 2026-03-16 — 11-05: Fix CLI examples (Air Gap fallback, source shape-filter fallback)
+Phase: 12 of 12 (Parametric Display Stack Generator) — in progress
+Plan: 1 of 3 (12-01 complete)
+Status: in progress
+Last activity: 2026-03-16 — 12-01: Implement parametric stack generator (generate_eled, generate_dled) with TDD
 
-Progress: [██████████] 100%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [██████████] 100%
 | Phase 11-voxel-3d-solver P05 | 7 min | 1 tasks | 1 files |
 | Phase 11 P07 | 4 | 2 tasks | 3 files |
 | Phase 11-voxel-3d-solver P06 | 4 | 2 tasks | 5 files |
+| Phase 12-parametric-display-stack-generator P01 | 5 min | 1 task | 3 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,12 @@ Progress: [██████████] 100%
 - [ad-hoc 2026-03-16]: Interface resistance presets — new interface_presets.json resource with 3 contact types (well-bonded adhesive, typical pad, poor dry contact); right-click context menu on layers table column 3
 - [ad-hoc 2026-03-16]: UI color mapping uses substring matching — _FIXED_COLORS lookup changed from exact match to substring containment so renamed materials (e.g. "FR4 Core" matches "FR4") still get correct colors
 
+- [Phase 12-parametric-display-stack-generator P01]: Frame tray uses 5 non-overlapping blocks: left/right walls span full panel_d; front/back walls inset by wall_t — avoids corner overlap (RESEARCH Pattern 4)
+- [Phase 12-parametric-display-stack-generator P01]: Air cavity in DLED is implicit — voxel solver default-fills empty cells with Air Gap; no explicit block needed
+- [Phase 12-parametric-display-stack-generator P01]: LED Package material created inline (k=20, density=3000, Cp=800, e=0.5) — not in materials_builtin.json
+- [Phase 12-parametric-display-stack-generator P01]: Boundary group deduplication keys on (h_conv, include_radiation) tuple; ambient temperature is per-project not a dedup dimension
+- [Phase 12-parametric-display-stack-generator P01]: ELED PCB strip thickness fixed at 2mm (not user-configurable); spans full panel edge dimension with LEDs placed within cfg.margin bounds
+
 ### Roadmap Evolution
 
 - Phase 11 added: Voxel-Based 3D Solver — per-cell 3D material grid replacing 2.5D RC-network
@@ -146,5 +153,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Updated builtin material library (28 materials), added interface resistance presets with GUI right-click picker on layers table
+Stopped at: Phase 12 Plan 01 complete — parametric stack generator (generate_eled/generate_dled) TDD implementation with 60 tests passing
 Next recommended: Test GUI launch to verify material rename propagation and interface preset context menu work end-to-end

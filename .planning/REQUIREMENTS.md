@@ -117,12 +117,12 @@
 
 ### Parametric Display Stack Generator
 
-- [ ] **GEN-01**: Pure-Python geometry generator with EledParams and DledParams parameter dataclasses decoupled from UI
-- [ ] **GEN-02**: generate_eled() produces complete VoxelProject with correct ELED z-stack: back cover, frame tray (back plate + 4 side walls), reflector, LGP, PCB strips at LGP z-level, LEDs on PCB inner face, optical films, panel
-- [ ] **GEN-03**: generate_dled() produces complete VoxelProject with correct DLED z-stack: back cover, frame tray, reflector, PCB, LED grid on PCB top face, air cavity, diffuser, optical films, panel
-- [ ] **GEN-04**: Metal frame tray decomposes into 5 non-overlapping AssemblyBlock rectangles (back plate + 4 side walls with corner conflict resolution)
-- [ ] **GEN-05**: ELED per-edge LED placement: uniform pitch within usable length, symmetric margin, per-edge count/dims/power configuration
-- [ ] **GEN-06**: Boundary condition groups use per-face assignment with deduplication (faces sharing same BC parameters grouped into single BoundaryGroup)
+- [x] **GEN-01**: Pure-Python geometry generator with EledParams and DledParams parameter dataclasses decoupled from UI
+- [x] **GEN-02**: generate_eled() produces complete VoxelProject with correct ELED z-stack: back cover, frame tray (back plate + 4 side walls), reflector, LGP, PCB strips at LGP z-level, LEDs on PCB inner face, optical films, panel
+- [x] **GEN-03**: generate_dled() produces complete VoxelProject with correct DLED z-stack: back cover, frame tray, reflector, PCB, LED grid on PCB top face, air cavity, diffuser, optical films, panel
+- [x] **GEN-04**: Metal frame tray decomposes into 5 non-overlapping AssemblyBlock rectangles (back plate + 4 side walls with corner conflict resolution)
+- [x] **GEN-05**: ELED per-edge LED placement: uniform pitch within usable length, symmetric margin, per-edge count/dims/power configuration
+- [x] **GEN-06**: Boundary condition groups use per-face assignment with deduplication (faces sharing same BC parameters grouped into single BoundaryGroup)
 - [ ] **GEN-07**: Multi-page wizard dialog accessible from toolbar button and File menu entry ("Generate Display Stack")
 - [ ] **GEN-08**: Wizard pages: Architecture selection, Panel dimensions, LED configuration (ELED edge checkboxes / DLED grid), Layer thicknesses with optical film table, Boundary conditions with per-face presets, Mesh settings
 - [ ] **GEN-09**: Live 3D preview panel on wizard right side updates on page transitions

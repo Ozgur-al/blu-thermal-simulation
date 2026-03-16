@@ -196,7 +196,7 @@ Plans:
 **Goal**: Engineers can open a guided wizard from the toolbar, select DLED or ELED architecture, configure panel dimensions, LED placement, layer thicknesses, boundary conditions, and mesh settings, then click Generate to produce a complete VoxelProject with all assembly blocks, materials, and boundary groups — replacing manual block-by-block entry with a parametric workflow.
 **Requirements**: GEN-01, GEN-02, GEN-03, GEN-04, GEN-05, GEN-06, GEN-07, GEN-08, GEN-09, GEN-10, GEN-11
 **Depends on:** Phase 11
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 12-01-PLAN.md — Pure-Python geometry generator (EledParams/DledParams + generate_eled/generate_dled) with TDD
