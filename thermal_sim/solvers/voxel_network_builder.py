@@ -8,6 +8,7 @@ Node indexing follows C-order:  flat = iz * ny * nx + iy * nx + ix
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy as np
@@ -18,6 +19,8 @@ from thermal_sim.core.constants import STEFAN_BOLTZMANN
 from thermal_sim.core.voxel_assignment import assign_voxel_materials, _DEFAULT_AIR
 from thermal_sim.models.material import Material
 from thermal_sim.models.voxel_project import VoxelProject
+
+logger = logging.getLogger(__name__)
 
 # Default air material used for cells outside any defined block.
 # Projects that don't define "Air Gap" explicitly will fall back to this.
@@ -307,6 +310,12 @@ def build_voxel_network(project: VoxelProject) -> VoxelThermalNetwork:
         a_mat = csr_matrix((n_cells, n_cells), dtype=float)
 
     b_vec = b_boundary + b_sources
+
+    # ------------------------------------------------------------------
+    # Step 7: log powered-block contact summary (diagnostic)
+    # ------------------------------------------------------------------
+    _log_powered_block_contacts(project)
+
     return VoxelThermalNetwork(
         a_matrix=a_mat,
         b_vector=b_vec,
@@ -314,6 +323,186 @@ def build_voxel_network(project: VoxelProject) -> VoxelThermalNetwork:
         mesh=mesh,
         material_grid=material_grid,
     )
+
+
+def diagnose_powered_block_contacts(
+    project: VoxelProject,
+) -> list[dict]:
+    """Report neighboring materials and shared face area for each powered block.
+
+    Returns a list of dicts, one per powered block:
+    {
+        "block_name": str,
+        "power_w": float,
+        "neighbors": [
+            {"material": str, "face_area_m2": float, "direction": str},
+            ...
+        ]
+    }
+
+    Direction is one of: "+x", "-x", "+y", "-y", "+z", "-z".
+    Only reports contacts with non-air materials, plus a single aggregate "air" entry
+    if any air contact exists.
+    """
+    mesh = build_conformal_mesh(project.blocks, project.mesh_config.cells_per_interval)
+    material_grid = assign_voxel_materials(mesh, project.blocks)  # (nz, ny, nx)
+
+    nx, ny, nz = mesh.nx, mesh.ny, mesh.nz
+    cx = mesh.x_centers()
+    cy = mesh.y_centers()
+    cz = mesh.z_centers()
+
+    dx = np.array([mesh.dx(i) for i in range(nx)], dtype=float)
+    dy = np.array([mesh.dy(j) for j in range(ny)], dtype=float)
+    dz = np.array([mesh.dz(k) for k in range(nz)], dtype=float)
+
+    results = []
+
+    for blk in project.blocks:
+        if blk.power_w <= 0.0:
+            continue
+
+        # Find voxel indices inside this block (cell-centre containment)
+        in_x = (cx >= blk.x) & (cx < blk.x + blk.width)
+        in_y = (cy >= blk.y) & (cy < blk.y + blk.depth)
+        in_z = (cz >= blk.z) & (cz < blk.z + blk.height)
+
+        ix_blk = np.where(in_x)[0]
+        iy_blk = np.where(in_y)[0]
+        iz_blk = np.where(in_z)[0]
+
+        if ix_blk.size == 0 or iy_blk.size == 0 or iz_blk.size == 0:
+            results.append({
+                "block_name": blk.name,
+                "power_w": blk.power_w,
+                "neighbors": [],
+            })
+            continue
+
+        ix_min, ix_max = int(ix_blk[0]), int(ix_blk[-1])
+        iy_min, iy_max = int(iy_blk[0]), int(iy_blk[-1])
+        iz_min, iz_max = int(iz_blk[0]), int(iz_blk[-1])
+
+        # Accumulate face areas per (material, direction) using a dict
+        # face_contacts[direction][material] = total_face_area
+        face_contacts: dict[str, dict[str, float]] = {}
+        for d in ("+x", "-x", "+y", "-y", "+z", "-z"):
+            face_contacts[d] = {}
+
+        def _accumulate(direction: str, iz_arr, iy_arr, ix_arr, areas):
+            """Add face areas for the given neighbor voxels."""
+            iz_a = np.asarray(iz_arr).ravel()
+            iy_a = np.asarray(iy_arr).ravel()
+            ix_a = np.asarray(ix_arr).ravel()
+            areas_a = np.asarray(areas).ravel()
+            for k in range(len(iz_a)):
+                iz_n, iy_n, ix_n = int(iz_a[k]), int(iy_a[k]), int(ix_a[k])
+                # Clamp to valid grid range
+                if iz_n < 0 or iz_n >= nz:
+                    mat = _DEFAULT_AIR
+                elif iy_n < 0 or iy_n >= ny:
+                    mat = _DEFAULT_AIR
+                elif ix_n < 0 or ix_n >= nx:
+                    mat = _DEFAULT_AIR
+                else:
+                    mat = str(material_grid[iz_n, iy_n, ix_n])
+                a = float(areas_a[k])
+                face_contacts[direction][mat] = face_contacts[direction].get(mat, 0.0) + a
+
+        # +x face: neighbor at ix_max+1, varying iy and iz inside block
+        ix_p = ix_max + 1
+        if ix_p < nx:
+            iy_g, iz_g = np.meshgrid(iy_blk, iz_blk, indexing='ij')
+            areas = np.outer(dy[iy_blk], dz[iz_blk])
+            _accumulate("+x", iz_g, iy_g, np.full_like(iz_g, ix_p), areas)
+        else:
+            # All faces at grid boundary → air
+            total_area = float(dy[iy_blk].sum() * dz[iz_blk].sum())
+            face_contacts["+x"][_DEFAULT_AIR] = face_contacts["+x"].get(_DEFAULT_AIR, 0.0) + total_area
+
+        # -x face: neighbor at ix_min-1
+        ix_m = ix_min - 1
+        if ix_m >= 0:
+            iy_g, iz_g = np.meshgrid(iy_blk, iz_blk, indexing='ij')
+            areas = np.outer(dy[iy_blk], dz[iz_blk])
+            _accumulate("-x", iz_g, iy_g, np.full_like(iz_g, ix_m), areas)
+        else:
+            total_area = float(dy[iy_blk].sum() * dz[iz_blk].sum())
+            face_contacts["-x"][_DEFAULT_AIR] = face_contacts["-x"].get(_DEFAULT_AIR, 0.0) + total_area
+
+        # +y face: neighbor at iy_max+1
+        iy_p = iy_max + 1
+        if iy_p < ny:
+            ix_g, iz_g = np.meshgrid(ix_blk, iz_blk, indexing='ij')
+            areas = np.outer(dx[ix_blk], dz[iz_blk])
+            _accumulate("+y", iz_g, np.full_like(iz_g, iy_p), ix_g, areas)
+        else:
+            total_area = float(dx[ix_blk].sum() * dz[iz_blk].sum())
+            face_contacts["+y"][_DEFAULT_AIR] = face_contacts["+y"].get(_DEFAULT_AIR, 0.0) + total_area
+
+        # -y face: neighbor at iy_min-1
+        iy_m = iy_min - 1
+        if iy_m >= 0:
+            ix_g, iz_g = np.meshgrid(ix_blk, iz_blk, indexing='ij')
+            areas = np.outer(dx[ix_blk], dz[iz_blk])
+            _accumulate("-y", iz_g, np.full_like(iz_g, iy_m), ix_g, areas)
+        else:
+            total_area = float(dx[ix_blk].sum() * dz[iz_blk].sum())
+            face_contacts["-y"][_DEFAULT_AIR] = face_contacts["-y"].get(_DEFAULT_AIR, 0.0) + total_area
+
+        # +z face: neighbor at iz_max+1
+        iz_p = iz_max + 1
+        if iz_p < nz:
+            ix_g, iy_g = np.meshgrid(ix_blk, iy_blk, indexing='ij')
+            areas = np.outer(dx[ix_blk], dy[iy_blk])
+            _accumulate("+z", np.full_like(ix_g, iz_p), iy_g, ix_g, areas)
+        else:
+            total_area = float(dx[ix_blk].sum() * dy[iy_blk].sum())
+            face_contacts["+z"][_DEFAULT_AIR] = face_contacts["+z"].get(_DEFAULT_AIR, 0.0) + total_area
+
+        # -z face: neighbor at iz_min-1
+        iz_m = iz_min - 1
+        if iz_m >= 0:
+            ix_g, iy_g = np.meshgrid(ix_blk, iy_blk, indexing='ij')
+            areas = np.outer(dx[ix_blk], dy[iy_blk])
+            _accumulate("-z", np.full_like(ix_g, iz_m), iy_g, ix_g, areas)
+        else:
+            total_area = float(dx[ix_blk].sum() * dy[iy_blk].sum())
+            face_contacts["-z"][_DEFAULT_AIR] = face_contacts["-z"].get(_DEFAULT_AIR, 0.0) + total_area
+
+        # Flatten into neighbor list
+        neighbors = []
+        for direction, mat_areas in face_contacts.items():
+            for mat, area in mat_areas.items():
+                if area > 0.0:
+                    neighbors.append({
+                        "material": mat,
+                        "face_area_m2": area,
+                        "direction": direction,
+                    })
+
+        results.append({
+            "block_name": blk.name,
+            "power_w": blk.power_w,
+            "neighbors": neighbors,
+        })
+
+    return results
+
+
+def _log_powered_block_contacts(project: VoxelProject) -> None:
+    """Log a summary line per powered block after network build."""
+    if not logger.isEnabledFor(logging.INFO):
+        return
+    contacts = diagnose_powered_block_contacts(project)
+    for entry in contacts:
+        name = entry["block_name"]
+        pw = entry["power_w"]
+        parts = []
+        for n in entry["neighbors"]:
+            parts.append(f"{n['direction']} -> {n['material']} ({n['face_area_m2']:.2e} m2)")
+        summary = ", ".join(parts) if parts else "no neighbors"
+        logger.info("Block '%s' (%.3gW): %s", name, pw, summary)
 
 
 # ---------------------------------------------------------------------------
