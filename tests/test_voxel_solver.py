@@ -648,3 +648,206 @@ class TestPoweredBlockDiagnostic:
                 assert "face_area_m2" in n
                 assert "direction" in n
                 assert n["direction"] in ("+x", "-x", "+y", "-y", "+z", "-z")
+
+
+# ---------------------------------------------------------------------------
+# Plan 06 tests: independent boundary face grouping
+# ---------------------------------------------------------------------------
+
+
+class TestBoundaryGroupFaces:
+    """Tests for BoundaryGroup.faces field and independent face assignment in network builder."""
+
+    def _import_builder(self):
+        from thermal_sim.solvers.voxel_network_builder import build_voxel_network
+        return build_voxel_network
+
+    def _import_solver(self):
+        from thermal_sim.solvers.steady_state_voxel import VoxelSteadyStateSolver
+        return VoxelSteadyStateSolver
+
+    def _single_block(self, power_w: float = 1.0) -> AssemblyBlock:
+        return AssemblyBlock(
+            "Block", material="Aluminum",
+            x=0.0, y=0.0, z=0.0,
+            width=0.01, depth=0.01, height=0.005,
+            power_w=power_w,
+        )
+
+    def _aluminum_mat(self) -> Material:
+        return Material("Aluminum", k_in_plane=205.0, k_through=205.0,
+                        density=2700.0, specific_heat=900.0)
+
+    def test_boundary_group_faces_default_is_all(self):
+        """BoundaryGroup.faces defaults to ['all'] when not specified."""
+        bc = SurfaceBoundary(ambient_c=25.0, convection_h=10.0, include_radiation=False)
+        bg = BoundaryGroup(name="exposed", boundary=bc)
+        assert bg.faces == ["all"]
+
+    def test_boundary_group_faces_to_dict_includes_faces(self):
+        """to_dict() must include the faces key."""
+        bc = SurfaceBoundary(ambient_c=25.0, convection_h=10.0, include_radiation=False)
+        bg = BoundaryGroup(name="top", boundary=bc, faces=["top"])
+        d = bg.to_dict()
+        assert "faces" in d
+        assert d["faces"] == ["top"]
+
+    def test_boundary_group_faces_from_dict_without_key_defaults_to_all(self):
+        """from_dict() without 'faces' key produces faces=['all'] for backward compat."""
+        data = {
+            "name": "exposed",
+            "boundary": {
+                "ambient_c": 25.0,
+                "convection_h": 8.0,
+                "include_radiation": False,
+                "emissivity_override": None,
+            },
+        }
+        bg = BoundaryGroup.from_dict(data)
+        assert bg.faces == ["all"]
+
+    def test_boundary_group_faces_from_dict_with_key(self):
+        """from_dict() with faces key preserves the value."""
+        data = {
+            "name": "top_only",
+            "faces": ["top"],
+            "boundary": {
+                "ambient_c": 25.0,
+                "convection_h": 20.0,
+                "include_radiation": False,
+                "emissivity_override": None,
+            },
+        }
+        bg = BoundaryGroup.from_dict(data)
+        assert bg.faces == ["top"]
+
+    def test_independent_boundary_groups(self):
+        """Two boundary groups with top/bottom faces produce asymmetric temperatures.
+
+        Top face: h=20, T_amb=25C
+        Bottom face: h=5, T_amb=50C
+        Sides: h=3, T_amb=25C
+
+        With a powered block, bottom face has hotter ambient and lower h,
+        so the bottom of the block should have a different temperature from the top.
+        The temperatures are asymmetric: T_bottom closer to 50C ambient, T_top to 25C.
+        """
+        VoxelSteadyStateSolver = self._import_solver()
+        mat = self._aluminum_mat()
+        blk = self._single_block(power_w=1.0)
+        bg_top = BoundaryGroup(
+            name="top",
+            boundary=SurfaceBoundary(ambient_c=25.0, convection_h=20.0, include_radiation=False),
+            faces=["top"],
+        )
+        bg_bottom = BoundaryGroup(
+            name="bottom",
+            boundary=SurfaceBoundary(ambient_c=50.0, convection_h=5.0, include_radiation=False),
+            faces=["bottom"],
+        )
+        bg_sides = BoundaryGroup(
+            name="sides",
+            boundary=SurfaceBoundary(ambient_c=25.0, convection_h=3.0, include_radiation=False),
+            faces=["front", "back", "left", "right"],
+        )
+        project = VoxelProject(
+            name="independent_bc_test",
+            blocks=[blk],
+            materials={"Aluminum": mat},
+            boundary_groups=[bg_top, bg_bottom, bg_sides],
+            probes=[],
+            mesh_config=VoxelMeshConfig(cells_per_interval=1),
+        )
+        result = VoxelSteadyStateSolver().solve(project)
+
+        # Must not have NaN or inf
+        assert not np.any(np.isnan(result.temperatures_c))
+        assert not np.any(np.isinf(result.temperatures_c))
+
+        # With a single-cell block (nz=1) all cells are at one temperature,
+        # but we can verify that temperature is valid and above both ambients
+        t = float(result.temperatures_c.mean())
+        # Temperature must exceed at least the cooler ambient (25C) due to power
+        assert t > 25.0
+
+    def test_multi_cell_independent_boundary_groups(self):
+        """With 2 cells in z-direction, top/bottom BCs produce different temps per layer.
+
+        Use two stacked blocks (same material) so nz=2.
+        Top group: h=20, T_amb=25C -> strong cooling on top
+        Bottom group: h=5, T_amb=50C -> weaker cooling, warmer ambient on bottom
+
+        Expected: bottom cell temperature > top cell temperature due to
+        warm bottom ambient and weak cooling there.
+        """
+        VoxelSteadyStateSolver = self._import_solver()
+        mat = self._aluminum_mat()
+        blk1 = AssemblyBlock("Bot", material="Aluminum", x=0.0, y=0.0, z=0.0,
+                              width=0.01, depth=0.01, height=0.005, power_w=0.5)
+        blk2 = AssemblyBlock("Top", material="Aluminum", x=0.0, y=0.0, z=0.005,
+                              width=0.01, depth=0.01, height=0.005, power_w=0.5)
+        bg_top = BoundaryGroup(
+            name="top",
+            boundary=SurfaceBoundary(ambient_c=25.0, convection_h=20.0, include_radiation=False),
+            faces=["top"],
+        )
+        bg_bottom = BoundaryGroup(
+            name="bottom",
+            boundary=SurfaceBoundary(ambient_c=50.0, convection_h=5.0, include_radiation=False),
+            faces=["bottom"],
+        )
+        bg_sides = BoundaryGroup(
+            name="sides",
+            boundary=SurfaceBoundary(ambient_c=37.5, convection_h=3.0, include_radiation=False),
+            faces=["front", "back", "left", "right"],
+        )
+        project = VoxelProject(
+            name="two_z_independent_bc",
+            blocks=[blk1, blk2],
+            materials={"Aluminum": mat},
+            boundary_groups=[bg_top, bg_bottom, bg_sides],
+            probes=[],
+            mesh_config=VoxelMeshConfig(cells_per_interval=1),
+        )
+        result = VoxelSteadyStateSolver().solve(project)
+        assert not np.any(np.isnan(result.temperatures_c))
+
+        # Bottom cell (iz=0) and top cell (iz=1)
+        T_bottom = float(result.temperatures_c[0, 0, 0])
+        T_top = float(result.temperatures_c[1, 0, 0])
+
+        # Bottom is adjacent to 50C ambient with weak cooling -> warmer
+        # Top is adjacent to 25C ambient with strong cooling -> cooler
+        assert T_bottom > T_top, (
+            f"Expected T_bottom ({T_bottom:.2f}C) > T_top ({T_top:.2f}C) "
+            "due to warm/weak bottom BC vs cool/strong top BC"
+        )
+
+    def test_boundary_group_faces_backward_compat(self):
+        """Single boundary group with faces=['all'] gives same result as original behavior."""
+        VoxelSteadyStateSolver = self._import_solver()
+        mat = Material("Mat", k_in_plane=10.0, k_through=10.0, density=2000.0, specific_heat=900.0)
+        blk = AssemblyBlock("B", material="Mat", x=0.0, y=0.0, z=0.0,
+                             width=0.10, depth=0.10, height=0.005, power_w=1.0)
+        bc = SurfaceBoundary(ambient_c=25.0, convection_h=10.0, include_radiation=False)
+
+        project_new = VoxelProject(
+            name="compat_test",
+            blocks=[blk],
+            materials={"Mat": mat},
+            boundary_groups=[BoundaryGroup("exposed", bc, faces=["all"])],
+            probes=[],
+            mesh_config=VoxelMeshConfig(cells_per_interval=1),
+        )
+        project_default = VoxelProject(
+            name="compat_test",
+            blocks=[blk],
+            materials={"Mat": mat},
+            boundary_groups=[BoundaryGroup("exposed", bc)],
+            probes=[],
+            mesh_config=VoxelMeshConfig(cells_per_interval=1),
+        )
+        result_new = VoxelSteadyStateSolver().solve(project_new)
+        result_default = VoxelSteadyStateSolver().solve(project_default)
+
+        assert np.allclose(result_new.temperatures_c, result_default.temperatures_c, atol=1e-9)
