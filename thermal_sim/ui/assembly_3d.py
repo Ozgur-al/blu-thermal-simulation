@@ -137,7 +137,9 @@ def build_assembly_blocks(project: "DisplayProject") -> list[dict]:
             y1 = min(y1, H_mm)
 
             if x1 > x0 and y1 > y0:
-                zone_mesh = pv.Box(bounds=[x0, x1, y0, y1, z_base_mm + 0.001, z_top_mm - 0.001])
+                # Inset zone Z by 5% of layer thickness to avoid Z-fighting
+                z_inset = t_mm * 0.05
+                zone_mesh = pv.Box(bounds=[x0, x1, y0, y1, z_base_mm + z_inset, z_top_mm - z_inset])
                 blocks.append({
                     "mesh": zone_mesh,
                     "color": zone_color,

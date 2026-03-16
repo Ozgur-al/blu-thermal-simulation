@@ -95,8 +95,15 @@ class _SimWorker(QObject):
         """Entry point called by QThread.started signal."""
         try:
             if self._mode == "steady":
-                self.progress.emit(0, "Solving steady-state…")
-                result = SteadyStateSolver().solve(self._project)
+                def _steady_progress(phase: str) -> None:
+                    if phase == "building":
+                        self.progress.emit(-1, "Building thermal network…")
+                    elif phase == "solving":
+                        self.progress.emit(-1, "Solving steady-state…")
+
+                result = SteadyStateSolver().solve(
+                    self._project, on_progress=_steady_progress
+                )
                 self.progress.emit(100, "Complete")
             else:
                 result = TransientSolver().solve(

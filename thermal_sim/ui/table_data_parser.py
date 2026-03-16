@@ -35,6 +35,12 @@ class TableDataParser:
 
     @staticmethod
     def _cell_text(table: QTableWidget, row: int, col: int) -> str:
+        # Check for QComboBox cell widget first
+        widget = table.cellWidget(row, col)
+        if widget is not None:
+            from PySide6.QtWidgets import QComboBox
+            if isinstance(widget, QComboBox):
+                return widget.currentText().strip()
         item = table.item(row, col)
         return item.text().strip() if item is not None else ""
 
@@ -97,8 +103,6 @@ class TableDataParser:
             "specific heat [j/kgk]",
             "count x",
             "count y",
-            "pitch x [mm]",
-            "pitch y [mm]",
         }
         if col_lower in MUST_BE_POSITIVE and value <= 0:
             return f"{col_name} must be > 0 (got {value})"
@@ -118,6 +122,8 @@ class TableDataParser:
             "led height [mm]",
             "led radius [mm]",
             "interface r to next [m\u00b2k/w]",
+            "pitch x [mm]",
+            "pitch y [mm]",
         }
         if col_lower in MUST_BE_NON_NEGATIVE and value < 0:
             return f"{col_name} must be >= 0 (got {value})"
@@ -245,10 +251,17 @@ class TableDataParser:
         return heat_sources
 
     @staticmethod
-    def parse_led_arrays_table(table: QTableWidget) -> list[LEDArray]:
+    def parse_led_arrays_table(
+        table: QTableWidget,
+        led_array_extras: dict[int, dict] | None = None,
+        panel_width: float | None = None,
+        panel_height: float | None = None,
+    ) -> list[LEDArray]:
         """Parse an LED arrays QTableWidget and return list[LEDArray].
 
         Table displays dimensional values in mm; convert back to metres for the model.
+        ``led_array_extras`` preserves edge/grid metadata that is not exposed in
+        the generic LED-array table UI.
         """
         led_arrays: list[LEDArray] = []
         for row in range(table.rowCount()):
@@ -258,6 +271,7 @@ class TableDataParser:
             opt_w = TableDataParser._cell_optional_float(table, row, 10)
             opt_h = TableDataParser._cell_optional_float(table, row, 11)
             opt_r = TableDataParser._cell_optional_float(table, row, 12)
+            extras = led_array_extras.get(row, {}) if led_array_extras else {}
             led_arrays.append(
                 LEDArray(
                     name=name,
@@ -273,6 +287,19 @@ class TableDataParser:
                     led_width=None if opt_w is None else opt_w / 1000.0,
                     led_height=None if opt_h is None else opt_h / 1000.0,
                     led_radius=None if opt_r is None else opt_r / 1000.0,
+                    mode=extras.get("mode", "custom"),
+                    offset_top=float(extras.get("offset_top", 0.0)),
+                    offset_bottom=float(extras.get("offset_bottom", 0.0)),
+                    offset_left=float(extras.get("offset_left", 0.0)),
+                    offset_right=float(extras.get("offset_right", 0.0)),
+                    zone_count_x=int(extras.get("zone_count_x", 1)),
+                    zone_count_y=int(extras.get("zone_count_y", 1)),
+                    zone_powers=list(extras.get("zone_powers", [])),
+                    edge_config=extras.get("edge_config", "bottom"),
+                    edge_offset=float(extras.get("edge_offset", 0.005)),
+                    panel_width=float(extras.get("panel_width", panel_width or 0.0)),
+                    panel_height=float(extras.get("panel_height", panel_height or 0.0)),
+                    z_position=extras.get("z_position", "top"),
                 )
             )
         return led_arrays
@@ -329,6 +356,7 @@ class TableDataParser:
         tables_dict: dict,
         spinboxes_dict: dict,
         boundary_widgets_dict: dict,
+        led_array_extras: dict[int, dict] | None = None,
     ) -> DisplayProject:
         """Build a DisplayProject from the complete set of UI widget collections.
 
@@ -341,7 +369,14 @@ class TableDataParser:
         materials = TableDataParser.parse_materials_table(tables_dict["materials"])
         layers = TableDataParser.parse_layers_table(tables_dict["layers"])
         heat_sources = TableDataParser.parse_sources_table(tables_dict["sources"])
-        led_arrays = TableDataParser.parse_led_arrays_table(tables_dict["led_arrays"])
+        panel_width = spinboxes_dict["width"].value() / 1000.0
+        panel_height = spinboxes_dict["height"].value() / 1000.0
+        led_arrays = TableDataParser.parse_led_arrays_table(
+            tables_dict["led_arrays"],
+            led_array_extras=led_array_extras,
+            panel_width=panel_width,
+            panel_height=panel_height,
+        )
         probes = TableDataParser.parse_probes_table(tables_dict["probes"])
 
         boundaries = BoundaryConditions(
@@ -413,15 +448,22 @@ class TableDataParser:
             errors.append("No layers defined.")
 
         layer_set = set(layer_names)
+
+        def _resolve_layer(target: str) -> str:
+            """Resolve 'LGP / FR4 (bottom)' to 'LGP'."""
+            if " / " in target and "(" in target:
+                return target.split(" / ", 1)[0].strip()
+            return target
+
         for row in range(sources_table.rowCount()):
             name = TableDataParser._cell_text(sources_table, row, 0)
-            layer = TableDataParser._cell_text(sources_table, row, 1)
+            layer = _resolve_layer(TableDataParser._cell_text(sources_table, row, 1))
             if name and layer and layer not in layer_set:
                 errors.append(f"Heat source '{name}' references unknown layer '{layer}'.")
 
         for row in range(led_arrays_table.rowCount()):
             name = TableDataParser._cell_text(led_arrays_table, row, 0)
-            layer = TableDataParser._cell_text(led_arrays_table, row, 1)
+            layer = _resolve_layer(TableDataParser._cell_text(led_arrays_table, row, 1))
             if name and layer and layer not in layer_set:
                 errors.append(f"LED array '{name}' references unknown layer '{layer}'.")
 

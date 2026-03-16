@@ -483,6 +483,18 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
                 base + top_flat, g_y_top, side_amb,
             )
 
+    # Enhanced thermal links for edge-zone heat sources.
+    # When a heat source sits on an edge zone (e.g., FR4 on LGP), the normal
+    # inter-layer conductance uses half the LGP thickness as conduction distance,
+    # which overestimates resistance because the real PCB is much thinner.
+    # We add an extra parallel conductance using the actual edge zone thickness
+    # to model the solder-pad / PCB thermal path correctly.
+    _add_edge_zone_thermal_links(
+        project, grid, zone_maps,
+        coo_rows, coo_cols, coo_data,
+        z_offsets, nz_per_layer, n_per_layer, flat_all_layer, area,
+    )
+
     # Assemble COO -> CSR in one shot.
     if coo_rows:
         all_rows = np.concatenate(coo_rows)
@@ -508,6 +520,121 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
         nz_per_layer=nz_per_layer,
         z_offsets=z_offsets,
     )
+
+
+def _add_edge_zone_thermal_links(
+    project: DisplayProject,
+    grid: Grid2D,
+    zone_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    coo_rows: list,
+    coo_cols: list,
+    coo_data: list,
+    z_offsets: list[int],
+    nz_per_layer: list[int],
+    n_per_layer: int,
+    flat_all_layer: np.ndarray,
+    area: float,
+) -> None:
+    """Add enhanced through-thickness links for cells under edge-mode heat sources.
+
+    For each expanded LED source sitting on an edge zone, compute an additional
+    parallel conductance from the source layer to the layer below using the
+    actual edge-zone material thickness (sum of edge layers) instead of the
+    full parent-layer half-thickness. This models the real PCB/solder thermal
+    path without requiring the user to guess a power split.
+
+    The extra conductance is added in parallel to the existing inter-layer link,
+    so the solver naturally routes more heat through the low-resistance path.
+    """
+    x_centers = grid.x_centers()
+    y_centers = grid.y_centers()
+    xx, yy = np.meshgrid(x_centers, y_centers)
+    n_layers = len(project.layers)
+
+    layer_index_cache = {
+        layer.name: idx for idx, layer in enumerate(project.layers)
+    }
+
+    for source in project.expanded_heat_sources():
+        layer_idx = layer_index_cache.get(source.layer)
+        if layer_idx is None or layer_idx == 0:
+            continue  # no layer below to link to
+
+        layer = project.layers[layer_idx]
+        edge_layers_dict = getattr(layer, "edge_layers", {})
+        if not edge_layers_dict:
+            continue  # no edge zones on this layer
+
+        # Compute total edge zone thickness for estimating real PCB depth
+        max_edge_depth = 0.0
+        for edge_list in edge_layers_dict.values():
+            depth = sum(el.thickness for el in edge_list)
+            max_edge_depth = max(max_edge_depth, depth)
+
+        if max_edge_depth <= 0.0:
+            continue
+
+        # Find cells overlapping this source
+        mask = _source_mask(source, xx, yy, grid.dx, grid.dy)
+        iy_arr, ix_arr = np.where(mask)
+        if iy_arr.size == 0:
+            continue
+
+        # Check which source cells are inside edge zones (not in the bulk)
+        # by comparing their material against the layer's base material.
+        _, k_through_map, _ = zone_maps[layer_idx]
+        base_k = project.materials[layer.material].k_through
+        source_cells_flat = iy_arr * grid.nx + ix_arr
+        cell_k = k_through_map[iy_arr, ix_arr]
+        on_edge_zone = cell_k != base_k  # cells with different k than bulk
+        if not on_edge_zone.any():
+            continue
+
+        edge_cells = source_cells_flat[on_edge_zone]
+        edge_k = cell_k[on_edge_zone]
+
+        # Enhanced conductance: use actual edge zone depth as conduction distance
+        # instead of half the parent layer thickness.
+        # G_enhanced = k_edge * A / edge_depth (for the upper half)
+        # Combined with half-thickness of layer below:
+        lower_layer = project.layers[layer_idx - 1]
+        _, k_through_lower, _ = zone_maps[layer_idx - 1]
+        dz_lower_half = lower_layer.thickness / (2.0 * lower_layer.nz)
+        k_lower_cells = k_through_lower.ravel()[edge_cells]
+
+        r_upper = max_edge_depth / (edge_k * area)  # real PCB thickness
+        r_lower = dz_lower_half / (k_lower_cells * area)
+        r_interface = layer.interface_resistance_to_next / area if hasattr(layer, 'interface_resistance_to_next') else 0.0
+        # Note: interface_resistance_to_next is on the LOWER layer going up,
+        # so use the lower layer's interface resistance going to this layer.
+        # Actually the interface resistance is stored on layer[idx-1].
+        r_interface = project.layers[layer_idx - 1].interface_resistance_to_next / area
+
+        g_enhanced = 1.0 / (r_upper + r_lower + r_interface)
+
+        # Nodes: bottom sublayer of source layer -> top sublayer of layer below
+        z_bot_source = z_offsets[layer_idx]  # bottommost sublayer
+        z_top_below = z_offsets[layer_idx] - 1  # topmost sublayer of layer below
+
+        n1 = z_bot_source * n_per_layer + edge_cells
+        n2 = z_top_below * n_per_layer + edge_cells
+
+        # Add as parallel conductance (in addition to existing inter-layer link)
+        coo_rows.append(n1)
+        coo_cols.append(n1)
+        coo_data.append(g_enhanced)
+
+        coo_rows.append(n2)
+        coo_cols.append(n2)
+        coo_data.append(g_enhanced)
+
+        coo_rows.append(n1)
+        coo_cols.append(n2)
+        coo_data.append(-g_enhanced)
+
+        coo_rows.append(n2)
+        coo_cols.append(n1)
+        coo_data.append(-g_enhanced)
 
 
 def _apply_edge_sink(

@@ -172,6 +172,9 @@ class MainWindow(QMainWindow):
         # Power profile breakpoints: source_row_index -> list[PowerBreakpoint]
         self._source_profiles: dict[int, list] = {}
 
+        # LED-array rows may carry mode-specific metadata not shown in the generic table.
+        self._led_array_extras: dict[int, dict] = {}
+
         # Material zones per layer row: layer_row_index -> list[dict]
         # Each dict: {"material": str, "x": float, "y": float, "width": float, "height": float} (SI metres)
         self._layer_zones: dict[int, list] = {}
@@ -493,8 +496,28 @@ class MainWindow(QMainWindow):
         tr_form.addRow("Total time [s]", self.total_time_spin)
         tr_form.addRow("Output interval [s]", self.output_interval_spin)
 
+        ef_box = QGroupBox("Edge Frame")
+        ef_box.setToolTip(
+            "Add a uniform metal frame + air gap around the perimeter of every layer"
+        )
+        ef_form = QFormLayout(ef_box)
+        self._ef_metal_spin = TableDataParser._double_spin(0.1, 50.0, 3.0, decimals=2)
+        self._ef_metal_spin.setToolTip("Steel frame thickness on each edge")
+        self._ef_air_spin = TableDataParser._double_spin(0.01, 50.0, 1.0, decimals=2)
+        self._ef_air_spin.setToolTip("Air gap thickness between frame and panel body")
+        ef_form.addRow("Metal thickness [mm]", self._ef_metal_spin)
+        ef_form.addRow("Air gap [mm]", self._ef_air_spin)
+        ef_apply_btn = QPushButton("Apply to All Layers")
+        ef_apply_btn.setToolTip(
+            "Set these edge layers on every layer. You can then modify individual layers in the Layers tab."
+        )
+        ef_apply_btn.clicked.connect(self._apply_edge_frame)
+        ef_form.addRow(ef_apply_btn)
+        self._ef_box = ef_box
+
         layout.addWidget(geo_box)
         layout.addWidget(tr_box)
+        layout.addWidget(ef_box)
         layout.addStretch()
         return tab
 
@@ -575,8 +598,16 @@ class MainWindow(QMainWindow):
         rm_btn = QPushButton("Remove")
         rm_btn.setToolTip("Remove the selected row")
         rm_btn.clicked.connect(lambda: self._remove_table_row(self.layers_table))
+        up_btn = QPushButton("\u25b2 Up")
+        up_btn.setToolTip("Move selected layer up in the stack")
+        up_btn.clicked.connect(self._move_layer_up)
+        down_btn = QPushButton("\u25bc Down")
+        down_btn.setToolTip("Move selected layer down in the stack")
+        down_btn.clicked.connect(self._move_layer_down)
         btn_row.addWidget(add_btn)
         btn_row.addWidget(rm_btn)
+        btn_row.addWidget(up_btn)
+        btn_row.addWidget(down_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
         self._set_header_tooltips(self.layers_table, {
@@ -962,6 +993,9 @@ class MainWindow(QMainWindow):
         edge_box = QGroupBox("Edge Configuration")
         edge_form = QFormLayout(edge_box)
 
+        self._eled_layer_combo = QComboBox()
+        self._eled_layer_combo.setToolTip("Target layer for ELED array placement")
+
         self._eled_edge_config = QComboBox()
         self._eled_edge_config.addItems(["bottom", "top", "left/right", "all"])
         self._eled_edge_config.setToolTip("Which panel edges carry LEDs")
@@ -980,6 +1014,7 @@ class MainWindow(QMainWindow):
         self._eled_power = TableDataParser._double_spin(0.0, 100.0, 0.3, decimals=3)
         self._eled_power.setToolTip("Power dissipated by each individual LED (W)")
 
+        edge_form.addRow("Layer", self._eled_layer_combo)
         edge_form.addRow("Edge", self._eled_edge_config)
         edge_form.addRow("Count along edge", self._eled_count)
         edge_form.addRow("Pitch [mm]", self._eled_pitch_label)
@@ -1010,57 +1045,6 @@ class MainWindow(QMainWindow):
         foot_form.addRow("Radius [mm]", self._eled_led_radius)
         layout.addWidget(foot_box)
 
-        # --- Cross-Section Zones ---
-        zone_box = QGroupBox("Cross-Section Zones")
-        zone_form = QFormLayout(zone_box)
-
-        self._eled_frame_width_left = TableDataParser._double_spin(0.0, 100.0, 3.0, decimals=2)
-        self._eled_frame_width_left.setToolTip(
-            "Width of the metal frame on the left edge (mm). "
-            "Physically: the bezel steel that holds the panel."
-        )
-        self._eled_pcb_width_left = TableDataParser._double_spin(0.0, 100.0, 5.0, decimals=2)
-        self._eled_pcb_width_left.setToolTip(
-            "Width of the FR4 PCB+LED board on the left edge (mm). "
-            "Physically: the circuit board carrying edge LEDs."
-        )
-        self._eled_air_gap_left = TableDataParser._double_spin(0.0, 100.0, 1.0, decimals=2)
-        self._eled_air_gap_left.setToolTip(
-            "Width of the air gap between the left LED board and LGP bulk (mm). "
-            "Physically: the standoff air space."
-        )
-        self._eled_frame_width_right = TableDataParser._double_spin(0.0, 100.0, 3.0, decimals=2)
-        self._eled_frame_width_right.setToolTip(
-            "Width of the metal frame on the right edge (mm). "
-            "Physically: the bezel steel that holds the panel."
-        )
-        self._eled_pcb_width_right = TableDataParser._double_spin(0.0, 100.0, 5.0, decimals=2)
-        self._eled_pcb_width_right.setToolTip(
-            "Width of the FR4 PCB+LED board on the right edge (mm). "
-            "Physically: the circuit board carrying edge LEDs."
-        )
-        self._eled_air_gap_right = TableDataParser._double_spin(0.0, 100.0, 1.0, decimals=2)
-        self._eled_air_gap_right.setToolTip(
-            "Width of the air gap between the right LED board and LGP bulk (mm). "
-            "Physically: the standoff air space."
-        )
-
-        self._eled_zone_form = zone_form
-        zone_form.addRow("Frame width (left) [mm]", self._eled_frame_width_left)
-        zone_form.addRow("PCB+LED width (left) [mm]", self._eled_pcb_width_left)
-        zone_form.addRow("Air gap (left) [mm]", self._eled_air_gap_left)
-        zone_form.addRow("Frame width (right) [mm]", self._eled_frame_width_right)
-        zone_form.addRow("PCB+LED width (right) [mm]", self._eled_pcb_width_right)
-        zone_form.addRow("Air gap (right) [mm]", self._eled_air_gap_right)
-
-        self._eled_generate_zones_btn = QPushButton("Generate Zones")
-        self._eled_generate_zones_btn.setToolTip(
-            "Generate cross-section material zones for the LGP layer from the width values above"
-        )
-        self._eled_generate_zones_btn.clicked.connect(self._on_generate_eled_zones)
-        zone_form.addRow(self._eled_generate_zones_btn)
-        layout.addWidget(zone_box)
-
         layout.addStretch()
         scroll.setWidget(inner)
         outer_layout.addWidget(scroll)
@@ -1071,9 +1055,8 @@ class MainWindow(QMainWindow):
         self._eled_edge_config.currentTextChanged.connect(
             lambda _: self._update_eled_pitch_label()
         )
-        self._eled_edge_config.currentTextChanged.connect(
-            lambda _: self._update_eled_zone_labels()
-        )
+        # When user picks an edge layer target, auto-set edge config + offset
+        self._eled_layer_combo.currentTextChanged.connect(self._on_eled_layer_target_changed)
 
         return outer
 
@@ -1119,6 +1102,67 @@ class MainWindow(QMainWindow):
         self._dled_pitch_x_label.setText(f"{pitch_x:.2f}")
         self._dled_pitch_y_label.setText(f"{pitch_y:.2f}")
 
+    def _on_eled_layer_target_changed(self, target: str) -> None:
+        """Auto-configure edge_config and edge_offset when an edge layer is selected.
+
+        For example, selecting 'LGP / FR4 (bottom)' sets:
+        - edge_config = 'bottom'
+        - edge_offset = distance from panel edge to the FR4/air interface
+        """
+        _layer, material, edge = self._parse_layer_target(target)
+        if material is None or edge is None:
+            return  # Plain layer selected, don't change config
+
+        # Map edge name to edge_config combo value
+        edge_to_config = {"bottom": "bottom", "top": "top", "left": "left/right", "right": "left/right"}
+        config_text = edge_to_config.get(edge)
+        if config_text:
+            idx = self._eled_edge_config.findText(config_text)
+            if idx >= 0:
+                self._eled_edge_config.blockSignals(True)
+                self._eled_edge_config.setCurrentIndex(idx)
+                self._eled_edge_config.blockSignals(False)
+
+        # Find the parent layer row and compute a physically useful offset.
+        # For FR4 edge targets we place LEDs on the FR4/air interface so the
+        # footprint overlaps both materials; other materials use their center.
+        parent_layer = _layer
+        parent_row = None
+        for row in range(self.layers_table.rowCount()):
+            item = self.layers_table.item(row, 0)
+            if item and item.text().strip() == parent_layer:
+                parent_row = row
+                break
+        if parent_row is None:
+            return
+
+        edge_data = self._layer_edge_layers.get(parent_row, {}).get(edge, [])
+        offset_m = 0.0
+        found = False
+        placement_desc = "center"
+        for idx, entry in enumerate(edge_data):
+            t = entry.get("thickness", 0.0)
+            if entry.get("material") == material and not found:
+                next_entry = edge_data[idx + 1] if idx + 1 < len(edge_data) else None
+                if material == "FR4" and next_entry is not None:
+                    offset_m += t
+                    placement_desc = f"{material}/{next_entry.get('material', 'next')} interface"
+                else:
+                    offset_m += t / 2.0
+                found = True
+                break
+            offset_m += t
+
+        if found:
+            self._eled_edge_offset.blockSignals(True)
+            self._eled_edge_offset.setValue(offset_m * 1000.0)  # m -> mm
+            self._eled_edge_offset.blockSignals(False)
+            self._update_eled_pitch_label()
+            self.statusBar().showMessage(
+                f"LEDs positioned at {placement_desc}: {offset_m * 1000:.1f} mm from {edge} edge",
+                4000,
+            )
+
     def _update_eled_pitch_label(self) -> None:
         """Recompute and display auto-calculated pitch for ELED edge strip."""
         w = self.width_spin.value()   # mm
@@ -1136,120 +1180,6 @@ class MainWindow(QMainWindow):
             usable = w - 2 * offset  # show horizontal pitch
         pitch = usable / (count - 1) if count > 1 else 0.0
         self._eled_pitch_label.setText(f"{pitch:.2f}")
-
-    def _update_eled_zone_labels(self) -> None:
-        """Update zone spinbox labels to match the current edge configuration."""
-        edge_cfg = self._eled_edge_config.currentText().lower().replace("/", "_")
-        if edge_cfg in ("bottom", "top"):
-            near = "bottom" if edge_cfg == "bottom" else "top"
-            far = "top" if edge_cfg == "bottom" else "bottom"
-        else:
-            near, far = "left", "right"
-        form = self._eled_zone_form
-        for spin, prefix in [
-            (self._eled_frame_width_left, f"Frame width ({near})"),
-            (self._eled_pcb_width_left, f"PCB+LED width ({near})"),
-            (self._eled_air_gap_left, f"Air gap ({near})"),
-            (self._eled_frame_width_right, f"Frame width ({far})"),
-            (self._eled_pcb_width_right, f"PCB+LED width ({far})"),
-            (self._eled_air_gap_right, f"Air gap ({far})"),
-        ]:
-            label = form.labelForField(spin)
-            if label is not None:
-                label.setText(f"{prefix} [mm]")
-
-    def _on_generate_eled_zones(self) -> None:
-        """Generate ELED cross-section material zones for the LGP layer.
-
-        Reads the six zone-width spinboxes (mm), calls generate_eled_zones(),
-        injects missing materials, stores zones in _layer_zones, and refreshes
-        the zone sub-panel if the LGP layer is currently selected.
-        """
-        from thermal_sim.models.stack_templates import ELED_ZONE_MATERIALS, generate_eled_zones
-
-        # Find the LGP layer row
-        lgp_row = -1
-        for r in range(self.layers_table.rowCount()):
-            name_item = self.layers_table.item(r, 0)
-            if name_item and name_item.text().strip() == "LGP":
-                lgp_row = r
-                break
-
-        if lgp_row < 0:
-            QMessageBox.warning(
-                self,
-                "LGP Layer Not Found",
-                "No layer named 'LGP' found.\n\n"
-                "Generate the ELED template first (select ELED architecture), "
-                "then click Generate Zones.",
-            )
-            return
-
-        # Read panel dimensions (mm -> metres)
-        panel_width = self.width_spin.value() / 1000.0
-        panel_height = self.height_spin.value() / 1000.0
-        edge_cfg = self._eled_edge_config.currentText().lower().replace("/", "_")
-
-        # Read zone widths (mm -> metres)
-        frame_w_left = self._eled_frame_width_left.value() / 1000.0
-        pcb_w_left = self._eled_pcb_width_left.value() / 1000.0
-        air_g_left = self._eled_air_gap_left.value() / 1000.0
-        frame_w_right = self._eled_frame_width_right.value() / 1000.0
-        pcb_w_right = self._eled_pcb_width_right.value() / 1000.0
-        air_g_right = self._eled_air_gap_right.value() / 1000.0
-
-        try:
-            zones = generate_eled_zones(
-                panel_width=panel_width,
-                panel_height=panel_height,
-                frame_width_left=frame_w_left,
-                pcb_width_left=pcb_w_left,
-                air_gap_left=air_g_left,
-                frame_width_right=frame_w_right,
-                pcb_width_right=pcb_w_right,
-                air_gap_right=air_g_right,
-                edge_config=edge_cfg,
-            )
-        except ValueError as exc:
-            QMessageBox.warning(self, "Zone Width Error", str(exc))
-            return
-
-        # Inject missing ELED zone materials from the builtin library
-        library = load_builtin_library()
-        existing_mat_names = set()
-        for r in range(self.materials_table.rowCount()):
-            name = TableDataParser._cell_text(self.materials_table, r, 0)
-            if name:
-                existing_mat_names.add(name)
-
-        self.materials_table.blockSignals(True)
-        for mat_name in ELED_ZONE_MATERIALS:
-            if mat_name not in existing_mat_names and mat_name in library:
-                self._add_material_row(library[mat_name], "Built-in")
-        self.materials_table.blockSignals(False)
-
-        # Convert MaterialZone objects to the dict format used by _layer_zones
-        zone_dicts = [
-            {
-                "material": z.material,
-                "x": z.x,
-                "y": z.y,
-                "width": z.width,
-                "height": z.height,
-            }
-            for z in zones
-        ]
-        self._layer_zones[lgp_row] = zone_dicts
-
-        # Refresh the zone sub-panel if the LGP layer is currently selected
-        selected = self.layers_table.currentRow()
-        if selected == lgp_row and self._zone_panel.isVisible():
-            self._populate_zone_table(lgp_row)
-            self._refresh_zone_preview(lgp_row)
-
-        self.statusBar().showMessage(
-            f"ELED zones generated for LGP layer ({len(zones)} zones)", 5000
-        )
 
     def _build_probes_tab(self) -> QWidget:
         tab, self.probes_table = self._build_table_tab(["Name", "Layer", "x [mm]", "y [mm]"])
@@ -1424,16 +1354,28 @@ class MainWindow(QMainWindow):
         """Add a table row, wrapped in an undo macro."""
         self._undo_stack.beginMacro("Add row")
         TableDataParser._add_table_row(table)
+        row = table.rowCount() - 1
+        # Set layer target combo for sources / LED arrays tables
+        if table in (self.sources_table, self.led_arrays_table):
+            table.setCellWidget(row, 1, self._make_layer_target_combo())
+        if table is self.led_arrays_table:
+            self._led_array_extras[row] = {}
         self._undo_stack.endMacro()
 
     def _remove_table_row(self, table: QTableWidget) -> None:
         """Remove selected row and revalidate to clear any stale error entries."""
         if table is self.layers_table:
             removed_row = table.currentRow()
+        elif table is self.led_arrays_table:
+            removed_row = table.currentRow()
         else:
             removed_row = -1
         TableDataParser.remove_selected_row(self, table)
         self._revalidate_table(table)
+        if table is self.led_arrays_table and removed_row >= 0:
+            self._led_array_extras = self._shift_row_store_after_remove(
+                self._led_array_extras, removed_row
+            )
         if table is self.layers_table:
             self._update_node_count_label()
             # Shift _layer_zones keys: remove the deleted row, shift remaining keys down
@@ -1458,6 +1400,36 @@ class MainWindow(QMainWindow):
             self._zone_panel.setVisible(False)
             self._edge_layer_panel.setVisible(False)
             self._refresh_3d_preview()
+
+    @staticmethod
+    def _shift_row_store_after_remove(store: dict[int, dict], removed_row: int) -> dict[int, dict]:
+        """Drop one row entry from a row-indexed store and shift later rows down."""
+        shifted: dict[int, dict] = {}
+        for key, value in store.items():
+            if key < removed_row:
+                shifted[key] = value
+            elif key > removed_row:
+                shifted[key - 1] = value
+        return shifted
+
+    @staticmethod
+    def _led_array_extra_from_model(array) -> dict:
+        """Capture non-table LED-array fields so non-custom arrays round-trip through the UI."""
+        return {
+            "mode": array.mode,
+            "offset_top": array.offset_top,
+            "offset_bottom": array.offset_bottom,
+            "offset_left": array.offset_left,
+            "offset_right": array.offset_right,
+            "zone_count_x": array.zone_count_x,
+            "zone_count_y": array.zone_count_y,
+            "zone_powers": list(array.zone_powers),
+            "edge_config": array.edge_config,
+            "edge_offset": array.edge_offset,
+            "panel_width": array.panel_width,
+            "panel_height": array.panel_height,
+            "z_position": array.z_position,
+        }
 
     # ------------------------------------------------------------------
     # Inline cell validation
@@ -1581,6 +1553,12 @@ class MainWindow(QMainWindow):
         self.total_time_spin.setValue(project.transient.total_time_s)
         self.output_interval_spin.setValue(project.transient.output_interval_s)
 
+        # Edge frame controls — restore last-used values
+        ef = getattr(project, "edge_frame", None)
+        if ef is not None:
+            self._ef_metal_spin.setValue(ef.metal_thickness * 1000.0)
+            self._ef_air_spin.setValue(ef.air_gap_thickness * 1000.0)
+
         TableDataParser.populate_tables_from_project(project, self._tables_dict)
         TableDataParser.set_boundary_widgets(self.top_boundary_widgets, project.boundaries.top)
         TableDataParser.set_boundary_widgets(self.bottom_boundary_widgets, project.boundaries.bottom)
@@ -1617,9 +1595,21 @@ class MainWindow(QMainWindow):
                     for edge, els in edge_layers.items()
                 }
         self._edge_layer_panel.setVisible(False)
+        self._led_array_extras = {
+            row: self._led_array_extra_from_model(array)
+            for row, array in enumerate(project.led_arrays)
+        }
+        self._restore_material_sources(project)
 
         self._refresh_layer_choices(project)
         self._refresh_profile_choices(project)
+
+        # Replace Layer column text with combo boxes in sources and LED arrays tables
+        for table in (self.sources_table, self.led_arrays_table):
+            for row in range(table.rowCount()):
+                item = table.item(row, 1)
+                layer_text = item.text().strip() if item else ""
+                table.setCellWidget(row, 1, self._make_layer_target_combo(layer_text))
 
         # Restore power profiles from loaded project
         self._source_profiles = {}
@@ -1635,11 +1625,12 @@ class MainWindow(QMainWindow):
         for table in editable_tables:
             self._revalidate_table(table)
 
-        # Reset architecture to Custom when loading a project from disk
+        arch = self._infer_architecture(project)
         self.arch_combo.blockSignals(True)
-        self.arch_combo.setCurrentText("Custom")
+        self.arch_combo.setCurrentText(arch)
         self.arch_combo.blockSignals(False)
-        self._led_arrays_stack.setCurrentIndex(0)
+        self._led_arrays_stack.setCurrentIndex({"Custom": 0, "DLED": 1, "ELED": 2}.get(arch, 0))
+        self._restore_arch_panel_from_project(project, arch)
 
         self._undo_stack.clear()
         self._undo_stack.setClean()
@@ -1649,6 +1640,99 @@ class MainWindow(QMainWindow):
 
         # Refresh 3D preview if the dock is visible
         self._refresh_3d_preview()
+
+    def _restore_material_sources(self, project: DisplayProject) -> None:
+        """Restore material source labels in the materials table."""
+        builtin = load_builtin_library()
+        self._material_source = {}
+        for row, mat in enumerate(project.materials.values()):
+            src = "User"
+            builtin_mat = builtin.get(mat.name)
+            if builtin_mat is not None and builtin_mat.to_dict() == mat.to_dict():
+                src = "Built-in"
+            self._material_source[mat.name] = src
+            type_item = self.materials_table.item(row, 6)
+            if type_item is not None:
+                type_item.setText(src)
+
+    @staticmethod
+    def _infer_architecture(project: DisplayProject) -> str:
+        """Infer the active architecture from the loaded project contents."""
+        if len(project.led_arrays) == 1:
+            arr = project.led_arrays[0]
+            if arr.mode == "edge" and any(layer.name == "LGP" for layer in project.layers):
+                return "ELED"
+            if arr.mode == "grid" and any(layer.name == "LED Board" for layer in project.layers):
+                return "DLED"
+        return "Custom"
+
+    def _restore_arch_panel_from_project(self, project: DisplayProject, arch: str) -> None:
+        """Seed DLED/ELED controls from a loaded project without reapplying a template."""
+        if not project.led_arrays:
+            return
+        la = project.led_arrays[0]
+        if arch == "DLED":
+            self._dled_count_x.blockSignals(True)
+            self._dled_count_x.setValue(la.count_x)
+            self._dled_count_x.blockSignals(False)
+            self._dled_count_y.blockSignals(True)
+            self._dled_count_y.setValue(la.count_y)
+            self._dled_count_y.blockSignals(False)
+            self._dled_power.blockSignals(True)
+            self._dled_power.setValue(la.power_per_led_w)
+            self._dled_power.blockSignals(False)
+            self._dled_offset_top.setValue(la.offset_top * 1000.0)
+            self._dled_offset_bottom.setValue(la.offset_bottom * 1000.0)
+            self._dled_offset_left.setValue(la.offset_left * 1000.0)
+            self._dled_offset_right.setValue(la.offset_right * 1000.0)
+            self._dled_zone_count_x.setValue(la.zone_count_x)
+            self._dled_zone_count_y.setValue(la.zone_count_y)
+            self._rebuild_zone_table()
+            self._update_dled_pitch_labels()
+            if la.footprint_shape:
+                idx = self._dled_footprint_shape.findText(la.footprint_shape)
+                if idx >= 0:
+                    self._dled_footprint_shape.setCurrentIndex(idx)
+            if la.led_width is not None:
+                self._dled_led_width.setValue(la.led_width * 1000.0)
+            if la.led_height is not None:
+                self._dled_led_height.setValue(la.led_height * 1000.0)
+            if la.led_radius is not None:
+                self._dled_led_radius.setValue(la.led_radius * 1000.0)
+        elif arch == "ELED":
+            edge_text = la.edge_config.replace("_", "/")
+            idx = self._eled_edge_config.findText(edge_text)
+            if idx < 0:
+                idx = self._eled_edge_config.findText(la.edge_config)
+            if idx >= 0:
+                self._eled_edge_config.blockSignals(True)
+                self._eled_edge_config.setCurrentIndex(idx)
+                self._eled_edge_config.blockSignals(False)
+            self._eled_count.blockSignals(True)
+            self._eled_count.setValue(la.count_x if la.edge_config in ("bottom", "top", "all") else la.count_y)
+            self._eled_count.blockSignals(False)
+            self._eled_power.blockSignals(True)
+            self._eled_power.setValue(la.power_per_led_w)
+            self._eled_power.blockSignals(False)
+            if la.footprint_shape:
+                idx = self._eled_footprint_shape.findText(la.footprint_shape)
+                if idx >= 0:
+                    self._eled_footprint_shape.setCurrentIndex(idx)
+            if la.led_width is not None:
+                self._eled_led_width.setValue(la.led_width * 1000.0)
+            if la.led_height is not None:
+                self._eled_led_height.setValue(la.led_height * 1000.0)
+            if la.led_radius is not None:
+                self._eled_led_radius.setValue(la.led_radius * 1000.0)
+            preferred_target = self._preferred_eled_layer_target()
+            target = preferred_target if self._eled_layer_combo.findText(preferred_target) >= 0 else la.layer
+            idx = self._eled_layer_combo.findText(target)
+            if idx >= 0:
+                self._eled_layer_combo.setCurrentIndex(idx)
+            self._eled_edge_offset.blockSignals(True)
+            self._eled_edge_offset.setValue(la.edge_offset * 1000.0)
+            self._eled_edge_offset.blockSignals(False)
+            self._update_eled_pitch_label()
 
     def _set_layer_nz_spinbox(self, row: int, nz: int = 1) -> None:
         """Create and install an nz QSpinBox cell widget for the given layers_table row."""
@@ -1668,6 +1752,61 @@ class MainWindow(QMainWindow):
         self._layer_edge_layers[row] = {}
         self._undo_stack.endMacro()
         self._update_node_count_label()
+        self._refresh_3d_preview()
+
+    def _move_layer_up(self) -> None:
+        """Move the selected layer row up (swap with the row above)."""
+        row = self.layers_table.currentRow()
+        if row <= 0:
+            return
+        self._swap_layer_rows(row, row - 1)
+        self.layers_table.setCurrentCell(row - 1, 0)
+
+    def _move_layer_down(self) -> None:
+        """Move the selected layer row down (swap with the row below)."""
+        row = self.layers_table.currentRow()
+        if row < 0 or row >= self.layers_table.rowCount() - 1:
+            return
+        self._swap_layer_rows(row, row + 1)
+        self.layers_table.setCurrentCell(row + 1, 0)
+
+    def _swap_layer_rows(self, row_a: int, row_b: int) -> None:
+        """Swap two rows in the layers table, including nz spinboxes, zones, and edge layers."""
+        table = self.layers_table
+        table.blockSignals(True)
+
+        # Swap cell text for columns 0-3
+        for col in range(4):
+            item_a = table.item(row_a, col)
+            item_b = table.item(row_b, col)
+            text_a = item_a.text() if item_a else ""
+            text_b = item_b.text() if item_b else ""
+            table.setItem(row_a, col, QTableWidgetItem(text_b))
+            table.setItem(row_b, col, QTableWidgetItem(text_a))
+
+        # Swap nz spinbox values (column 4)
+        nz_a = table.cellWidget(row_a, 4)
+        nz_b = table.cellWidget(row_b, 4)
+        val_a = nz_a.value() if nz_a else 1
+        val_b = nz_b.value() if nz_b else 1
+        if nz_a:
+            nz_a.setValue(val_b)
+        if nz_b:
+            nz_b.setValue(val_a)
+
+        # Swap zone data
+        zones_a = self._layer_zones.get(row_a, [])
+        zones_b = self._layer_zones.get(row_b, [])
+        self._layer_zones[row_a] = zones_b
+        self._layer_zones[row_b] = zones_a
+
+        # Swap edge layer data
+        edge_a = self._layer_edge_layers.get(row_a, {})
+        edge_b = self._layer_edge_layers.get(row_b, {})
+        self._layer_edge_layers[row_a] = edge_b
+        self._layer_edge_layers[row_b] = edge_a
+
+        table.blockSignals(False)
         self._refresh_3d_preview()
 
     def _load_default_materials(self) -> None:
@@ -1834,6 +1973,7 @@ class MainWindow(QMainWindow):
                 table.setRowCount(0)
             for table in editable_tables:
                 table.blockSignals(False)
+            self._led_array_extras = {}
             # Clear all validation errors for the reset tables
             self._validation_errors.clear()
             self._update_validation_status()
@@ -2743,6 +2883,223 @@ class MainWindow(QMainWindow):
     # Edge layer UI helpers
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Layer target choices (main layers + edge layers)
+    # ------------------------------------------------------------------
+
+    def _get_layer_target_choices(self) -> list[str]:
+        """Return layer names including edge layer entries like 'LGP / FR4 (bottom)'."""
+        choices: list[str] = []
+        for row in range(self.layers_table.rowCount()):
+            name_item = self.layers_table.item(row, 0)
+            layer_name = name_item.text().strip() if name_item else ""
+            if not layer_name:
+                continue
+            choices.append(layer_name)
+            edge_data = self._layer_edge_layers.get(row, {})
+            for edge, entries in edge_data.items():
+                for entry in entries:
+                    mat = entry.get("material", "")
+                    if mat:
+                        choice = f"{layer_name} / {mat} ({edge})"
+                        if choice not in choices:
+                            choices.append(choice)
+        return choices
+
+    @staticmethod
+    def _resolve_layer_target(target: str) -> str:
+        """Resolve 'LGP / FR4 (bottom)' to parent layer name 'LGP'."""
+        if " / " in target and "(" in target:
+            return target.split(" / ", 1)[0].strip()
+        return target
+
+    @staticmethod
+    def _parse_layer_target(target: str):
+        """Parse 'LGP / FR4 (bottom)' -> (layer, material, edge) or (layer, None, None)."""
+        if " / " in target and "(" in target:
+            layer_name = target.split(" / ", 1)[0].strip()
+            rest = target.split(" / ", 1)[1]
+            paren_idx = rest.index(" (")
+            material = rest[:paren_idx]
+            edge = rest[paren_idx + 2:-1]
+            return layer_name, material, edge
+        return target, None, None
+
+    def _make_layer_target_combo(self, current: str = "") -> QComboBox:
+        """Create a QComboBox populated with layer target choices."""
+        combo = QComboBox()
+        choices = self._get_layer_target_choices()
+        combo.addItems(choices)
+        if current:
+            idx = combo.findText(current)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            else:
+                # Allow freeform text if not in choices
+                combo.setEditable(True)
+                combo.setCurrentText(current)
+        combo.setToolTip(
+            "Target layer for this source. Edge layer entries (e.g. 'LGP / FR4 (bottom)') "
+            "resolve to the parent layer — position your source in the edge zone region."
+        )
+        return combo
+
+    def _refresh_layer_target_combos(self) -> None:
+        """Update all layer target combo boxes in sources, LED arrays, and ELED panel."""
+        choices = self._get_layer_target_choices()
+        for table in (self.sources_table, self.led_arrays_table):
+            for row in range(table.rowCount()):
+                combo = table.cellWidget(row, 1)
+                if combo is not None and isinstance(combo, QComboBox):
+                    current = combo.currentText()
+                    combo.blockSignals(True)
+                    combo.clear()
+                    combo.addItems(choices)
+                    idx = combo.findText(current)
+                    if idx >= 0:
+                        combo.setCurrentIndex(idx)
+                    else:
+                        combo.setEditable(True)
+                        combo.setCurrentText(current)
+                    combo.blockSignals(False)
+        # Also refresh the ELED panel layer combo
+        if hasattr(self, "_eled_layer_combo"):
+            current = self._eled_layer_combo.currentText()
+            self._eled_layer_combo.blockSignals(True)
+            self._eled_layer_combo.clear()
+            self._eled_layer_combo.addItems(choices)
+            idx = self._eled_layer_combo.findText(current)
+            if idx >= 0:
+                self._eled_layer_combo.setCurrentIndex(idx)
+            elif choices:
+                # Default to LGP if available
+                lgp_idx = self._eled_layer_combo.findText("LGP")
+                if lgp_idx >= 0:
+                    self._eled_layer_combo.setCurrentIndex(lgp_idx)
+            self._eled_layer_combo.blockSignals(False)
+
+    def _apply_edge_frame(self) -> None:
+        """Apply edge structures to the current stack.
+
+        For generic stacks this is a uniform Steel + Air Gap perimeter.
+        For ELED stacks, the LGP layer gets a dedicated LED edge path:
+        Steel -> FR4 -> Air Gap on LED-carrying edges and Steel -> Air Gap
+        on the remaining edges.
+        """
+        mt = self._ef_metal_spin.value() / 1000.0  # mm -> m
+        at = self._ef_air_spin.value() / 1000.0
+        n_layers = self.layers_table.rowCount()
+        if n_layers == 0:
+            return
+
+        arch = self.arch_combo.currentText()
+        self._layer_edge_layers = {row: {} for row in range(n_layers)}
+
+        if arch == "ELED":
+            edge_cfg = self._eled_edge_config.currentText().lower().replace("/", "_")
+            led_edges_map = {
+                "bottom": {"bottom"},
+                "top": {"top"},
+                "left_right": {"left", "right"},
+                "all": {"bottom", "top", "left", "right"},
+            }
+            led_edges = led_edges_map.get(edge_cfg, {"bottom"})
+            frame_only = [
+                {"material": "Steel", "thickness": mt},
+                {"material": "Air Gap", "thickness": at},
+            ]
+            led_path = [
+                {"material": "Steel", "thickness": mt},
+                {"material": "FR4", "thickness": 0.005},
+                {"material": "Air Gap", "thickness": at},
+            ]
+            for row in range(n_layers):
+                self._layer_edge_layers[row] = {
+                    edge: [dict(e) for e in frame_only]
+                    for edge in ("bottom", "top", "left", "right")
+                }
+            lgp_row = self._find_layer_row("LGP")
+            if lgp_row >= 0:
+                self._layer_edge_layers[lgp_row] = {
+                    edge: [dict(e) for e in (led_path if edge in led_edges else frame_only)]
+                    for edge in ("bottom", "top", "left", "right")
+                }
+            self._ensure_material_rows(("Steel", "Air Gap", "FR4"))
+        else:
+            uniform = {
+                edge: [
+                    {"material": "Steel", "thickness": mt},
+                    {"material": "Air Gap", "thickness": at},
+                ]
+                for edge in ("bottom", "top", "left", "right")
+            }
+            for row in range(n_layers):
+                self._layer_edge_layers[row] = {
+                    edge: [dict(e) for e in entries]
+                    for edge, entries in uniform.items()
+                }
+            self._ensure_material_rows(("Steel", "Air Gap"))
+
+        # Refresh edge panel if visible
+        layer_row = self.layers_table.currentRow()
+        if layer_row >= 0 and self._edge_layer_panel.isVisible():
+            edge = self._current_edge if hasattr(self, "_current_edge") else "bottom"
+            self._populate_edge_table(layer_row, edge)
+        # Refresh layer target combos so edge layers appear as choices
+        self._refresh_layer_target_combos()
+        if arch == "ELED":
+            preferred_target = self._preferred_eled_layer_target()
+            if preferred_target:
+                idx = self._eled_layer_combo.findText(preferred_target)
+                if idx >= 0:
+                    self._eled_layer_combo.setCurrentIndex(idx)
+        self.statusBar().showMessage(
+            f"Edge structure applied ({arch}): Steel {self._ef_metal_spin.value():.1f} mm + "
+            f"Air Gap {self._ef_air_spin.value():.1f} mm",
+            4000,
+        )
+
+    def _find_layer_row(self, layer_name: str) -> int:
+        """Return the row index for a named layer, or -1 if not present."""
+        for row in range(self.layers_table.rowCount()):
+            item = self.layers_table.item(row, 0)
+            if item and item.text().strip() == layer_name:
+                return row
+        return -1
+
+    def _preferred_eled_layer_target(self) -> str:
+        """Return the preferred ELED target entry for the current edge config."""
+        edge_cfg = self._eled_edge_config.currentText().lower().replace("/", "_")
+        preferred_edge = {
+            "bottom": "bottom",
+            "top": "top",
+            "left_right": "left",
+            "all": "bottom",
+        }.get(edge_cfg, "bottom")
+        return f"LGP / FR4 ({preferred_edge})"
+
+    def _ensure_material_rows(self, material_names: tuple[str, ...]) -> None:
+        """Add missing materials from the builtin library to the materials table."""
+        from thermal_sim.core.material_library import load_builtin_library
+
+        builtin = load_builtin_library()
+        existing = set()
+        for row in range(self.materials_table.rowCount()):
+            item = self.materials_table.item(row, 0)
+            if item:
+                existing.add(item.text())
+        for mat_name in material_names:
+            if mat_name not in existing and mat_name in builtin:
+                mat = builtin[mat_name]
+                r = self.materials_table.rowCount()
+                self.materials_table.insertRow(r)
+                self.materials_table.setItem(r, 0, QTableWidgetItem(mat_name))
+                self.materials_table.setItem(r, 1, QTableWidgetItem(str(mat.k_in_plane)))
+                self.materials_table.setItem(r, 2, QTableWidgetItem(str(mat.k_through)))
+                self.materials_table.setItem(r, 3, QTableWidgetItem(str(mat.density)))
+                self.materials_table.setItem(r, 4, QTableWidgetItem(str(mat.specific_heat)))
+                self.materials_table.setItem(r, 5, QTableWidgetItem(str(mat.emissivity)))
+
     def _on_edge_tab_clicked(self, edge: str) -> None:
         """Switch to the clicked edge tab and repopulate the edge table."""
         for name, btn in self._edge_buttons.items():
@@ -2796,6 +3153,7 @@ class MainWindow(QMainWindow):
         layer_row = self.layers_table.currentRow()
         if layer_row >= 0:
             self._read_edge_table_into_store(layer_row)
+            self._refresh_layer_target_combos()
 
     def _read_edge_table_into_store(self, layer_row: int) -> None:
         """Read all edge table rows and persist them into _layer_edge_layers (SI metres)."""
@@ -3058,12 +3416,18 @@ class MainWindow(QMainWindow):
         if arch in ("DLED", "ELED"):
             # Build project from arch-specific spinboxes; layers/materials/boundaries from tables
             project = TableDataParser.build_project_from_tables(
-                self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
+                self._tables_dict,
+                self._spinboxes_dict,
+                self._boundary_widgets_dict,
+                led_array_extras=self._led_array_extras,
             )
             project.led_arrays = self._build_led_arrays_from_arch_panel()
         else:
             project = TableDataParser.build_project_from_tables(
-                self._tables_dict, self._spinboxes_dict, self._boundary_widgets_dict
+                self._tables_dict,
+                self._spinboxes_dict,
+                self._boundary_widgets_dict,
+                led_array_extras=self._led_array_extras,
             )
         # Read nz spinbox values from the layers table (column 4 cell widgets)
         for row, layer in enumerate(project.layers):
@@ -3085,8 +3449,9 @@ class MainWindow(QMainWindow):
                 except (ValueError, KeyError):
                     continue
             layer.zones = zones
-        # Attach edge layers from the edge layer sub-panel
+        # Attach edge layers from per-layer data (populated by Apply button or manual edits)
         from thermal_sim.models.layer import EdgeLayer
+        from thermal_sim.models.project import EdgeFrame
         for row, layer in enumerate(project.layers):
             edge_data = self._layer_edge_layers.get(row, {})
             edge_layers = {}
@@ -3103,6 +3468,19 @@ class MainWindow(QMainWindow):
                 if el_list:
                     edge_layers[edge] = el_list
             layer.edge_layers = edge_layers
+        # Store edge_frame metadata for serialization (last-applied values)
+        mt = self._ef_metal_spin.value() / 1000.0
+        at = self._ef_air_spin.value() / 1000.0
+        has_any = any(layer.edge_layers for layer in project.layers)
+        project.edge_frame = EdgeFrame(metal_thickness=mt, air_gap_thickness=at) if has_any else None
+        # Resolve edge layer references in heat sources and LED arrays
+        for src in project.heat_sources:
+            src.layer = self._resolve_layer_target(src.layer)
+        for arr in project.led_arrays:
+            arr.layer = self._resolve_layer_target(arr.layer)
+            if arr.mode in ("grid", "edge"):
+                arr.panel_width = project.width
+                arr.panel_height = project.height
         # Attach power profiles from the profile sub-panel
         from thermal_sim.models.heat_source import PowerBreakpoint  # noqa: F401 (side-effect import for clarity)
         for row_idx, bps in self._source_profiles.items():
@@ -3157,6 +3535,7 @@ class MainWindow(QMainWindow):
             led_arrays=template_data["led_arrays"],
             boundaries=template_data["boundaries"],
             probes=[],
+            edge_frame=template_data.get("edge_frame"),
         )
 
         # Block signals before bulk update to prevent spurious undo commands
@@ -3289,6 +3668,9 @@ class MainWindow(QMainWindow):
         for table in editable_tables:
             self._revalidate_table(table)
 
+        # Auto-apply edge frame so layer target dropdowns include edge layer entries
+        self._apply_edge_frame()
+
         # Refresh 3D preview with new template
         self._refresh_3d_preview()
 
@@ -3363,9 +3745,12 @@ class MainWindow(QMainWindow):
             led_height = self._eled_led_height.value() / 1000.0
             led_radius = self._eled_led_radius.value() / 1000.0
 
+            eled_layer = self._resolve_layer_target(
+                self._eled_layer_combo.currentText() or "LGP"
+            )
             led_array = LEDArray(
                 name="ELED Array",
-                layer="LGP",
+                layer=eled_layer,
                 center_x=w / 2.0,
                 center_y=h / 2.0,
                 count_x=count,
@@ -3382,6 +3767,7 @@ class MainWindow(QMainWindow):
                 edge_offset=edge_offset,
                 panel_width=w,
                 panel_height=h,
+                z_position="distributed",  # edge LEDs face full layer thickness
             )
             return [led_array]
 

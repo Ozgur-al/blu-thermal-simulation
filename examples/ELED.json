@@ -1,0 +1,359 @@
+{
+  "name": "Display Module - Uniform Backlight",
+  "width": 0.3,
+  "height": 0.12,
+  "layers": [
+    {
+      "name": "Back Cover",
+      "material": "Aluminum",
+      "thickness": 0.0012,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1
+    },
+    {
+      "name": "BC Air Gap",
+      "material": "Air Gap",
+      "thickness": 0.003,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1,
+      "edge_layers": {
+        "bottom": [
+          {
+            "material": "Aluminum",
+            "thickness": 0.0012
+          }
+        ],
+        "top": [
+          {
+            "material": "Aluminum",
+            "thickness": 0.0012
+          }
+        ],
+        "left": [
+          {
+            "material": "Aluminum",
+            "thickness": 0.0012
+          }
+        ],
+        "right": [
+          {
+            "material": "Aluminum",
+            "thickness": 0.0012
+          }
+        ]
+      }
+    },
+    {
+      "name": "Metal Frame",
+      "material": "Steel",
+      "thickness": 0.0008,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1
+    },
+    {
+      "name": "LGP",
+      "material": "PMMA",
+      "thickness": 0.002,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1,
+      "edge_layers": {
+        "bottom": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "FR4",
+            "thickness": 0.005
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "top": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "left": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "right": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ]
+      }
+    },
+    {
+      "name": "Diffuser",
+      "material": "PC",
+      "thickness": 0.000188,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1,
+      "edge_layers": {
+        "bottom": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "top": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "left": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "right": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ]
+      }
+    },
+    {
+      "name": "BEF",
+      "material": "PC",
+      "thickness": 0.00015,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1,
+      "edge_layers": {
+        "bottom": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "top": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "left": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ],
+        "right": [
+          {
+            "material": "Steel",
+            "thickness": 0.003
+          },
+          {
+            "material": "Air Gap",
+            "thickness": 0.001
+          }
+        ]
+      }
+    },
+    {
+      "name": "Display Cell",
+      "material": "Glass",
+      "thickness": 0.0006,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1
+    },
+    {
+      "name": "OCA",
+      "material": "OCA",
+      "thickness": 0.00015,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1
+    },
+    {
+      "name": "Cover Glass",
+      "material": "Glass",
+      "thickness": 0.0011,
+      "interface_resistance_to_next": 0.0,
+      "nz": 1
+    }
+  ],
+  "materials": {
+    "Glass": {
+      "name": "Glass",
+      "k_in_plane": 1.05,
+      "k_through": 1.05,
+      "density": 2500.0,
+      "specific_heat": 840.0,
+      "emissivity": 0.92
+    },
+    "OCA": {
+      "name": "OCA",
+      "k_in_plane": 0.25,
+      "k_through": 0.25,
+      "density": 980.0,
+      "specific_heat": 1800.0,
+      "emissivity": 0.95
+    },
+    "PMMA": {
+      "name": "PMMA",
+      "k_in_plane": 0.2,
+      "k_through": 0.2,
+      "density": 1180.0,
+      "specific_heat": 1470.0,
+      "emissivity": 0.94
+    },
+    "PC": {
+      "name": "PC",
+      "k_in_plane": 0.2,
+      "k_through": 0.2,
+      "density": 1210.0,
+      "specific_heat": 1250.0,
+      "emissivity": 0.94
+    },
+    "Aluminum": {
+      "name": "Aluminum",
+      "k_in_plane": 205.0,
+      "k_through": 205.0,
+      "density": 2700.0,
+      "specific_heat": 897.0,
+      "emissivity": 0.1
+    },
+    "Steel": {
+      "name": "Steel",
+      "k_in_plane": 16.0,
+      "k_through": 16.0,
+      "density": 7850.0,
+      "specific_heat": 490.0,
+      "emissivity": 0.6
+    },
+    "Air Gap": {
+      "name": "Air Gap",
+      "k_in_plane": 0.026,
+      "k_through": 0.026,
+      "density": 1.2,
+      "specific_heat": 1005.0,
+      "emissivity": 0.01
+    },
+    "FR4": {
+      "name": "FR4",
+      "k_in_plane": 0.35,
+      "k_through": 0.3,
+      "density": 1900.0,
+      "specific_heat": 1100.0,
+      "emissivity": 0.9
+    }
+  },
+  "heat_sources": [],
+  "led_arrays": [
+    {
+      "name": "ELED Array",
+      "layer": "LGP",
+      "center_x": 0.15,
+      "center_y": 0.06,
+      "count_x": 20,
+      "count_y": 20,
+      "pitch_x": 0.0,
+      "pitch_y": 0.0,
+      "power_per_led_w": 0.3,
+      "footprint_shape": "rectangle",
+      "led_width": 0.004,
+      "led_height": 0.0015,
+      "led_radius": 0.001,
+      "mode": "edge",
+      "offset_top": 0.0,
+      "offset_bottom": 0.0,
+      "offset_left": 0.0,
+      "offset_right": 0.0,
+      "zone_count_x": 1,
+      "zone_count_y": 1,
+      "zone_powers": [],
+      "edge_config": "bottom",
+      "edge_offset": 0.008,
+      "panel_width": 0.3,
+      "panel_height": 0.12,
+      "z_position": "distributed"
+    }
+  ],
+  "boundaries": {
+    "top": {
+      "ambient_c": 25.0,
+      "convection_h": 8.0,
+      "include_radiation": true,
+      "emissivity_override": null
+    },
+    "bottom": {
+      "ambient_c": 25.0,
+      "convection_h": 8.0,
+      "include_radiation": true,
+      "emissivity_override": null
+    },
+    "side": {
+      "ambient_c": 25.0,
+      "convection_h": 25.0,
+      "include_radiation": true,
+      "emissivity_override": null
+    }
+  },
+  "mesh": {
+    "nx": 120,
+    "ny": 48
+  },
+  "transient": {
+    "time_step_s": 0.2,
+    "total_time_s": 120.0,
+    "output_interval_s": 2.0,
+    "method": "implicit_euler"
+  },
+  "initial_temperature_c": 25.0,
+  "probes": [],
+  "edge_frame": {
+    "metal_thickness": 0.003,
+    "air_gap_thickness": 0.001
+  }
+}

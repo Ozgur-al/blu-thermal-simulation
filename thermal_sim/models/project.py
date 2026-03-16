@@ -67,6 +67,36 @@ class TransientConfig:
         )
 
 
+@dataclass(frozen=True)
+class EdgeFrame:
+    """Uniform metal-frame + air-gap applied to all layer edges.
+
+    Thicknesses are in metres (SI).
+    """
+
+    metal_thickness: float = 0.003  # 3 mm default
+    air_gap_thickness: float = 0.001  # 1 mm default
+
+    def __post_init__(self) -> None:
+        if self.metal_thickness <= 0.0:
+            raise ValueError("EdgeFrame metal_thickness must be > 0.")
+        if self.air_gap_thickness <= 0.0:
+            raise ValueError("EdgeFrame air_gap_thickness must be > 0.")
+
+    def to_dict(self) -> dict:
+        return {
+            "metal_thickness": self.metal_thickness,
+            "air_gap_thickness": self.air_gap_thickness,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "EdgeFrame":
+        return cls(
+            metal_thickness=float(data.get("metal_thickness", 0.003)),
+            air_gap_thickness=float(data.get("air_gap_thickness", 0.001)),
+        )
+
+
 @dataclass
 class DisplayProject:
     """Display thermal simulation input model."""
@@ -83,6 +113,7 @@ class DisplayProject:
     transient: TransientConfig = field(default_factory=TransientConfig)
     initial_temperature_c: float = 25.0
     probes: list[Probe] = field(default_factory=list)
+    edge_frame: EdgeFrame | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -134,7 +165,7 @@ class DisplayProject:
         return self.materials[layer.material]
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "name": self.name,
             "width": self.width,
             "height": self.height,
@@ -148,9 +179,14 @@ class DisplayProject:
             "initial_temperature_c": self.initial_temperature_c,
             "probes": [probe.to_dict() for probe in self.probes],
         }
+        if self.edge_frame is not None:
+            d["edge_frame"] = self.edge_frame.to_dict()
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "DisplayProject":
+        ef_raw = data.get("edge_frame")
+        edge_frame = EdgeFrame.from_dict(ef_raw) if ef_raw else None
         return cls(
             name=data["name"],
             width=float(data["width"]),
@@ -164,4 +200,5 @@ class DisplayProject:
             transient=TransientConfig.from_dict(data.get("transient", {})),
             initial_temperature_c=float(data.get("initial_temperature_c", 25.0)),
             probes=[Probe.from_dict(item) for item in data.get("probes", [])],
+            edge_frame=edge_frame,
         )

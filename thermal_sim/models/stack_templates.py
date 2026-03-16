@@ -10,6 +10,7 @@ from thermal_sim.core.material_library import load_builtin_library
 from thermal_sim.models.boundary import BoundaryConditions, SurfaceBoundary
 from thermal_sim.models.heat_source import LEDArray
 from thermal_sim.models.layer import EdgeLayer, Layer
+from thermal_sim.models.project import EdgeFrame
 
 
 def dled_template(
@@ -106,11 +107,14 @@ def dled_template(
     # -----------------------------------------------------------------------
     materials = _filter_materials(layers)
 
+    edge_frame = EdgeFrame(metal_thickness=0.003, air_gap_thickness=0.001)
+
     return {
         "layers": layers,
         "materials": materials,
         "led_arrays": [led_array],
         "boundaries": boundaries,
+        "edge_frame": edge_frame,
     }
 
 
@@ -142,50 +146,18 @@ def eled_template(
         "boundaries" : BoundaryConditions
     """
     # -----------------------------------------------------------------------
-    # Edge layer maps for LGP perimeter structure
+    # Edge frame — project-level uniform frame for all layers
     # -----------------------------------------------------------------------
-    frame_t = 0.003   # 3 mm steel frame
-    air_t   = 0.001   # 1 mm air gap
-    pcb_t   = 0.005   # 5 mm FR4 LED board
-
-    led_edge_layers = [
-        EdgeLayer("Steel", frame_t),
-        EdgeLayer("Air Gap", air_t),
-        EdgeLayer("FR4", pcb_t),
-    ]
-    non_led_edge_layers = [
-        EdgeLayer("Steel", frame_t),
-        EdgeLayer("Air Gap", air_t),
-    ]
-
-    _edge_layers_map: dict[str, dict[str, list]] = {
-        "left_right": {
-            "left": led_edge_layers, "right": led_edge_layers,
-            "bottom": non_led_edge_layers, "top": non_led_edge_layers,
-        },
-        "bottom": {
-            "bottom": led_edge_layers, "top": non_led_edge_layers,
-            "left": non_led_edge_layers, "right": non_led_edge_layers,
-        },
-        "top": {
-            "top": led_edge_layers, "bottom": non_led_edge_layers,
-            "left": non_led_edge_layers, "right": non_led_edge_layers,
-        },
-        "all": {
-            "bottom": led_edge_layers, "top": led_edge_layers,
-            "left": led_edge_layers, "right": led_edge_layers,
-        },
-    }
-    lgp_edge_layers = _edge_layers_map.get(edge_config, {})
+    edge_frame = EdgeFrame(metal_thickness=0.003, air_gap_thickness=0.001)
 
     # -----------------------------------------------------------------------
     # Build layer stack (bottom-to-top) — LGP replaces LED Board
+    # Edge layers are now set at project level via EdgeFrame, not per-layer.
     # -----------------------------------------------------------------------
     layers: list[Layer] = [
         Layer(name="Back Cover",   material="Aluminum", thickness=0.0008),
         Layer(name="Metal Frame",  material="Steel",    thickness=0.001),
-        Layer(name="LGP",          material="PMMA",     thickness=0.004,   # Light Guide Plate
-              edge_layers=lgp_edge_layers),
+        Layer(name="LGP",          material="PMMA",     thickness=0.004),   # Light Guide Plate
         Layer(name="Diffuser",     material="PC",       thickness=0.002),
         Layer(name="BEF",          material="PC",       thickness=0.0003),
     ]
@@ -228,6 +200,7 @@ def eled_template(
         edge_offset=0.005,
         panel_width=panel_width,
         panel_height=panel_height,
+        z_position="distributed",
     )
 
     # -----------------------------------------------------------------------
@@ -249,6 +222,7 @@ def eled_template(
         "materials": materials,
         "led_arrays": [led_array],
         "boundaries": boundaries,
+        "edge_frame": edge_frame,
     }
 
 
