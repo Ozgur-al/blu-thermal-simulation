@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
-status: in-progress
-last_updated: "2026-03-16T14:52:00Z"
+status: complete
+last_updated: "2026-03-16T15:12:00Z"
 progress:
   total_phases: 11
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 41
-  completed_plans: 40
+  completed_plans: 41
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 
 ## Current Position
 
-Phase: 11 of 11 (Voxel-Based 3D Solver) — in progress
-Plan: 4 of 5 (11-04 complete)
-Status: in-progress
-Last activity: 2026-03-16 — 11-04: BlockEditorWidget, Voxel3DView, VoxelMainWindow, legacy import fixes
+Phase: 11 of 11 (Voxel-Based 3D Solver) — complete
+Plan: 5 of 5 (11-05 complete)
+Status: complete
+Last activity: 2026-03-16 — 11-05: Fix CLI examples (Air Gap fallback, source shape-filter fallback)
 
-Progress: [█████████▉] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Progress: [█████████▉] 95%
 
 | Phase 11-voxel-3d-solver | 1 | 4 min | 4 min |
 | Phase 11-voxel-3d-solver P02 | 1 | 6 min | 6 min |
+| Phase 11-voxel-3d-solver P05 | 7 min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,8 @@ Progress: [█████████▉] 95%
 - [Phase 11-voxel-3d-solver P04]: Legacy broken imports in main_window.py, simulation_controller.py, table_data_parser.py wrapped in try/except ImportError with None fallbacks — consistent with Plan 03 pattern
 - [Phase 11-voxel-3d-solver P04]: RectilinearGrid uses order='F' ravel for VTK Fortran convention — documented in ConformalMesh3D docstring
 - [Phase 11-voxel-3d-solver P04]: block_actors dict (name -> actor) tracks block actors for per-block visibility toggle without full scene rebuild
+- [Phase 11-voxel-3d-solver]: Air Gap material fallback in build_voxel_network via .get() so projects without explicit Air Gap still work; default k=0.026 W/mK
+- [Phase 11-voxel-3d-solver]: Source shape-filter fallback: when shape filter yields zero cells (source smaller than mesh cell), distribute power uniformly to all block-face cells preserving energy conservation
 
 ### Roadmap Evolution
 
@@ -120,5 +123,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 11-04-PLAN.md (BlockEditorWidget, Voxel3DView, VoxelMainWindow, legacy import fixes)
-Resume file: .planning/phases/11-voxel-3d-solver/11-04-SUMMARY.md
+Stopped at: Completed 11-05-PLAN.md — Phase 11 complete (awaiting Task 2 human-verify checkpoint)
+Resume file: .planning/phases/11-voxel-3d-solver/11-05-SUMMARY.md

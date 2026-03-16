@@ -109,11 +109,11 @@
 - [x] **VOX-07**: Surface source placement on named block faces (LEDs as separate heat source objects, not assembly blocks)
 - [x] **VOX-08**: Auto-detect exposed boundary faces (voxel faces not touching another block) and apply convection/radiation BCs from named boundary groups
 - [x] **VOX-09**: Analytical validation tests (1D resistance chain, 2-node network, RC transient decay) rewritten using assembly blocks
-- [ ] **VOX-10**: CLI and project IO for new VoxelProject JSON format (clean break from old DisplayProject format)
+- [x] **VOX-10**: CLI and project IO for new VoxelProject JSON format (clean break from old DisplayProject format)
 - [x] **VOX-11**: GUI block editor replacing layer editor — table-based entry for blocks, sources, boundaries, probes, mesh config
 - [x] **VOX-12**: 3D PyVista view with interactive slice planes, block transparency/hide, temperature threshold filter, and probe markers
-- [ ] **VOX-13**: DLED and ELED ready-to-run example JSON files using new assembly block format
-- [ ] **VOX-14**: Old Layer/Zone/EdgeLayer model files, old network builder, and old solver code removed (clean break; git history preserves)
+- [x] **VOX-13**: DLED and ELED ready-to-run example JSON files using new assembly block format
+- [x] **VOX-14**: Old Layer/Zone/EdgeLayer model files, old network builder, and old solver code removed (clean break; git history preserves)
 
 ## Future Enhancements
 
