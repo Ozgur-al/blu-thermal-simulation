@@ -4,10 +4,45 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from thermal_sim.solvers.steady_state import SteadyStateResult
+if TYPE_CHECKING:
+    from thermal_sim.solvers.steady_state import SteadyStateResult
+
+
+def export_voxel_csv(result, mesh, output_path: str | Path) -> None:
+    """Export per-voxel temperatures as a long-format CSV.
+
+    Columns: x_mm, y_mm, z_mm, temperature_c.  One row per voxel.
+
+    ``result`` must have a ``temperatures_c`` attribute of shape ``(nz, ny, nx)``.
+    ``mesh`` must expose ``x_edges``, ``y_edges``, ``z_edges`` arrays.
+    """
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    t = result.temperatures_c  # (nz, ny, nx)
+    nz, ny, nx = t.shape
+
+    # Cell-centre positions in mm
+    x_centres = 0.5 * (mesh.x_edges[:-1] + mesh.x_edges[1:]) * 1e3
+    y_centres = 0.5 * (mesh.y_edges[:-1] + mesh.y_edges[1:]) * 1e3
+    z_centres = 0.5 * (mesh.z_edges[:-1] + mesh.z_edges[1:]) * 1e3
+
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["x_mm", "y_mm", "z_mm", "temperature_c"])
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    writer.writerow([
+                        x_centres[ix],
+                        y_centres[iy],
+                        z_centres[iz],
+                        float(t[iz, iy, ix]),
+                    ])
 
 
 def export_temperature_map(result: SteadyStateResult, output_path: str | Path) -> None:
