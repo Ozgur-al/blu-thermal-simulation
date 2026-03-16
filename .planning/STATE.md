@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
 status: unknown
-last_updated: "2026-03-15T23:26:00.948Z"
+last_updated: "2026-03-16T06:13:09.111Z"
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 8
-  total_plans: 32
-  completed_plans: 31
+  total_plans: 35
+  completed_plans: 32
 ---
 
 ---
@@ -44,16 +44,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-16)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Milestone v2.0 — Phase 9: 3D GUI and ELED Zone Preset
+**Current focus:** Milestone v2.0 — Phase 10: Edge Layers and 3D Preview
 
 ## Current Position
 
-Phase: 9 of 9 (3D GUI and ELED Zone Preset) — in_progress
-Plan: 2 of 3 (09-02 complete)
+Phase: 10 of 10 (Edge Layers and 3D Preview) — in_progress
+Plan: 1 of 3 (10-01 complete)
 Status: in_progress
-Last activity: 2026-03-16 — 09-02 zone editor GUI: zone sub-table per layer, zone preview canvas, zone overlay on temperature map and PDF export; 202 tests pass
+Last activity: 2026-03-16 — 10-01 EdgeLayer dataclass + generate_edge_zones() + solver integration; 235 tests pass
 
-Progress: [█████████░] 96%
+Progress: [█████████░] 97%
 
 ## Performance Metrics
 
@@ -69,6 +69,8 @@ Progress: [█████████░] 96%
 | 07-3d-solver-core | 2 | 20 min | 10 min |
 | 08-z-refinement | 3 | 20 min | 7 min |
 | 09-3d-gui-and-eled-zone-preset | 2 | 15 min | 8 min |
+
+| 10-edge-layers-and-3d-preview | 1 | 5 min | 5 min |
 
 *Updated after each plan completion*
 
@@ -104,6 +106,9 @@ Progress: [█████████░] 96%
 - [Phase 09-3d-gui-and-eled-zone-preset]: zones= parameter on plot_temperature_map_annotated defaults to None — fully backward-compatible; ResultSnapshot.layer_zones uses getattr for older snapshots
 - [Phase 09-3d-gui-and-eled-zone-preset]: Use 'Air Gap' (not 'Air') for ELED zone air material — only Air Gap exists in materials_builtin.json; matches _AIR_GAP_KEY in network_builder.py
 - [Phase 09-3d-gui-and-eled-zone-preset]: generate_eled_zones() integration test uses edge_config='left_right' — only this config places LEDs in the x-axis FR4 zone columns; 'bottom' config places LEDs along y-axis and doesn't create lateral zone temperature contrast
+- [Phase 10-edge-layers-and-3d-preview]: Bottom/top edge zones span full panel width to cover corners; left/right zones span interior height only
+- [Phase 10-edge-layers-and-3d-preview]: Edge zones prepended before manual zones in solver so manual zones win on overlap (last-defined-wins)
+- [Phase 10-edge-layers-and-3d-preview]: Layer.to_dict() omits edge_layers key when empty — consistent with existing zones omission pattern
 
 ### Pending Todos
 
@@ -117,5 +122,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 09-02-PLAN.md
-Resume file: .planning/phases/09-3d-gui-and-eled-zone-preset/09-02-SUMMARY.md
+Stopped at: Completed 10-01-PLAN.md
+Resume file: .planning/phases/10-edge-layers-and-3d-preview/10-01-SUMMARY.md

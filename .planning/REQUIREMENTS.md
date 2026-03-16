@@ -88,8 +88,8 @@
 
 ### Edge Layer Stacking
 
-- [ ] **EDGE-01**: Layer model supports `edge_layers` dict field with per-edge (bottom/top/left/right) ordered lists of lateral layers (material + thickness), serialized in project JSON
-- [ ] **EDGE-02**: Edge layers auto-generate MaterialZone rectangles at solve time; corners use outermost material (frame); edge zones + manual zones coexist with manual winning on overlap
+- [x] **EDGE-01**: Layer model supports `edge_layers` dict field with per-edge (bottom/top/left/right) ordered lists of lateral layers (material + thickness), serialized in project JSON
+- [x] **EDGE-02**: Edge layers auto-generate MaterialZone rectangles at solve time; corners use outermost material (frame); edge zones + manual zones coexist with manual winning on overlap
 - [ ] **EDGE-03**: ELED architecture selection auto-populates LGP layer edge layers with correct perimeter structure (frame+air+PCB on LED edges, frame+air on non-LED edges)
 
 ### 3D Assembly Visualization
