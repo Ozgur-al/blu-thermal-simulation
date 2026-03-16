@@ -86,6 +86,18 @@
 - [x] **ELED-01**: ELED template generates correct cross-section zones: metal frame, FR4+LED PCB, air gap, LGP as lateral material zones at the LGP z-level
 - [x] **ELED-02**: ELED thermal model captures both heat paths: LED→FR4→metal (primary) and LED→air→LGP (secondary)
 
+### Edge Layer Stacking
+
+- [ ] **EDGE-01**: Layer model supports `edge_layers` dict field with per-edge (bottom/top/left/right) ordered lists of lateral layers (material + thickness), serialized in project JSON
+- [ ] **EDGE-02**: Edge layers auto-generate MaterialZone rectangles at solve time; corners use outermost material (frame); edge zones + manual zones coexist with manual winning on overlap
+- [ ] **EDGE-03**: ELED architecture selection auto-populates LGP layer edge layers with correct perimeter structure (frame+air+PCB on LED edges, frame+air on non-LED edges)
+
+### 3D Assembly Visualization
+
+- [ ] **VIS3D-01**: Interactive 3D view (PyVista/VTK) showing assembly as color-coded blocks with rotation, pan, zoom, and layer labels
+- [ ] **VIS3D-02**: Explode slider separates layers vertically for inspecting internal structure including edge layers
+- [ ] **VIS3D-03**: 3D results view shows temperature data overlaid on assembly geometry after solving
+
 ## Future Enhancements
 
 - **TMPL-01**: New From Template dialog with thumbnail previews of example projects
@@ -155,10 +167,17 @@
 | ELED-01 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
 | ELED-02 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
 
+| EDGE-01 | Phase 10 — Edge Layers and 3D Preview | Planned |
+| EDGE-02 | Phase 10 — Edge Layers and 3D Preview | Planned |
+| EDGE-03 | Phase 10 — Edge Layers and 3D Preview | Planned |
+| VIS3D-01 | Phase 10 — Edge Layers and 3D Preview | Planned |
+| VIS3D-02 | Phase 10 — Edge Layers and 3D Preview | Planned |
+| VIS3D-03 | Phase 10 — Edge Layers and 3D Preview | Planned |
+
 **Coverage:**
 - v1 requirements: 30 total (all complete)
-- v2 requirements: 16 total
-- Mapped to phases: 30 (v1) + 16 (v2)
+- v2 requirements: 22 total (16 complete, 6 planned)
+- Mapped to phases: 30 (v1) + 22 (v2)
 - Unmapped: 0
 
 ---

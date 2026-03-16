@@ -93,6 +93,7 @@
 - [x] **Phase 7: 3D Solver Core** - NodeLayout abstraction, per-cell material zones, harmonic-mean conductance, backward-compat regression gate (completed 2026-03-15)
 - [x] **Phase 8: Z-Refinement** - Multiple z-nodes per layer, correct within-layer vs inter-layer conductance formulas, solver reshape, analytical validation (completed 2026-03-15)
 - [ ] **Phase 9: 3D GUI and ELED Zone Preset** - Z-slice viewer, nz spinbox, material zone editor, ELED cross-section auto-zones
+- [ ] **Phase 10: Edge Layers and 3D Preview** - Per-edge lateral layer stacking, interactive 3D assembly preview, ELED auto-populate
 
 ## Phase Details
 
@@ -140,10 +141,24 @@ Plans:
 - [ ] 09-02-PLAN.md — Material zone editor with preview canvas, zone overlay on temperature map
 - [ ] 09-03-PLAN.md — ELED cross-section zone preset with generate function and human verification
 
+### Phase 10: Edge Layers and 3D Preview
+**Goal**: Engineers can define the ELED perimeter structure as lateral layer stacks per edge per z-layer without coordinate math, verify the assembly in an interactive 3D view, and see temperature results on the 3D geometry
+**Depends on**: Phase 9
+**Requirements**: EDGE-01, EDGE-02, EDGE-03, VIS3D-01, VIS3D-02, VIS3D-03
+**Success Criteria** (what must be TRUE):
+  1. User can define per-edge lateral layers (material + thickness) on any z-layer and the solver correctly generates MaterialZone rectangles from them — verified by a unit test comparing generated zones against hand-calculated positions
+  2. ELED architecture selection auto-populates the LGP layer with correct edge layers (frame, air, PCB on LED edges; frame, air on non-LED edges) — no manual zone entry needed
+  3. An interactive 3D view shows the full assembly as color-coded blocks with rotation, zoom, and an explode slider to separate layers for inspection
+  4. After solving, the 3D results view shows temperature data overlaid on the assembly geometry
+  5. Edge layers and manual zones coexist: edge layers define perimeter, manual zones overlay for partial features — manual wins on overlap
+**Plans:** 0 plans
+Plans:
+- (none yet)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 7 -> 8 -> 9
+Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -155,4 +170,5 @@ Phases execute in numeric order: 7 -> 8 -> 9
 | 6. Architecture Support | v1.0 | 3/3 | Complete | 2026-03-14 |
 | 7. 3D Solver Core | 2/2 | Complete   | 2026-03-15 | - |
 | 8. Z-Refinement | 3/3 | Complete   | 2026-03-15 | - |
-| 9. 3D GUI and ELED Zone Preset | 2/3 | In Progress|  | 2026-03-15 |
+| 9. 3D GUI and ELED Zone Preset | v2.0 | 2/3 | Paused | - |
+| 10. Edge Layers and 3D Preview | v2.0 | 0/0 | Planning complete | - |
