@@ -298,6 +298,12 @@ class BlockEditorWidget(QWidget):
     def _on_probes_changed(self) -> None:
         self.project_changed.emit()
 
+    def _refresh_block_combos(self) -> None:
+        """Refresh dependent combos after block list changes.
+
+        Currently a no-op — reserved for future source-block linking.
+        """
+
     # ------------------------------------------------------------------
     # Row add helpers
     # ------------------------------------------------------------------

@@ -296,7 +296,7 @@ def _plot_slice_transient(result, mesh, plot_z: float | None, output_path: Path)
     ax.set_ylabel("y [mm]")
     ax.set_title(
         f"Transient final temperature — z = {z_centres[iz] * 1e3:.2f} mm"
-        f"  (t = {result.times_s[-1]:.1f} s)"
+        f"  (t = {result.time_points[-1]:.1f} s)"
     )
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
