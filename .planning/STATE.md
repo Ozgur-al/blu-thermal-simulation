@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
 status: in_progress
-last_updated: "2026-03-16T06:30:00Z"
+last_updated: "2026-03-16T06:35:00Z"
 progress:
   total_phases: 10
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 35
-  completed_plans: 33
+  completed_plans: 34
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 
 ## Current Position
 
-Phase: 10 of 10 (Edge Layers and 3D Preview) — in_progress
-Plan: 2 of 3 (10-02 complete)
-Status: in_progress
-Last activity: 2026-03-16 — 10-02 Assembly3DWidget with PyVista/VTK, explode slider, dock panel wired to layer changes; 249 tests pass
+Phase: 10 of 10 (Edge Layers and 3D Preview) — complete
+Plan: 3 of 3 (10-03 complete)
+Status: complete
+Last activity: 2026-03-16 — 10-03 edge layer GUI editor, ELED template auto-populate, 3D temperature overlay with toggle; 246 tests pass
 
-Progress: [█████████░] 97%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -43,7 +43,7 @@ Progress: [█████████░] 97%
 | 07-3d-solver-core | 2 | 20 min | 10 min |
 | 08-z-refinement | 3 | 20 min | 7 min |
 | 09-3d-gui-and-eled-zone-preset | 2 | 15 min | 8 min |
-| 10-edge-layers-and-3d-preview | 2 | 20 min | 10 min |
+| 10-edge-layers-and-3d-preview | 3 | 50 min | 17 min |
 
 *Updated after each plan completion*
 
@@ -82,8 +82,12 @@ Progress: [█████████░] 97%
 - [Phase 10-edge-layers-and-3d-preview]: Bottom/top edge zones span full panel width to cover corners; left/right zones span interior height only
 - [Phase 10-edge-layers-and-3d-preview]: Edge zones prepended before manual zones in solver so manual zones win on overlap (last-defined-wins)
 - [Phase 10-edge-layers-and-3d-preview]: Layer.to_dict() omits edge_layers key when empty — consistent with existing zones omission pattern
-- [Phase 10-edge-layers-and-3d-preview]: update_temperature() is a no-op stub in Assembly3DWidget — temperature scalar overlay deferred to later plan
-- [Phase 10-edge-layers-and-3d-preview]: Widget tests skip via subprocess-timeout probe when VTK render window cannot initialise in headless environment
+- [Phase 10-edge-layers-and-3d-preview]: _layer_edge_layers dict (layer_row -> dict[edge, list[dict]]) mirrors _layer_zones pattern for GUI data storage
+- [Phase 10-edge-layers-and-3d-preview]: _updating_edge_layers flag (not blockSignals) guards recursive cellChanged in edge table — same pattern as _updating_zones
+- [Phase 10-edge-layers-and-3d-preview]: eled_template edge_layers: LED edges get Steel+Air Gap+FR4 (3mm+1mm+5mm), non-LED edges get Steel+Air Gap (3mm+1mm)
+- [Phase 10-edge-layers-and-3d-preview]: _filter_materials updated to scan layer.edge_layers so ELED edge materials auto-included in template materials dict
+- [Phase 10-edge-layers-and-3d-preview]: update_temperature() uses pv.ImageData per layer with cell_data scalars for temperature colormap overlay
+- [Phase 10-edge-layers-and-3d-preview]: Toggle button starts disabled; enabled after first solve result; switches between material-colored structure and temperature overlay
 
 ### Pending Todos
 
@@ -97,5 +101,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 10-02-PLAN.md
-Resume file: .planning/phases/10-edge-layers-and-3d-preview/10-02-SUMMARY.md
+Stopped at: Completed 10-03-PLAN.md
+Resume file: .planning/phases/10-edge-layers-and-3d-preview/10-03-SUMMARY.md
