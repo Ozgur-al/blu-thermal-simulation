@@ -175,3 +175,12 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 8. Z-Refinement | 3/3 | Complete   | 2026-03-15 | - |
 | 9. 3D GUI and ELED Zone Preset | v2.0 | 2/3 | Paused | - |
 | 10. Edge Layers and 3D Preview | 4/4 | Complete   | 2026-03-16 | 2026-03-16 |
+
+### Phase 11: Voxel-Based 3D Solver
+**Goal**: Replace the 2.5D RC-network with a true per-cell 3D material grid (nz_total, ny, nx) where each voxel has its own material. Edge structures get independent z-thickness (e.g., 1.6mm FR4 PCB next to 4mm LGP), heat sources contact multiple materials physically, and the solver computes heat distribution from actual thermal resistances without approximation hacks.
+**Requirements**: TBD
+**Depends on:** Phase 10
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 11 to break down)

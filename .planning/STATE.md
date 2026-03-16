@@ -89,6 +89,11 @@ Progress: [██████████] 100%
 - [Phase 10-edge-layers-and-3d-preview]: update_temperature() uses pv.ImageData per layer with cell_data scalars for temperature colormap overlay
 - [Phase 10-edge-layers-and-3d-preview]: Toggle button starts disabled; enabled after first solve result; switches between material-colored structure and temperature overlay
 - [Phase 10-edge-layers-and-3d-preview]: generate_edge_zones() called inside try/except in build_assembly_blocks() — catches ValueError (invalid dims) and ImportError; imported lazily inside block
+- [Phase 10-edge-layers-and-3d-preview]: 2.5D model fundamentally cannot represent edge structures with independent z-thickness — edge zones inherit parent layer thickness, causing unrealistic thermal resistance for thin PCBs on thick LGPs
+
+### Roadmap Evolution
+
+- Phase 11 added: Voxel-Based 3D Solver — per-cell 3D material grid replacing 2.5D RC-network
 
 ### Pending Todos
 
