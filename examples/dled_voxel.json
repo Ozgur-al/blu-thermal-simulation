@@ -40,6 +40,138 @@
       "width": 0.440,
       "depth": 0.290,
       "height": 0.0005
+    },
+    {
+      "name": "LED-R0-C0",
+      "material": "LED Package",
+      "x": 0.03050,
+      "y": 0.02425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R0-C1",
+      "material": "LED Package",
+      "x": 0.14300,
+      "y": 0.02425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R0-C2",
+      "material": "LED Package",
+      "x": 0.25550,
+      "y": 0.02425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R0-C3",
+      "material": "LED Package",
+      "x": 0.36800,
+      "y": 0.02425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R1-C0",
+      "material": "LED Package",
+      "x": 0.03050,
+      "y": 0.12425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R1-C1",
+      "material": "LED Package",
+      "x": 0.14300,
+      "y": 0.12425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R1-C2",
+      "material": "LED Package",
+      "x": 0.25550,
+      "y": 0.12425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R1-C3",
+      "material": "LED Package",
+      "x": 0.36800,
+      "y": 0.12425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R2-C0",
+      "material": "LED Package",
+      "x": 0.03050,
+      "y": 0.22425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R2-C1",
+      "material": "LED Package",
+      "x": 0.14300,
+      "y": 0.22425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R2-C2",
+      "material": "LED Package",
+      "x": 0.25550,
+      "y": 0.22425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
+    },
+    {
+      "name": "LED-R2-C3",
+      "material": "LED Package",
+      "x": 0.36800,
+      "y": 0.22425,
+      "z": 0.003,
+      "width": 0.0015,
+      "depth": 0.0015,
+      "height": 0.0008,
+      "power_w": 0.5
     }
   ],
   "materials": {
@@ -66,154 +198,16 @@
       "density": 1180.0,
       "specific_heat": 1460.0,
       "emissivity": 0.9
+    },
+    "LED Package": {
+      "name": "LED Package",
+      "k_in_plane": 20.0,
+      "k_through": 20.0,
+      "density": 3000.0,
+      "specific_heat": 800.0,
+      "emissivity": 0.5
     }
   },
-  "sources": [
-    {
-      "name": "LED-R0-C0",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.03125,
-      "y": 0.025,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R0-C1",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.14375,
-      "y": 0.025,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R0-C2",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.25625,
-      "y": 0.025,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R0-C3",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.36875,
-      "y": 0.025,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R1-C0",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.03125,
-      "y": 0.125,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R1-C1",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.14375,
-      "y": 0.125,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R1-C2",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.25625,
-      "y": 0.125,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R1-C3",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.36875,
-      "y": 0.125,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R2-C0",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.03125,
-      "y": 0.225,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R2-C1",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.14375,
-      "y": 0.225,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R2-C2",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.25625,
-      "y": 0.225,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    },
-    {
-      "name": "LED-R2-C3",
-      "block": "Metal Frame",
-      "face": "top",
-      "power_w": 0.5,
-      "shape": "rectangle",
-      "x": 0.36875,
-      "y": 0.225,
-      "width": 0.003,
-      "height": 0.003,
-      "radius": null
-    }
-  ],
   "boundary_groups": [
     {
       "name": "exposed",

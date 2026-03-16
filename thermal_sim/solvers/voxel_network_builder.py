@@ -282,7 +282,7 @@ def build_voxel_network(project: VoxelProject) -> VoxelThermalNetwork:
     # ------------------------------------------------------------------
     # Step 5: heat source vector
     # ------------------------------------------------------------------
-    _apply_surface_sources(project, mesh, b_sources)
+    _apply_block_power(project, mesh, b_sources)
 
     # ------------------------------------------------------------------
     # Step 6: thermal capacity vector
@@ -321,40 +321,25 @@ def build_voxel_network(project: VoxelProject) -> VoxelThermalNetwork:
 # ---------------------------------------------------------------------------
 
 
-def _apply_surface_sources(
+def _apply_block_power(
     project: VoxelProject,
     mesh: ConformalMesh3D,
     b_vec: np.ndarray,
 ) -> None:
-    """Inject heat source power into b_vec.
+    """Inject volumetric heat from blocks with power_w > 0.
 
-    For each SurfaceSource, find the block it references, determine which
-    voxels lie on the named face, then distribute power uniformly (or via
-    a rectangle/circle mask for shaped sources).
+    Power is distributed uniformly across all voxels belonging to the block.
+    Heat conducts naturally into adjacent blocks via the conductance matrix.
     """
     nx, ny, nz = mesh.nx, mesh.ny, mesh.nz
+    cx = mesh.x_centers()
+    cy = mesh.y_centers()
+    cz = mesh.z_centers()
 
-    # Build block name -> AssemblyBlock lookup
-    block_map = {blk.name: blk for blk in project.blocks}
+    for blk in project.blocks:
+        if blk.power_w <= 0.0:
+            continue
 
-    cx = mesh.x_centers()  # (nx,)
-    cy = mesh.y_centers()  # (ny,)
-    cz = mesh.z_centers()  # (nz,)
-
-    for src in project.sources:
-        blk = block_map.get(src.block)
-        if blk is None:
-            continue  # referenced block not found — silently skip
-
-        # Find voxels on the requested face
-        # "top"    -> iz = highest iz inside block
-        # "bottom" -> iz = lowest  iz inside block
-        # "front"  -> iy = lowest  iy inside block
-        # "back"   -> iy = highest iy inside block
-        # "left"   -> ix = lowest  ix inside block
-        # "right"  -> ix = highest ix inside block
-
-        # Cell membership masks (same logic as assign_voxel_materials)
         in_x = (cx >= blk.x) & (cx < blk.x + blk.width)
         in_y = (cy >= blk.y) & (cy < blk.y + blk.depth)
         in_z = (cz >= blk.z) & (cz < blk.z + blk.height)
@@ -363,94 +348,9 @@ def _apply_surface_sources(
         iy_blk = np.where(in_y)[0]
         iz_blk = np.where(in_z)[0]
         if ix_blk.size == 0 or iy_blk.size == 0 or iz_blk.size == 0:
-            continue  # block covers no cells
-
-        face = src.face
-        if face == "top":
-            iz_face = np.array([iz_blk[-1]])
-            iy_face = iy_blk
-            ix_face = ix_blk
-        elif face == "bottom":
-            iz_face = np.array([iz_blk[0]])
-            iy_face = iy_blk
-            ix_face = ix_blk
-        elif face == "front":
-            iz_face = iz_blk
-            iy_face = np.array([iy_blk[0]])
-            ix_face = ix_blk
-        elif face == "back":
-            iz_face = iz_blk
-            iy_face = np.array([iy_blk[-1]])
-            ix_face = ix_blk
-        elif face == "left":
-            iz_face = iz_blk
-            iy_face = iy_blk
-            ix_face = np.array([ix_blk[0]])
-        elif face == "right":
-            iz_face = iz_blk
-            iy_face = iy_blk
-            ix_face = np.array([ix_blk[-1]])
-        else:
             continue
 
-        # Build full meshgrid of face voxels
-        iz_g, iy_g, ix_g = np.meshgrid(iz_face, iy_face, ix_face, indexing='ij')
-        iz_f = iz_g.ravel()
-        iy_f = iy_g.ravel()
-        ix_f = ix_g.ravel()
-
-        # Apply shape mask if needed
-        if src.shape == "rectangle":
-            # Local face coordinates
-            if face in ("top", "bottom"):
-                u_cells = cx[ix_f]  # local u = global x
-                v_cells = cy[iy_f]  # local v = global y
-                u0 = blk.x + src.x - src.width / 2.0
-                u1 = blk.x + src.x + src.width / 2.0
-                v0 = blk.y + src.y - src.height / 2.0
-                v1 = blk.y + src.y + src.height / 2.0
-            elif face in ("front", "back"):
-                u_cells = cx[ix_f]
-                v_cells = cz[iz_f]
-                u0 = blk.x + src.x - src.width / 2.0
-                u1 = blk.x + src.x + src.width / 2.0
-                v0 = blk.z + src.y - src.height / 2.0
-                v1 = blk.z + src.y + src.height / 2.0
-            else:  # left / right
-                u_cells = cy[iy_f]
-                v_cells = cz[iz_f]
-                u0 = blk.y + src.x - src.width / 2.0
-                u1 = blk.y + src.x + src.width / 2.0
-                v0 = blk.z + src.y - src.height / 2.0
-                v1 = blk.z + src.y + src.height / 2.0
-            shape_mask = (u_cells >= u0) & (u_cells <= u1) & (v_cells >= v0) & (v_cells <= v1)
-            iz_f, iy_f, ix_f = iz_f[shape_mask], iy_f[shape_mask], ix_f[shape_mask]
-        elif src.shape == "circle":
-            if face in ("top", "bottom"):
-                u_cells = cx[ix_f] - blk.x - src.x
-                v_cells = cy[iy_f] - blk.y - src.y
-            elif face in ("front", "back"):
-                u_cells = cx[ix_f] - blk.x - src.x
-                v_cells = cz[iz_f] - blk.z - src.y
-            else:
-                u_cells = cy[iy_f] - blk.y - src.x
-                v_cells = cz[iz_f] - blk.z - src.y
-            shape_mask = u_cells ** 2 + v_cells ** 2 <= src.radius ** 2
-            iz_f, iy_f, ix_f = iz_f[shape_mask], iy_f[shape_mask], ix_f[shape_mask]
-
-        n_cells_face = iz_f.size
-        if n_cells_face == 0:
-            # Shape filter eliminated all cells (source smaller than mesh cells).
-            # Fall back to distributing power uniformly across all face cells so
-            # energy is conserved regardless of mesh resolution.
-            iz_g2, iy_g2, ix_g2 = np.meshgrid(iz_face, iy_face, ix_face, indexing='ij')
-            iz_f = iz_g2.ravel()
-            iy_f = iy_g2.ravel()
-            ix_f = ix_g2.ravel()
-            n_cells_face = iz_f.size
-        if n_cells_face == 0:
-            continue
-
-        nodes = iz_f * ny * nx + iy_f * nx + ix_f
-        power_per_cell = src.power_w / n_cells_face
+        iz_g, iy_g, ix_g = np.meshgrid(iz_blk, iy_blk, ix_blk, indexing='ij')
+        nodes = (iz_g * ny * nx + iy_g * nx + ix_g).ravel()
+        power_per_cell = blk.power_w / nodes.size
         np.add.at(b_vec, nodes, power_per_cell)

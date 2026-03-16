@@ -139,9 +139,9 @@ def test_voxel_project_round_trip():
         specific_heat=900.0,
     )
     block = AssemblyBlock(
-        name="frame", material="Aluminum", x=0, y=0, z=0, width=0.1, depth=0.1, height=0.003
+        name="frame", material="Aluminum", x=0, y=0, z=0, width=0.1, depth=0.1, height=0.003,
+        power_w=0.5,
     )
-    src = SurfaceSource(name="led1", block="frame", face="top", power_w=0.5)
     probe = VoxelProbe(name="p1", x=0.05, y=0.05, z=0.003)
     bg = BoundaryGroup(
         name="top_exposed", boundary=SurfaceBoundary(convection_h=8.0, include_radiation=True)
@@ -153,7 +153,6 @@ def test_voxel_project_round_trip():
         name="test_project",
         blocks=[block],
         materials={"Aluminum": mat},
-        sources=[src],
         boundary_groups=[bg],
         probes=[probe],
         mesh_config=mesh_cfg,
@@ -166,8 +165,7 @@ def test_voxel_project_round_trip():
     assert restored.name == project.name
     assert len(restored.blocks) == 1
     assert restored.blocks[0] == block
-    assert len(restored.sources) == 1
-    assert restored.sources[0] == src
+    assert restored.blocks[0].power_w == 0.5
     assert len(restored.probes) == 1
     assert restored.probes[0].z == 0.003
     assert len(restored.boundary_groups) == 1
@@ -195,7 +193,6 @@ def test_voxel_project_no_transient_config():
         name="p",
         blocks=[block],
         materials={"Aluminum": mat},
-        sources=[],
         boundary_groups=[],
         probes=[],
         mesh_config=VoxelMeshConfig(),

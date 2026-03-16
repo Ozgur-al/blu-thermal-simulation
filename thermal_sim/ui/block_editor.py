@@ -31,7 +31,6 @@ if TYPE_CHECKING:
 
 from thermal_sim.models.assembly_block import AssemblyBlock
 from thermal_sim.models.boundary import SurfaceBoundary
-from thermal_sim.models.surface_source import SurfaceSource
 from thermal_sim.models.voxel_project import (
     BoundaryGroup,
     VoxelMeshConfig,
@@ -82,7 +81,6 @@ class BlockEditorWidget(QWidget):
         layout.addWidget(self._tabs)
 
         self._build_blocks_tab()
-        self._build_sources_tab()
         self._build_boundaries_tab()
         self._build_probes_tab()
         self._build_mesh_tab()
@@ -99,10 +97,10 @@ class BlockEditorWidget(QWidget):
         v = QVBoxLayout(w)
         v.setContentsMargins(4, 4, 4, 4)
 
-        self._blocks_table = QTableWidget(0, 8)
+        self._blocks_table = QTableWidget(0, 9)
         self._blocks_table.setHorizontalHeaderLabels([
             "Name", "Material", "X (mm)", "Y (mm)", "Z (mm)",
-            "Width (mm)", "Depth (mm)", "Height (mm)",
+            "Width (mm)", "Depth (mm)", "Height (mm)", "Power (W)",
         ])
         self._blocks_table.horizontalHeader().setToolTip(
             "Position (X,Y,Z) is the lower-left-bottom corner. Width=x, Depth=y, Height=z."
@@ -110,7 +108,7 @@ class BlockEditorWidget(QWidget):
         hdrs = self._blocks_table.horizontalHeader()
         hdrs.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hdrs.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        for c in range(2, 8):
+        for c in range(2, 9):
             hdrs.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
 
         # Tooltip per column
@@ -123,6 +121,7 @@ class BlockEditorWidget(QWidget):
             "Size along x-axis (mm)",
             "Size along y-axis / depth (mm)",
             "Size along z-axis / height (mm)",
+            "Heat generation power (W). 0 = passive block.",
         ]
         for col, tip in enumerate(_col_tips):
             item = self._blocks_table.horizontalHeaderItem(col)
@@ -145,53 +144,6 @@ class BlockEditorWidget(QWidget):
         v.addLayout(btn_row)
 
         self._tabs.addTab(w, "Blocks")
-
-    def _build_sources_tab(self) -> None:
-        w = QWidget()
-        v = QVBoxLayout(w)
-        v.setContentsMargins(4, 4, 4, 4)
-
-        self._sources_table = QTableWidget(0, 10)
-        self._sources_table.setHorizontalHeaderLabels([
-            "Name", "Block", "Face", "Power (W)", "Shape",
-            "X (mm)", "Y (mm)", "Width (mm)", "Height (mm)", "Radius (mm)",
-        ])
-        hdrs = self._sources_table.horizontalHeader()
-        hdrs.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for c in range(1, 10):
-            hdrs.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
-
-        _col_tips = [
-            "Source name",
-            "Block this source is attached to",
-            "Face of the block: top/bottom/left/right/front/back",
-            "Heat power in Watts",
-            "Shape: full / rectangle / circle",
-            "Local X offset within face (mm) — for rectangle/circle only",
-            "Local Y offset within face (mm) — for rectangle/circle only",
-            "Width (mm) — rectangle only",
-            "Height (mm) — rectangle only",
-            "Radius (mm) — circle only",
-        ]
-        for col, tip in enumerate(_col_tips):
-            item = self._sources_table.horizontalHeaderItem(col)
-            if item:
-                item.setToolTip(tip)
-
-        self._sources_table.cellChanged.connect(self._on_sources_changed)
-        v.addWidget(self._sources_table)
-
-        btn_row = QHBoxLayout()
-        add_btn = QPushButton("Add Source")
-        add_btn.clicked.connect(self._add_source_row_default)
-        rm_btn = QPushButton("Remove Selected")
-        rm_btn.clicked.connect(self._remove_sources_row)
-        btn_row.addWidget(add_btn)
-        btn_row.addWidget(rm_btn)
-        btn_row.addStretch()
-        v.addLayout(btn_row)
-
-        self._tabs.addTab(w, "Sources")
 
     def _build_boundaries_tab(self) -> None:
         w = QWidget()
@@ -338,10 +290,6 @@ class BlockEditorWidget(QWidget):
         self.project_changed.emit()
 
     def _on_blocks_changed(self) -> None:
-        self._refresh_block_combos()
-        self.project_changed.emit()
-
-    def _on_sources_changed(self) -> None:
         self.project_changed.emit()
 
     def _on_boundaries_changed(self) -> None:
@@ -363,7 +311,7 @@ class BlockEditorWidget(QWidget):
         mat_combo = self._make_material_combo()
         self._blocks_table.setCellWidget(row, 1, mat_combo)
 
-        for col, val in enumerate([0.0, 0.0, 0.0, 100.0, 100.0, 5.0], start=2):
+        for col, val in enumerate([0.0, 0.0, 0.0, 100.0, 100.0, 5.0, 0.0], start=2):
             self._blocks_table.setItem(row, col, _float_item(val))
 
         self._blocks_table.blockSignals(False)
@@ -375,41 +323,6 @@ class BlockEditorWidget(QWidget):
         if row >= 0:
             self._blocks_table.removeRow(row)
             self._refresh_block_combos()
-            self.project_changed.emit()
-
-    def _add_source_row_default(self) -> None:
-        row = self._sources_table.rowCount()
-        self._sources_table.blockSignals(True)
-        self._sources_table.insertRow(row)
-        self._sources_table.setItem(row, 0, QTableWidgetItem(f"Source{row + 1}"))
-
-        block_combo = QComboBox()
-        block_combo.addItems(self._get_block_names())
-        block_combo.currentTextChanged.connect(self._on_sources_changed)
-        self._sources_table.setCellWidget(row, 1, block_combo)
-
-        face_combo = QComboBox()
-        face_combo.addItems(["top", "bottom", "left", "right", "front", "back"])
-        face_combo.currentTextChanged.connect(self._on_sources_changed)
-        self._sources_table.setCellWidget(row, 2, face_combo)
-
-        self._sources_table.setItem(row, 3, _float_item(1.0))  # power
-
-        shape_combo = QComboBox()
-        shape_combo.addItems(["full", "rectangle", "circle"])
-        shape_combo.currentTextChanged.connect(self._on_sources_changed)
-        self._sources_table.setCellWidget(row, 4, shape_combo)
-
-        for col in range(5, 10):
-            self._sources_table.setItem(row, col, _float_item(0.0))
-
-        self._sources_table.blockSignals(False)
-        self.project_changed.emit()
-
-    def _remove_sources_row(self) -> None:
-        row = self._sources_table.currentRow()
-        if row >= 0:
-            self._sources_table.removeRow(row)
             self.project_changed.emit()
 
     def _add_boundary_row(
@@ -484,29 +397,6 @@ class BlockEditorWidget(QWidget):
                     combo.setCurrentIndex(idx)
                 combo.blockSignals(False)
 
-    def _get_block_names(self) -> list[str]:
-        names = []
-        for row in range(self._blocks_table.rowCount()):
-            item = self._blocks_table.item(row, 0)
-            if item and item.text().strip():
-                names.append(item.text().strip())
-        return names
-
-    def _refresh_block_combos(self) -> None:
-        """Update block-name combos in sources table when blocks change."""
-        names = self._get_block_names()
-        for row in range(self._sources_table.rowCount()):
-            combo = self._sources_table.cellWidget(row, 1)
-            if isinstance(combo, QComboBox):
-                current = combo.currentText()
-                combo.blockSignals(True)
-                combo.clear()
-                combo.addItems(names)
-                idx = combo.findText(current)
-                if idx >= 0:
-                    combo.setCurrentIndex(idx)
-                combo.blockSignals(False)
-
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -524,7 +414,6 @@ class BlockEditorWidget(QWidget):
             materials = self._materials
 
         blocks = self._read_blocks()
-        sources = self._read_sources()
         boundary_groups = self._read_boundaries()
         probes = self._read_probes()
         mesh_config = VoxelMeshConfig(
@@ -543,7 +432,6 @@ class BlockEditorWidget(QWidget):
             name="Untitled",
             blocks=blocks,
             materials=dict(materials),
-            sources=sources,
             boundary_groups=boundary_groups,
             probes=probes,
             mesh_config=mesh_config,
@@ -558,14 +446,6 @@ class BlockEditorWidget(QWidget):
         for blk in project.blocks:
             self._load_block_row(blk)
         self._blocks_table.blockSignals(False)
-        self._refresh_block_combos()
-
-        # Sources
-        self._sources_table.blockSignals(True)
-        self._sources_table.setRowCount(0)
-        for src in project.sources:
-            self._load_source_row(src)
-        self._sources_table.blockSignals(False)
 
         # Boundaries
         self._boundary_table.blockSignals(True)
@@ -621,49 +501,9 @@ class BlockEditorWidget(QWidget):
         for col, val in enumerate([
             _mm(blk.x), _mm(blk.y), _mm(blk.z),
             _mm(blk.width), _mm(blk.depth), _mm(blk.height),
+            blk.power_w,
         ], start=2):
             self._blocks_table.setItem(row, col, _float_item(val))
-
-    def _load_source_row(self, src: SurfaceSource) -> None:
-        row = self._sources_table.rowCount()
-        self._sources_table.insertRow(row)
-        self._sources_table.setItem(row, 0, QTableWidgetItem(src.name))
-
-        block_combo = QComboBox()
-        block_combo.addItems(self._get_block_names())
-        idx = block_combo.findText(src.block)
-        if idx < 0:
-            block_combo.addItem(src.block)
-            idx = block_combo.findText(src.block)
-        block_combo.setCurrentIndex(idx)
-        block_combo.currentTextChanged.connect(self._on_sources_changed)
-        self._sources_table.setCellWidget(row, 1, block_combo)
-
-        face_combo = QComboBox()
-        face_combo.addItems(["top", "bottom", "left", "right", "front", "back"])
-        face_combo.setCurrentText(src.face)
-        face_combo.currentTextChanged.connect(self._on_sources_changed)
-        self._sources_table.setCellWidget(row, 2, face_combo)
-
-        self._sources_table.setItem(row, 3, _float_item(src.power_w))
-
-        shape_combo = QComboBox()
-        shape_combo.addItems(["full", "rectangle", "circle"])
-        shape_combo.setCurrentText(src.shape)
-        shape_combo.currentTextChanged.connect(self._on_sources_changed)
-        self._sources_table.setCellWidget(row, 4, shape_combo)
-
-        self._sources_table.setItem(row, 5, _float_item(_mm(src.x)))
-        self._sources_table.setItem(row, 6, _float_item(_mm(src.y)))
-        self._sources_table.setItem(
-            row, 7, _float_item(_mm(src.width) if src.width is not None else 0.0)
-        )
-        self._sources_table.setItem(
-            row, 8, _float_item(_mm(src.height) if src.height is not None else 0.0)
-        )
-        self._sources_table.setItem(
-            row, 9, _float_item(_mm(src.radius) if src.radius is not None else 0.0)
-        )
 
     def _load_probe_row(self, probe: VoxelProbe) -> None:
         row = self._probes_table.rowCount()
@@ -709,69 +549,12 @@ class BlockEditorWidget(QWidget):
                     width=_m(max(_cell(row, 5, 1.0), 0.001)),
                     depth=_m(max(_cell(row, 6, 1.0), 0.001)),
                     height=_m(max(_cell(row, 7, 1.0), 0.001)),
+                    power_w=max(0.0, _cell(row, 8, 0.0)),
                 )
                 blocks.append(block)
             except (ValueError, TypeError) as exc:
                 logger.warning("Skipping block row %d: %s", row, exc)
         return blocks
-
-    def _read_sources(self) -> list[SurfaceSource]:
-        sources = []
-        for row in range(self._sources_table.rowCount()):
-            name_item = self._sources_table.item(row, 0)
-            if name_item is None or not name_item.text().strip():
-                continue
-            name = name_item.text().strip()
-
-            block_combo = self._sources_table.cellWidget(row, 1)
-            block_name = block_combo.currentText() if isinstance(block_combo, QComboBox) else ""
-            if not block_name:
-                continue
-
-            face_combo = self._sources_table.cellWidget(row, 2)
-            face = face_combo.currentText() if isinstance(face_combo, QComboBox) else "top"
-
-            def _cell(r: int, c: int, fallback: float = 0.0) -> float:
-                item = self._sources_table.item(r, c)
-                if item is None:
-                    return fallback
-                try:
-                    return float(item.text())
-                except ValueError:
-                    return fallback
-
-            power = _cell(row, 3, 1.0)
-
-            shape_combo = self._sources_table.cellWidget(row, 4)
-            shape = shape_combo.currentText() if isinstance(shape_combo, QComboBox) else "full"
-
-            x_mm = _cell(row, 5)
-            y_mm = _cell(row, 6)
-            w_mm = _cell(row, 7)
-            h_mm = _cell(row, 8)
-            r_mm = _cell(row, 9)
-
-            width_m = _m(w_mm) if shape == "rectangle" and w_mm > 0 else None
-            height_m = _m(h_mm) if shape == "rectangle" and h_mm > 0 else None
-            radius_m = _m(r_mm) if shape == "circle" and r_mm > 0 else None
-
-            try:
-                src = SurfaceSource(
-                    name=name,
-                    block=block_name,
-                    face=face,
-                    power_w=power,
-                    shape=shape,
-                    x=_m(x_mm),
-                    y=_m(y_mm),
-                    width=width_m,
-                    height=height_m,
-                    radius=radius_m,
-                )
-                sources.append(src)
-            except (ValueError, TypeError) as exc:
-                logger.warning("Skipping source row %d: %s", row, exc)
-        return sources
 
     def _read_boundaries(self) -> list[BoundaryGroup]:
         groups = []

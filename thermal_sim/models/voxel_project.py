@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from thermal_sim.models.assembly_block import AssemblyBlock
 from thermal_sim.models.boundary import SurfaceBoundary
 from thermal_sim.models.material import Material
-from thermal_sim.models.surface_source import SurfaceSource
 
 
 @dataclass
@@ -97,14 +96,14 @@ class VoxelProject:
     """Top-level voxel project model replacing DisplayProject.
 
     Holds all inputs for a voxel-based 3D thermal simulation:
-    assembly blocks, materials dict, surface heat sources, boundary groups,
-    virtual probes, mesh config, and optional transient config.
+    assembly blocks (with optional per-block power_w for heat generation),
+    materials dict, boundary groups, virtual probes, mesh config, and
+    optional transient config.
     """
 
     name: str
     blocks: list[AssemblyBlock]
     materials: dict[str, Material]
-    sources: list[SurfaceSource]
     boundary_groups: list[BoundaryGroup]
     probes: list[VoxelProbe]
     mesh_config: VoxelMeshConfig
@@ -115,7 +114,6 @@ class VoxelProject:
             "name": self.name,
             "blocks": [b.to_dict() for b in self.blocks],
             "materials": {k: v.to_dict() for k, v in self.materials.items()},
-            "sources": [s.to_dict() for s in self.sources],
             "boundary_groups": [bg.to_dict() for bg in self.boundary_groups],
             "probes": [p.to_dict() for p in self.probes],
             "mesh_config": self.mesh_config.to_dict(),
@@ -130,7 +128,6 @@ class VoxelProject:
             name=data["name"],
             blocks=[AssemblyBlock.from_dict(b) for b in data.get("blocks", [])],
             materials={k: Material.from_dict(v) for k, v in data.get("materials", {}).items()},
-            sources=[SurfaceSource.from_dict(s) for s in data.get("sources", [])],
             boundary_groups=[
                 BoundaryGroup.from_dict(bg) for bg in data.get("boundary_groups", [])
             ],

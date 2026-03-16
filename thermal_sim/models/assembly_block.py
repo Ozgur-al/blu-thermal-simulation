@@ -22,6 +22,7 @@ class AssemblyBlock:
     width: float   # x-direction size (metres)
     depth: float   # y-direction size (metres)
     height: float  # z-direction size (metres)
+    power_w: float = 0.0  # volumetric heat generation (watts)
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -34,9 +35,11 @@ class AssemblyBlock:
             raise ValueError("AssemblyBlock depth must be > 0.")
         if self.height <= 0.0:
             raise ValueError("AssemblyBlock height must be > 0.")
+        if self.power_w < 0.0:
+            raise ValueError("AssemblyBlock power_w must be >= 0.")
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "name": self.name,
             "material": self.material,
             "x": self.x,
@@ -46,6 +49,9 @@ class AssemblyBlock:
             "depth": self.depth,
             "height": self.height,
         }
+        if self.power_w > 0.0:
+            d["power_w"] = self.power_w
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "AssemblyBlock":
@@ -58,4 +64,5 @@ class AssemblyBlock:
             width=float(data["width"]),
             depth=float(data["depth"]),
             height=float(data["height"]),
+            power_w=float(data.get("power_w", 0.0)),
         )

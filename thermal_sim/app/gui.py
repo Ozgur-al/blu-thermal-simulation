@@ -86,11 +86,11 @@ def _run_app() -> None:
     # Apply dark matplotlib theme before MainWindow builds any canvases.
     mpl.rcParams.update(DARK_MPL_STYLE)
 
-    # Import and construct MainWindow *after* splash is visible — this is the
-    # slow part (scipy/numpy/PySide6 sub-imports happen here).
-    from thermal_sim.ui.main_window import MainWindow
+    # Import and construct VoxelMainWindow *after* splash is visible — this is
+    # the slow part (scipy/numpy/PySide6 sub-imports happen here).
+    from thermal_sim.ui.main_window import VoxelMainWindow
 
-    window = MainWindow()
+    window = VoxelMainWindow()
     window.show()
     splash.finish(window)
 

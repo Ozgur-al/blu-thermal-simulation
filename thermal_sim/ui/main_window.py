@@ -3964,12 +3964,12 @@ class VoxelMainWindow(QMainWindow):
         except Exception:
             pass
 
-        self._mat_table = QTableWidget(0, 4)
+        self._mat_table = QTableWidget(0, 6)
         self._mat_table.setHorizontalHeaderLabels([
-            "Name", "k_in_plane (W/mK)", "k_through (W/mK)", "rho_cp (J/m3K)"
+            "Name", "k_in_plane (W/mK)", "k_through (W/mK)", "Density (kg/m3)", "Cp (J/kgK)", "Emissivity"
         ])
         self._mat_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for c in range(1, 4):
+        for c in range(1, 6):
             self._mat_table.horizontalHeader().setSectionResizeMode(
                 c, QHeaderView.ResizeMode.ResizeToContents
             )
@@ -3998,7 +3998,9 @@ class VoxelMainWindow(QMainWindow):
             self._mat_table.setItem(row, 0, QTableWidgetItem(name))
             self._mat_table.setItem(row, 1, QTableWidgetItem(f"{mat.k_in_plane:.4g}"))
             self._mat_table.setItem(row, 2, QTableWidgetItem(f"{mat.k_through:.4g}"))
-            self._mat_table.setItem(row, 3, QTableWidgetItem(f"{mat.rho_cp:.4g}"))
+            self._mat_table.setItem(row, 3, QTableWidgetItem(f"{mat.density:.4g}"))
+            self._mat_table.setItem(row, 4, QTableWidgetItem(f"{mat.specific_heat:.4g}"))
+            self._mat_table.setItem(row, 5, QTableWidgetItem(f"{mat.emissivity:.4g}"))
         self._mat_table.blockSignals(False)
 
     def _add_material_row(self) -> None:
@@ -4008,7 +4010,9 @@ class VoxelMainWindow(QMainWindow):
         self._mat_table.setItem(row, 0, QTableWidgetItem(f"Material{row + 1}"))
         self._mat_table.setItem(row, 1, QTableWidgetItem("1.0"))
         self._mat_table.setItem(row, 2, QTableWidgetItem("1.0"))
-        self._mat_table.setItem(row, 3, QTableWidgetItem("1.0e6"))
+        self._mat_table.setItem(row, 3, QTableWidgetItem("1000"))
+        self._mat_table.setItem(row, 4, QTableWidgetItem("1000"))
+        self._mat_table.setItem(row, 5, QTableWidgetItem("0.9"))
         self._mat_table.blockSignals(False)
         self._sync_materials_from_table()
 
@@ -4045,7 +4049,9 @@ class VoxelMainWindow(QMainWindow):
                     name=name,
                     k_in_plane=max(1e-6, _cell_f(row, 1, 1.0)),
                     k_through=max(1e-6, _cell_f(row, 2, 1.0)),
-                    rho_cp=max(1.0, _cell_f(row, 3, 1e6)),
+                    density=max(1e-6, _cell_f(row, 3, 1000.0)),
+                    specific_heat=max(1e-6, _cell_f(row, 4, 1000.0)),
+                    emissivity=max(0.0, min(1.0, _cell_f(row, 5, 0.9))),
                 )
                 new_mats[name] = mat
             except Exception:

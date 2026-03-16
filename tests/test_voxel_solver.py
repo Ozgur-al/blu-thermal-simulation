@@ -13,7 +13,6 @@ import pytest
 from thermal_sim.models.assembly_block import AssemblyBlock
 from thermal_sim.models.boundary import SurfaceBoundary
 from thermal_sim.models.material import Material
-from thermal_sim.models.surface_source import SurfaceSource
 from thermal_sim.models.voxel_project import (
     BoundaryGroup,
     VoxelMeshConfig,
@@ -38,24 +37,20 @@ def _single_block_project(
     h_conv: float = 10.0,
     ambient_c: float = 25.0,
     power_w: float = 0.0,
-    power_face: str = "top",
     include_radiation: bool = False,
 ) -> VoxelProject:
     """Return a 1-block VoxelProject with convection on all faces."""
     mat = Material("Mat", k_in_plane=k, k_through=k, density=density, specific_heat=cp)
     blk = AssemblyBlock("Block", material="Mat", x=0.0, y=0.0, z=0.0,
-                        width=width, depth=depth, height=height)
+                        width=width, depth=depth, height=height,
+                        power_w=power_w)
     bc = SurfaceBoundary(ambient_c=ambient_c, convection_h=h_conv,
                          include_radiation=include_radiation)
     bg = BoundaryGroup(name="all", boundary=bc)
-    sources: list[SurfaceSource] = []
-    if power_w > 0.0:
-        sources = [SurfaceSource(name="Q", block="Block", face=power_face, power_w=power_w)]
     return VoxelProject(
         name="test",
         blocks=[blk],
         materials={"Mat": mat},
-        sources=sources,
         boundary_groups=[bg],
         probes=[],
         mesh_config=VoxelMeshConfig(cells_per_interval=1),
@@ -128,7 +123,6 @@ class TestVoxelNetworkBuilder:
             name="two_block_z",
             blocks=[blk1, blk2],
             materials={"M1": mat1, "M2": mat2},
-            sources=[],
             boundary_groups=[BoundaryGroup("all", bc)],
             probes=[],
             mesh_config=VoxelMeshConfig(cells_per_interval=1),
@@ -155,10 +149,10 @@ class TestVoxelNetworkBuilder:
         expected_c = density * cp * volume
         assert math.isclose(float(net.c_vector[0]), expected_c, rel_tol=1e-9)
 
-    def test_surface_source_injects_power_into_b_vector(self):
-        """b_vector should be nonzero when a surface source is present."""
+    def test_block_power_injects_into_b_vector(self):
+        """b_vector should be nonzero when a block has power_w > 0."""
         build_voxel_network, _ = self._import_builder()
-        project = _single_block_project(power_w=1.0, power_face="top")
+        project = _single_block_project(power_w=1.0)
         net = build_voxel_network(project)
         # b_vector includes both BC forcing and source power
         # Total b_vector sum should contain the source power somewhere
@@ -248,16 +242,15 @@ class TestVoxelSteadyStateSolver:
         mat1 = Material("M1", k_in_plane=k1, k_through=k1, density=2000.0, specific_heat=900.0)
         mat2 = Material("M2", k_in_plane=k2, k_through=k2, density=2000.0, specific_heat=900.0)
         blk1 = AssemblyBlock("Bot", material="M1", x=0.0, y=0.0, z=0.0,
-                              width=width, depth=depth, height=dz1)
+                              width=width, depth=depth, height=dz1,
+                              power_w=Q)
         blk2 = AssemblyBlock("Top", material="M2", x=0.0, y=0.0, z=dz1,
                               width=width, depth=depth, height=dz2)
         bc = SurfaceBoundary(ambient_c=T_amb, convection_h=h, include_radiation=False)
-        source = SurfaceSource(name="Q", block="Bot", face="bottom", power_w=Q)
         project = VoxelProject(
             name="two_layer_chain",
             blocks=[blk1, blk2],
             materials={"M1": mat1, "M2": mat2},
-            sources=[source],
             boundary_groups=[BoundaryGroup("all", bc)],
             probes=[],
             mesh_config=VoxelMeshConfig(cells_per_interval=1),
@@ -325,13 +318,12 @@ class TestVoxelSteadyStateSolver:
         bc = SurfaceBoundary(ambient_c=T_amb, convection_h=h, include_radiation=False)
         mat = Material("Mat", k_in_plane=k, k_through=k, density=2000.0, specific_heat=900.0)
         blk = AssemblyBlock("B", material="Mat", x=0.0, y=0.0, z=0.0,
-                             width=width, depth=depth, height=height)
-        source = SurfaceSource(name="Q", block="B", face="top", power_w=Q)
+                             width=width, depth=depth, height=height,
+                             power_w=Q)
         project = VoxelProject(
             name="2node_single",
             blocks=[blk],
             materials={"Mat": mat},
-            sources=[source],
             boundary_groups=[BoundaryGroup("all", bc)],
             probes=[],
             mesh_config=VoxelMeshConfig(cells_per_interval=1),
@@ -375,11 +367,12 @@ class TestVoxelTransientSolver:
         blk = AssemblyBlock("B", material="Mat", x=0.0, y=0.0, z=0.0,
                              width=0.10, depth=0.10, height=0.005)
         bc = SurfaceBoundary(ambient_c=25.0, convection_h=10.0, include_radiation=False)
+        blk = AssemblyBlock("B", material="Mat", x=0.0, y=0.0, z=0.0,
+                             width=0.10, depth=0.10, height=0.005, power_w=1.0)
         project = VoxelProject(
             name="test_transient",
             blocks=[blk],
             materials={"Mat": mat},
-            sources=[SurfaceSource("Q", "B", "top", power_w=1.0)],
             boundary_groups=[BoundaryGroup("all", bc)],
             probes=[],
             mesh_config=VoxelMeshConfig(1),
@@ -403,7 +396,6 @@ class TestVoxelTransientSolver:
             name="init_temp",
             blocks=[blk],
             materials={"Mat": mat},
-            sources=[],
             boundary_groups=[BoundaryGroup("all", bc)],
             probes=[],
             mesh_config=VoxelMeshConfig(1),
@@ -430,9 +422,8 @@ class TestVoxelTransientSolver:
 
         mat = Material("RC", k_in_plane=k, k_through=k, density=density, specific_heat=cp)
         blk = AssemblyBlock("B", material="RC", x=0.0, y=0.0, z=0.0,
-                             width=width, depth=depth, height=height)
+                             width=width, depth=depth, height=height, power_w=Q)
         bc = SurfaceBoundary(ambient_c=T_amb, convection_h=h, include_radiation=False)
-        source = SurfaceSource(name="Q", block="B", face="top", power_w=Q)
 
         # Analytical parameters
         area_top = width * depth
@@ -453,7 +444,6 @@ class TestVoxelTransientSolver:
             name="rc_decay",
             blocks=[blk],
             materials={"RC": mat},
-            sources=[source],
             boundary_groups=[BoundaryGroup("all", bc)],
             probes=[],
             mesh_config=VoxelMeshConfig(1),
@@ -494,14 +484,12 @@ class TestVoxelLayerStats:
         from thermal_sim.solvers.steady_state_voxel import VoxelSteadyStateSolver
         mat = Material("Hot", k_in_plane=50.0, k_through=50.0, density=2000.0, specific_heat=900.0)
         blk = AssemblyBlock("B", material="Hot", x=0.0, y=0.0, z=0.0,
-                             width=0.10, depth=0.10, height=0.005)
+                             width=0.10, depth=0.10, height=0.005, power_w=1.0)
         bc = SurfaceBoundary(ambient_c=25.0, convection_h=10.0, include_radiation=False)
-        source = SurfaceSource("Q", "B", "top", power_w=1.0)
         project = VoxelProject(
             name="stats_test",
             blocks=[blk],
             materials={"Hot": mat},
-            sources=[source],
             boundary_groups=[BoundaryGroup("all", bc)],
             probes=[],
             mesh_config=VoxelMeshConfig(1),
