@@ -98,6 +98,23 @@
 - [x] **VIS3D-02**: Explode slider separates layers vertically for inspecting internal structure including edge layers
 - [x] **VIS3D-03**: 3D results view shows temperature data overlaid on assembly geometry after solving
 
+### Voxel-Based 3D Solver
+
+- [ ] **VOX-01**: Assembly block model (named 3D rectangular solids with position, size, material) with frozen dataclass and to_dict/from_dict serialization
+- [ ] **VOX-02**: Conformal mesh generation snapping to all block boundaries in x, y, and z, producing non-uniform Cartesian grid
+- [ ] **VOX-03**: Per-voxel material assignment via cell-center containment test; empty voxels filled with air (k=0.026 W/mK); last-defined-wins on overlap
+- [ ] **VOX-04**: Voxel network builder assembling COO sparse conductance matrix with harmonic-mean conductance at material boundaries and non-uniform cell geometry
+- [ ] **VOX-05**: Steady-state solver using bicgstab+ILU preconditioner for >5k nodes, spsolve for smaller problems
+- [ ] **VOX-06**: Transient solver using splu LU prefactoring for implicit Euler time-stepping
+- [ ] **VOX-07**: Surface source placement on named block faces (LEDs as separate heat source objects, not assembly blocks)
+- [ ] **VOX-08**: Auto-detect exposed boundary faces (voxel faces not touching another block) and apply convection/radiation BCs from named boundary groups
+- [ ] **VOX-09**: Analytical validation tests (1D resistance chain, 2-node network, RC transient decay) rewritten using assembly blocks
+- [ ] **VOX-10**: CLI and project IO for new VoxelProject JSON format (clean break from old DisplayProject format)
+- [ ] **VOX-11**: GUI block editor replacing layer editor — table-based entry for blocks, sources, boundaries, probes, mesh config
+- [ ] **VOX-12**: 3D PyVista view with interactive slice planes, block transparency/hide, temperature threshold filter, and probe markers
+- [ ] **VOX-13**: DLED and ELED ready-to-run example JSON files using new assembly block format
+- [ ] **VOX-14**: Old Layer/Zone/EdgeLayer model files, old network builder, and old solver code removed (clean break; git history preserves)
+
 ## Future Enhancements
 
 - **TMPL-01**: New From Template dialog with thumbnail previews of example projects
@@ -174,12 +191,28 @@
 | VIS3D-02 | Phase 10 — Edge Layers and 3D Preview | Complete |
 | VIS3D-03 | Phase 10 — Edge Layers and 3D Preview | Complete |
 
+| VOX-01 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-02 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-03 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-04 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-05 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-06 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-07 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-08 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-09 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-10 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-11 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-12 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-13 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-14 | Phase 11 — Voxel-Based 3D Solver | Planned |
+
 **Coverage:**
 - v1 requirements: 30 total (all complete)
 - v2 requirements: 22 total (22 complete, 0 planned)
-- Mapped to phases: 30 (v1) + 22 (v2)
+- v3 requirements: 14 total (0 complete, 14 planned)
+- Mapped to phases: 30 (v1) + 22 (v2) + 14 (v3)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-16 — Phase 10 complete: EDGE-01/02/03 and VIS3D-03 marked complete; all Phase 10 requirements now satisfied*
+*Last updated: 2026-03-16 — Phase 11 requirements added: VOX-01 through VOX-14 for voxel-based 3D solver*
