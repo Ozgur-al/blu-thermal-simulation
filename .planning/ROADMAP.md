@@ -180,11 +180,11 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 **Goal**: Replace the 2.5D RC-network with a true per-cell 3D voxel solver built on an assembly block input model. Users define named 3D rectangular blocks (position, size, material), and the solver auto-generates a conformal non-uniform Cartesian grid, assigns per-voxel materials, and computes heat distribution. Edge structures get independent z-thickness, heat sources attach to block faces, and exposed boundary faces are auto-detected. Full 3D visualization with PyVista slice planes, block transparency, and temperature threshold filtering. Clean break from the old Layer-based model.
 **Requirements**: VOX-01, VOX-02, VOX-03, VOX-04, VOX-05, VOX-06, VOX-07, VOX-08, VOX-09, VOX-10, VOX-11, VOX-12, VOX-13, VOX-14
 **Depends on:** Phase 10
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 Plans:
 - [x] 11-01-PLAN.md — Data models (AssemblyBlock, SurfaceSource, VoxelProject) + ConformalMesh3D + voxel assignment
 - [x] 11-02-PLAN.md — Voxel network builder + steady-state/transient solvers + analytical validation tests
 - [x] 11-03-PLAN.md — Project IO + CLI rewrite + DLED/ELED example JSON files + old code removal
-- [ ] 11-04-PLAN.md — GUI block editor + 3D PyVista view with slice planes, transparency, threshold, probes
+- [x] 11-04-PLAN.md — GUI block editor + 3D PyVista view with slice planes, transparency, threshold, probes
 - [ ] 11-05-PLAN.md — Integration verification + human verification checkpoint

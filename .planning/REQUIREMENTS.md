@@ -110,8 +110,8 @@
 - [x] **VOX-08**: Auto-detect exposed boundary faces (voxel faces not touching another block) and apply convection/radiation BCs from named boundary groups
 - [x] **VOX-09**: Analytical validation tests (1D resistance chain, 2-node network, RC transient decay) rewritten using assembly blocks
 - [ ] **VOX-10**: CLI and project IO for new VoxelProject JSON format (clean break from old DisplayProject format)
-- [ ] **VOX-11**: GUI block editor replacing layer editor — table-based entry for blocks, sources, boundaries, probes, mesh config
-- [ ] **VOX-12**: 3D PyVista view with interactive slice planes, block transparency/hide, temperature threshold filter, and probe markers
+- [x] **VOX-11**: GUI block editor replacing layer editor — table-based entry for blocks, sources, boundaries, probes, mesh config
+- [x] **VOX-12**: 3D PyVista view with interactive slice planes, block transparency/hide, temperature threshold filter, and probe markers
 - [ ] **VOX-13**: DLED and ELED ready-to-run example JSON files using new assembly block format
 - [ ] **VOX-14**: Old Layer/Zone/EdgeLayer model files, old network builder, and old solver code removed (clean break; git history preserves)
 
@@ -201,8 +201,8 @@
 | VOX-08 | Phase 11 — Voxel-Based 3D Solver | Planned |
 | VOX-09 | Phase 11 — Voxel-Based 3D Solver | Planned |
 | VOX-10 | Phase 11 — Voxel-Based 3D Solver | Planned |
-| VOX-11 | Phase 11 — Voxel-Based 3D Solver | Planned |
-| VOX-12 | Phase 11 — Voxel-Based 3D Solver | Planned |
+| VOX-11 | Phase 11 — Voxel-Based 3D Solver | Complete |
+| VOX-12 | Phase 11 — Voxel-Based 3D Solver | Complete |
 | VOX-13 | Phase 11 — Voxel-Based 3D Solver | Planned |
 | VOX-14 | Phase 11 — Voxel-Based 3D Solver | Planned |
 

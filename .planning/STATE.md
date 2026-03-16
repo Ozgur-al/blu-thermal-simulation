@@ -8,7 +8,7 @@ progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 41
-  completed_plans: 39
+  completed_plans: 40
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 ## Current Position
 
 Phase: 11 of 11 (Voxel-Based 3D Solver) — in progress
-Plan: 3 of 5 (11-03 complete)
+Plan: 4 of 5 (11-04 complete)
 Status: in-progress
-Last activity: 2026-03-16 — 11-03: VoxelProject IO, CLI rewrite, DLED+ELED examples, old Layer code removed
+Last activity: 2026-03-16 — 11-04: BlockEditorWidget, Voxel3DView, VoxelMainWindow, legacy import fixes
 
-Progress: [█████████▊] 93%
+Progress: [█████████▉] 95%
 
 ## Performance Metrics
 
@@ -99,6 +99,10 @@ Progress: [█████████▊] 93%
 - [Phase 11-voxel-3d-solver]: VoxelThermalNetwork stores b_vector as combined BC+source term — no split needed for voxel solver
 - [Phase 11-voxel-3d-solver]: CLI uses lazy solver imports with ImportError message referencing Phase 11 Plan 02 — allows CLI to function before solvers are wired
 - [Phase 11-voxel-3d-solver]: Broken top-level imports in postprocess.py and sweep_engine.py moved to TYPE_CHECKING — old-GUI modules survive without runtime errors
+- [Phase 11-voxel-3d-solver P04]: VoxelMainWindow added as new class at bottom of main_window.py; old MainWindow preserved but dead (all dependencies deleted in Phase 11 Plan 03)
+- [Phase 11-voxel-3d-solver P04]: Legacy broken imports in main_window.py, simulation_controller.py, table_data_parser.py wrapped in try/except ImportError with None fallbacks — consistent with Plan 03 pattern
+- [Phase 11-voxel-3d-solver P04]: RectilinearGrid uses order='F' ravel for VTK Fortran convention — documented in ConformalMesh3D docstring
+- [Phase 11-voxel-3d-solver P04]: block_actors dict (name -> actor) tracks block actors for per-block visibility toggle without full scene rebuild
 
 ### Roadmap Evolution
 
@@ -116,5 +120,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 11-03-PLAN.md (VoxelProject IO, CLI rewrite, DLED+ELED examples, old code removed)
-Resume file: .planning/phases/11-voxel-3d-solver/11-03-SUMMARY.md
+Stopped at: Completed 11-04-PLAN.md (BlockEditorWidget, Voxel3DView, VoxelMainWindow, legacy import fixes)
+Resume file: .planning/phases/11-voxel-3d-solver/11-04-SUMMARY.md
