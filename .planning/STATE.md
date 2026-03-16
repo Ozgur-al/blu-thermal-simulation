@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 ## Current Position
 
 Phase: 11 of 11 (Voxel-Based 3D Solver) — in progress
-Plan: 3 of 5 (11-02 complete)
+Plan: 3 of 5 (11-03 complete)
 Status: in-progress
-Last activity: 2026-03-16 — 11-02: voxel network builder + steady-state/transient solvers + 20 analytical validation tests
+Last activity: 2026-03-16 — 11-03: VoxelProject IO, CLI rewrite, DLED+ELED examples, old Layer code removed
 
 Progress: [█████████▊] 93%
 
@@ -97,6 +97,8 @@ Progress: [█████████▊] 93%
 - [Phase 11-voxel-3d-solver]: Cell-centre containment uses inclusive-lower/exclusive-upper bounds: cx >= block.x and cx < block.x + block.width
 - [Phase 11-voxel-3d-solver]: Single BoundaryGroup applies to all 6 exposed grid-boundary faces; 1D chain test corrected to include all 6-face conductances in hand calculation
 - [Phase 11-voxel-3d-solver]: VoxelThermalNetwork stores b_vector as combined BC+source term — no split needed for voxel solver
+- [Phase 11-voxel-3d-solver]: CLI uses lazy solver imports with ImportError message referencing Phase 11 Plan 02 — allows CLI to function before solvers are wired
+- [Phase 11-voxel-3d-solver]: Broken top-level imports in postprocess.py and sweep_engine.py moved to TYPE_CHECKING — old-GUI modules survive without runtime errors
 
 ### Roadmap Evolution
 
@@ -114,5 +116,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 11-02-PLAN.md (voxel network builder + solvers + analytical validation tests)
-Resume file: .planning/phases/11-voxel-3d-solver/11-02-SUMMARY.md
+Stopped at: Completed 11-03-PLAN.md (VoxelProject IO, CLI rewrite, DLED+ELED examples, old code removed)
+Resume file: .planning/phases/11-voxel-3d-solver/11-03-SUMMARY.md

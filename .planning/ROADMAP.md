@@ -183,8 +183,8 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 **Plans:** 3/5 plans executed
 
 Plans:
-- [ ] 11-01-PLAN.md — Data models (AssemblyBlock, SurfaceSource, VoxelProject) + ConformalMesh3D + voxel assignment
-- [ ] 11-02-PLAN.md — Voxel network builder + steady-state/transient solvers + analytical validation tests
-- [ ] 11-03-PLAN.md — Project IO + CLI rewrite + DLED/ELED example JSON files + old code removal
+- [x] 11-01-PLAN.md — Data models (AssemblyBlock, SurfaceSource, VoxelProject) + ConformalMesh3D + voxel assignment
+- [x] 11-02-PLAN.md — Voxel network builder + steady-state/transient solvers + analytical validation tests
+- [x] 11-03-PLAN.md — Project IO + CLI rewrite + DLED/ELED example JSON files + old code removal
 - [ ] 11-04-PLAN.md — GUI block editor + 3D PyVista view with slice planes, transparency, threshold, probes
 - [ ] 11-05-PLAN.md — Integration verification + human verification checkpoint
