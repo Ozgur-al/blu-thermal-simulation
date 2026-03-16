@@ -193,10 +193,11 @@ Plans:
 
 ### Phase 12: Parametric Display Stack Generator
 
-**Goal**: Toolbar wizard that generates all AssemblyBlocks and boundary conditions from high-level parameters. User picks DLED/ELED architecture, sets LED edge/count/dimensions, PCB/metal/optical film thicknesses, and the generator creates the full block stack. Also includes adaptive mesh refinement (max_cell_size) to fix coarse mesh on large blocks.
-**Requirements**: TBD
+**Goal**: Engineers can open a guided wizard from the toolbar, select DLED or ELED architecture, configure panel dimensions, LED placement, layer thicknesses, boundary conditions, and mesh settings, then click Generate to produce a complete VoxelProject with all assembly blocks, materials, and boundary groups — replacing manual block-by-block entry with a parametric workflow.
+**Requirements**: GEN-01, GEN-02, GEN-03, GEN-04, GEN-05, GEN-06, GEN-07, GEN-08, GEN-09, GEN-10, GEN-11
 **Depends on:** Phase 11
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 12 to break down)
+- [ ] 12-01-PLAN.md — Pure-Python geometry generator (EledParams/DledParams + generate_eled/generate_dled) with TDD
+- [ ] 12-02-PLAN.md — Wizard dialog UI (6 pages + live 3D preview) + VoxelMainWindow integration + human verification
