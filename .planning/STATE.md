@@ -2,39 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
-status: unknown
-last_updated: "2026-03-16T06:13:09.111Z"
+status: in_progress
+last_updated: "2026-03-16T06:30:00Z"
 progress:
   total_phases: 10
   completed_phases: 8
   total_plans: 35
-  completed_plans: 32
----
-
----
-gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Full 3D Solver
-status: unknown
-last_updated: "2026-03-15T23:03:19.772Z"
-progress:
-  total_phases: 9
-  completed_phases: 7
-  total_plans: 32
-  completed_plans: 28
----
-
----
-gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Full 3D Solver
-status: in_progress
-last_updated: "2026-03-16T22:57:37Z"
-progress:
-  total_phases: 9
-  completed_phases: 7
-  total_plans: 32
-  completed_plans: 28
+  completed_plans: 33
 ---
 
 # Project State
@@ -49,18 +23,18 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 ## Current Position
 
 Phase: 10 of 10 (Edge Layers and 3D Preview) — in_progress
-Plan: 1 of 3 (10-01 complete)
+Plan: 2 of 3 (10-02 complete)
 Status: in_progress
-Last activity: 2026-03-16 — 10-01 EdgeLayer dataclass + generate_edge_zones() + solver integration; 235 tests pass
+Last activity: 2026-03-16 — 10-02 Assembly3DWidget with PyVista/VTK, explode slider, dock panel wired to layer changes; 249 tests pass
 
 Progress: [█████████░] 97%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5 (v2.0)
-- Average duration: 7 min
-- Total execution time: 0.52 hours
+- Total plans completed: 6 (v2.0)
+- Average duration: 8 min
+- Total execution time: 0.60 hours
 
 **By Phase:**
 
@@ -69,8 +43,7 @@ Progress: [█████████░] 97%
 | 07-3d-solver-core | 2 | 20 min | 10 min |
 | 08-z-refinement | 3 | 20 min | 7 min |
 | 09-3d-gui-and-eled-zone-preset | 2 | 15 min | 8 min |
-
-| 10-edge-layers-and-3d-preview | 1 | 5 min | 5 min |
+| 10-edge-layers-and-3d-preview | 2 | 20 min | 10 min |
 
 *Updated after each plan completion*
 
@@ -109,6 +82,8 @@ Progress: [█████████░] 97%
 - [Phase 10-edge-layers-and-3d-preview]: Bottom/top edge zones span full panel width to cover corners; left/right zones span interior height only
 - [Phase 10-edge-layers-and-3d-preview]: Edge zones prepended before manual zones in solver so manual zones win on overlap (last-defined-wins)
 - [Phase 10-edge-layers-and-3d-preview]: Layer.to_dict() omits edge_layers key when empty — consistent with existing zones omission pattern
+- [Phase 10-edge-layers-and-3d-preview]: update_temperature() is a no-op stub in Assembly3DWidget — temperature scalar overlay deferred to later plan
+- [Phase 10-edge-layers-and-3d-preview]: Widget tests skip via subprocess-timeout probe when VTK render window cannot initialise in headless environment
 
 ### Pending Todos
 
@@ -122,5 +97,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 10-01-PLAN.md
-Resume file: .planning/phases/10-edge-layers-and-3d-preview/10-01-SUMMARY.md
+Stopped at: Completed 10-02-PLAN.md
+Resume file: .planning/phases/10-edge-layers-and-3d-preview/10-02-SUMMARY.md

@@ -94,8 +94,8 @@
 
 ### 3D Assembly Visualization
 
-- [ ] **VIS3D-01**: Interactive 3D view (PyVista/VTK) showing assembly as color-coded blocks with rotation, pan, zoom, and layer labels
-- [ ] **VIS3D-02**: Explode slider separates layers vertically for inspecting internal structure including edge layers
+- [x] **VIS3D-01**: Interactive 3D view (PyVista/VTK) showing assembly as color-coded blocks with rotation, pan, zoom, and layer labels
+- [x] **VIS3D-02**: Explode slider separates layers vertically for inspecting internal structure including edge layers
 - [ ] **VIS3D-03**: 3D results view shows temperature data overlaid on assembly geometry after solving
 
 ## Future Enhancements
@@ -170,8 +170,8 @@
 | EDGE-01 | Phase 10 — Edge Layers and 3D Preview | Planned |
 | EDGE-02 | Phase 10 — Edge Layers and 3D Preview | Planned |
 | EDGE-03 | Phase 10 — Edge Layers and 3D Preview | Planned |
-| VIS3D-01 | Phase 10 — Edge Layers and 3D Preview | Planned |
-| VIS3D-02 | Phase 10 — Edge Layers and 3D Preview | Planned |
+| VIS3D-01 | Phase 10 — Edge Layers and 3D Preview | Complete |
+| VIS3D-02 | Phase 10 — Edge Layers and 3D Preview | Complete |
 | VIS3D-03 | Phase 10 — Edge Layers and 3D Preview | Planned |
 
 **Coverage:**

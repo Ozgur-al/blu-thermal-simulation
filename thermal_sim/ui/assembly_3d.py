@@ -8,8 +8,9 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pyvista as pv
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSlider, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QLabel
 from PySide6.QtCore import Qt
 
 if TYPE_CHECKING:
@@ -77,8 +78,6 @@ def build_assembly_blocks(project: "DisplayProject") -> list[dict]:
             "layer_index" : physical layer index (0 = bottom)
             "is_zone" : True if this block represents a material zone
     """
-    import pyvista as pv
-
     W_mm = project.width * 1000.0
     H_mm = project.height * 1000.0
 
@@ -235,7 +234,6 @@ class Assembly3DWidget(QWidget):
 
         if label_points:
             try:
-                import pyvista as pv
                 pts = pv.PolyData(np.array(label_points, dtype=float))
                 pts["labels"] = label_texts
                 self._plotter.add_point_labels(
@@ -287,14 +285,88 @@ class Assembly3DWidget(QWidget):
             pass
 
     def update_temperature(self, project: "DisplayProject", result: object) -> None:
-        """Overlay temperature data on the 3D assembly (stub for future implementation).
+        """Overlay temperature data on the 3D assembly after a solve.
 
-        This method is called by main_window after a simulation completes.  The
-        full temperature-coloured overlay (Plan 03+) will implement scalar mapping
-        via pyvista's scalars API.  For now it is a no-op so the caller does not
-        need to guard against AttributeError.
+        Shows each layer as a structured grid colored by temperature using a
+        "hot" colormap. A shared colorbar is shown on the first layer.
+
+        Parameters
+        ----------
+        project:
+            The solved DisplayProject (used for dimensions and layer metadata).
+        result:
+            SteadyStateResult or TransientResult — must have .temperatures_c
+            attribute of shape (total_sublayers, ny, nx).
         """
-        logger.debug("update_temperature called — overlay not yet implemented")
+        try:
+            all_temps = result.temperatures_c  # type: ignore[union-attr]
+        except AttributeError:
+            logger.warning("update_temperature: result has no temperatures_c attribute")
+            return
+
+        t_min = float(np.min(all_temps))
+        t_max = float(np.max(all_temps))
+        if t_max - t_min < 0.01:
+            t_max = t_min + 1.0  # avoid zero-range colormap
+
+        # Store state for toggle; remember we are in results mode
+        self._last_project = project
+        self._last_result = result
+        self._in_results_mode = True
+        if hasattr(self, "_toggle_btn"):
+            self._toggle_btn.setText("Show Structure")
+            self._toggle_btn.setEnabled(True)
+
+        self._plotter.clear()
+        self._actors = []
+
+        W_mm = project.width * 1000.0
+        H_mm = project.height * 1000.0
+
+        nz_per_layer = getattr(result, "nz_per_layer", None) or [1] * len(project.layers)
+        z_offsets = getattr(result, "z_offsets", None) or list(range(len(project.layers)))
+
+        z_base_mm = 0.0
+        for l_idx, layer in enumerate(project.layers):
+            t_mm = layer.thickness * 1000.0
+
+            nz = nz_per_layer[l_idx]
+            z_flat = z_offsets[l_idx] + nz - 1
+            try:
+                temp_map = all_temps[z_flat]  # (ny, nx)
+            except (IndexError, TypeError):
+                temp_map = all_temps[0] if len(all_temps) > 0 else np.zeros((1, 1))
+
+            ny, nx = temp_map.shape
+            dx = W_mm / nx
+            dy = H_mm / ny
+
+            grid = pv.ImageData(
+                dimensions=(nx + 1, ny + 1, 2),
+                spacing=(dx, dy, t_mm),
+                origin=(0.0, 0.0, z_base_mm),
+            )
+            grid.cell_data["Temperature [C]"] = temp_map.ravel(order="C")
+
+            actor = self._plotter.add_mesh(
+                grid,
+                scalars="Temperature [C]",
+                cmap="hot",
+                clim=(t_min, t_max),
+                show_scalar_bar=(l_idx == 0),
+                scalar_bar_args={"title": "Temperature [C]"},
+            )
+            if actor is not None:
+                self._actors.append((actor, z_base_mm, l_idx))
+            z_base_mm += t_mm
+
+        self._plotter.reset_camera()
+        self._plotter.render()
+
+        # Apply current explode level
+        current_value = self._explode_slider.value()
+        if current_value > 0:
+            self._on_explode(current_value)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Release VTK resources when the widget closes."""
