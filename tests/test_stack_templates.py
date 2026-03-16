@@ -191,6 +191,62 @@ def test_eled_template_materials_match_layer_references() -> None:
         )
 
 
+def test_eled_template_edge_layers_populated() -> None:
+    """eled_template returns LGP with edge_layers populated for left_right config."""
+    from thermal_sim.models.layer import EdgeLayer
+
+    result = eled_template(0.300, 0.200, edge_config="left_right")
+    layers = result["layers"]
+    lgp = next((l for l in layers if l.name == "LGP"), None)
+    assert lgp is not None, "LGP layer not found in ELED template"
+
+    # All 4 edges must be populated
+    assert set(lgp.edge_layers.keys()) >= {"left", "right", "bottom", "top"}
+
+    # LED edges (left/right) must have 3 entries: Steel + Air Gap + FR4
+    for led_edge in ("left", "right"):
+        entries = lgp.edge_layers[led_edge]
+        assert len(entries) == 3, f"{led_edge} edge should have 3 EdgeLayers"
+        assert entries[0].material == "Steel"
+        assert entries[1].material == "Air Gap"
+        assert entries[2].material == "FR4"
+
+    # Non-LED edges (bottom/top) must have 2 entries: Steel + Air Gap
+    for non_led_edge in ("bottom", "top"):
+        entries = lgp.edge_layers[non_led_edge]
+        assert len(entries) == 2, f"{non_led_edge} edge should have 2 EdgeLayers"
+        assert entries[0].material == "Steel"
+        assert entries[1].material == "Air Gap"
+
+
+def test_eled_template_edge_layers_round_trip() -> None:
+    """LGP layer from eled_template round-trips through to_dict/from_dict."""
+    from thermal_sim.models.layer import Layer
+
+    result = eled_template(0.300, 0.200, edge_config="left_right")
+    lgp = next(l for l in result["layers"] if l.name == "LGP")
+
+    # Serialize then deserialize
+    lgp2 = Layer.from_dict(lgp.to_dict())
+
+    assert set(lgp2.edge_layers.keys()) == set(lgp.edge_layers.keys())
+    for edge, entries in lgp.edge_layers.items():
+        entries2 = lgp2.edge_layers[edge]
+        assert len(entries2) == len(entries)
+        for el, el2 in zip(entries, entries2):
+            assert el2.material == el.material
+            assert el2.thickness == pytest.approx(el.thickness)
+
+
+def test_eled_template_materials_include_edge_layer_materials() -> None:
+    """eled_template materials dict includes Steel, Air Gap, and FR4 from edge_layers."""
+    result = eled_template(0.300, 0.200, edge_config="left_right")
+    mat_names = set(result["materials"].keys())
+    assert "Steel" in mat_names, "Steel (frame) should be in ELED materials"
+    assert "Air Gap" in mat_names, "Air Gap should be in ELED materials"
+    assert "FR4" in mat_names, "FR4 (LED board) should be in ELED materials"
+
+
 def test_stack_templates_no_pyside6_dependency() -> None:
     """stack_templates module can be imported without PySide6."""
     import sys

@@ -1446,8 +1446,17 @@ class MainWindow(QMainWindow):
                         new_zones[key - 1] = val
                     # key == removed_row is dropped
                 self._layer_zones = new_zones
-            # Hide zone panel if the selected layer was removed
+                # Also shift _layer_edge_layers keys
+                new_edge_layers: dict[int, dict] = {}
+                for key, val in self._layer_edge_layers.items():
+                    if key < removed_row:
+                        new_edge_layers[key] = val
+                    elif key > removed_row:
+                        new_edge_layers[key - 1] = val
+                self._layer_edge_layers = new_edge_layers
+            # Hide zone panel and edge panel if the selected layer was removed
             self._zone_panel.setVisible(False)
+            self._edge_layer_panel.setVisible(False)
             self._refresh_3d_preview()
 
     # ------------------------------------------------------------------
@@ -1656,6 +1665,7 @@ class MainWindow(QMainWindow):
         row = self.layers_table.rowCount() - 1
         self._set_layer_nz_spinbox(row, nz=1)
         self._layer_zones[row] = []
+        self._layer_edge_layers[row] = {}
         self._undo_stack.endMacro()
         self._update_node_count_label()
         self._refresh_3d_preview()
@@ -3075,6 +3085,24 @@ class MainWindow(QMainWindow):
                 except (ValueError, KeyError):
                     continue
             layer.zones = zones
+        # Attach edge layers from the edge layer sub-panel
+        from thermal_sim.models.layer import EdgeLayer
+        for row, layer in enumerate(project.layers):
+            edge_data = self._layer_edge_layers.get(row, {})
+            edge_layers = {}
+            for edge, entries in edge_data.items():
+                el_list = []
+                for entry in entries:
+                    try:
+                        el_list.append(EdgeLayer(
+                            material=entry["material"],
+                            thickness=entry["thickness"],
+                        ))
+                    except (ValueError, KeyError):
+                        continue
+                if el_list:
+                    edge_layers[edge] = el_list
+            layer.edge_layers = edge_layers
         # Attach power profiles from the profile sub-panel
         from thermal_sim.models.heat_source import PowerBreakpoint  # noqa: F401 (side-effect import for clarity)
         for row_idx, bps in self._source_profiles.items():

@@ -142,12 +142,50 @@ def eled_template(
         "boundaries" : BoundaryConditions
     """
     # -----------------------------------------------------------------------
+    # Edge layer maps for LGP perimeter structure
+    # -----------------------------------------------------------------------
+    frame_t = 0.003   # 3 mm steel frame
+    air_t   = 0.001   # 1 mm air gap
+    pcb_t   = 0.005   # 5 mm FR4 LED board
+
+    led_edge_layers = [
+        EdgeLayer("Steel", frame_t),
+        EdgeLayer("Air Gap", air_t),
+        EdgeLayer("FR4", pcb_t),
+    ]
+    non_led_edge_layers = [
+        EdgeLayer("Steel", frame_t),
+        EdgeLayer("Air Gap", air_t),
+    ]
+
+    _edge_layers_map: dict[str, dict[str, list]] = {
+        "left_right": {
+            "left": led_edge_layers, "right": led_edge_layers,
+            "bottom": non_led_edge_layers, "top": non_led_edge_layers,
+        },
+        "bottom": {
+            "bottom": led_edge_layers, "top": non_led_edge_layers,
+            "left": non_led_edge_layers, "right": non_led_edge_layers,
+        },
+        "top": {
+            "top": led_edge_layers, "bottom": non_led_edge_layers,
+            "left": non_led_edge_layers, "right": non_led_edge_layers,
+        },
+        "all": {
+            "bottom": led_edge_layers, "top": led_edge_layers,
+            "left": led_edge_layers, "right": led_edge_layers,
+        },
+    }
+    lgp_edge_layers = _edge_layers_map.get(edge_config, {})
+
+    # -----------------------------------------------------------------------
     # Build layer stack (bottom-to-top) — LGP replaces LED Board
     # -----------------------------------------------------------------------
     layers: list[Layer] = [
         Layer(name="Back Cover",   material="Aluminum", thickness=0.0008),
         Layer(name="Metal Frame",  material="Steel",    thickness=0.001),
-        Layer(name="LGP",          material="PMMA",     thickness=0.004),   # Light Guide Plate
+        Layer(name="LGP",          material="PMMA",     thickness=0.004,   # Light Guide Plate
+              edge_layers=lgp_edge_layers),
         Layer(name="Diffuser",     material="PC",       thickness=0.002),
         Layer(name="BEF",          material="PC",       thickness=0.0003),
     ]
@@ -417,7 +455,15 @@ ELED_ZONE_MATERIALS = {"Steel", "FR4", "Air Gap", "PMMA"}
 
 
 def _filter_materials(layers: list[Layer]) -> dict:
-    """Return only the builtin materials referenced by the given layer list."""
+    """Return only the builtin materials referenced by the given layer list.
+
+    Also includes materials referenced by layer.edge_layers entries so that
+    ELED perimeter materials (Steel, Air Gap, FR4) are included automatically.
+    """
     library = load_builtin_library()
-    used_names = {layer.material for layer in layers}
+    used_names: set[str] = {layer.material for layer in layers}
+    for layer in layers:
+        for edge_layers_list in getattr(layer, "edge_layers", {}).values():
+            for el in edge_layers_list:
+                used_names.add(el.material)
     return {name: mat for name, mat in library.items() if name in used_names}
