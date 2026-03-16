@@ -160,6 +160,18 @@ class Assembly3DWidget(QWidget):
         self._plotter = QtInteractor(self)
         layout.addWidget(self._plotter.interactor)
 
+        # Toggle button: Show Results / Show Structure
+        btn_row = QHBoxLayout()
+        self._toggle_btn = QPushButton("Show Results")
+        self._toggle_btn.setEnabled(False)
+        self._toggle_btn.setToolTip(
+            "Switch between structure (material colors) and results (temperature) view"
+        )
+        self._toggle_btn.clicked.connect(self._on_toggle_view)
+        btn_row.addWidget(self._toggle_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
         # Explode slider row
         slider_row = QHBoxLayout()
         slider_row.addWidget(QLabel("Explode:"))
@@ -171,10 +183,13 @@ class Assembly3DWidget(QWidget):
         slider_row.addWidget(self._explode_slider)
         layout.addLayout(slider_row)
 
-        # Cached state for explode
+        # Cached state
         self._actors: list[tuple] = []    # (actor, base_z_mm, layer_index)
         self._blocks: list[dict] = []     # most-recently-built blocks
         self._max_explode_mm: float = 20.0  # default gap per layer in mm
+        self._in_results_mode: bool = False
+        self._last_project: "DisplayProject | None" = None
+        self._last_result = None
 
     def update_assembly(self, project: "DisplayProject") -> None:
         """Rebuild the 3D assembly from the current project state.
@@ -183,6 +198,11 @@ class Assembly3DWidget(QWidget):
         layer name labels, then resets the camera.  Do NOT call plotter.show() —
         QtInteractor manages its own render loop.
         """
+        self._last_project = project
+        self._in_results_mode = False
+        self._toggle_btn.setText("Show Results")
+        self._toggle_btn.setEnabled(self._last_result is not None)
+
         try:
             self._blocks = build_assembly_blocks(project)
         except Exception as exc:
@@ -283,6 +303,22 @@ class Assembly3DWidget(QWidget):
             self._plotter.render()
         except Exception:
             pass
+
+    def _on_toggle_view(self) -> None:
+        """Toggle between structure and results view."""
+        if self._last_project is None:
+            return
+        if self._in_results_mode:
+            # Switch back to structure
+            self._in_results_mode = False
+            self._toggle_btn.setText("Show Results")
+            # Re-render structure
+            self.update_assembly(self._last_project)
+        else:
+            # Switch to results
+            if self._last_result is None:
+                return
+            self.update_temperature(self._last_project, self._last_result)
 
     def update_temperature(self, project: "DisplayProject", result: object) -> None:
         """Overlay temperature data on the 3D assembly after a solve.
