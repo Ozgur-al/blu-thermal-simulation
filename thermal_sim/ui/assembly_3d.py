@@ -286,6 +286,16 @@ class Assembly3DWidget(QWidget):
         except Exception:
             pass
 
+    def update_temperature(self, project: "DisplayProject", result: object) -> None:
+        """Overlay temperature data on the 3D assembly (stub for future implementation).
+
+        This method is called by main_window after a simulation completes.  The
+        full temperature-coloured overlay (Plan 03+) will implement scalar mapping
+        via pyvista's scalars API.  For now it is a no-op so the caller does not
+        need to guard against AttributeError.
+        """
+        logger.debug("update_temperature called — overlay not yet implemented")
+
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Release VTK resources when the widget closes."""
         try:

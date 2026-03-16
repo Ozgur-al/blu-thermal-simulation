@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -176,6 +177,18 @@ class MainWindow(QMainWindow):
         self._layer_zones: dict[int, list] = {}
         # Guard flag to prevent recursive cellChanged during zone table population
         self._updating_zones: bool = False
+
+        # Edge layers per layer row: layer_row_index -> dict[edge, list[dict]]
+        # Each inner dict: {"material": str, "thickness": float} (SI metres)
+        self._layer_edge_layers: dict[int, dict[str, list]] = {}
+        # Guard flag to prevent recursive cellChanged during edge layer table population
+        self._updating_edge_layers: bool = False
+        # Current edge tab selection ("bottom", "top", "left", "right")
+        self._current_edge: str = "bottom"
+
+        # 3D assembly dock (lazy-created on first use)
+        self._3d_dock = None
+        self._3d_widget = None
 
         # Persistent output directory
         settings = QSettings("ThermalSim", "ThermalSimulator")
@@ -325,6 +338,14 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self._editor_dock.toggleViewAction())
         view_menu.addAction(self._plots_dock.toggleViewAction())
         view_menu.addAction(self._summary_dock.toggleViewAction())
+        view_menu.addSeparator()
+
+        # 3D Assembly Preview toggle (lazy-created on first activation)
+        self._3d_preview_action = QAction("3D &Assembly Preview", self)
+        self._3d_preview_action.setCheckable(True)
+        self._3d_preview_action.triggered.connect(self._toggle_3d_preview)
+        view_menu.addAction(self._3d_preview_action)
+
         view_menu.addSeparator()
         reset_action = QAction("Reset Layout", self)
         reset_action.triggered.connect(self._reset_layout)
@@ -603,7 +624,54 @@ class MainWindow(QMainWindow):
         self._zone_panel.setVisible(False)
         layout.addWidget(self._zone_panel)
 
-        # Wire layer row selection to show/hide zone panel
+        # Edge Layer sub-panel (appears when a layer row is selected)
+        self._edge_layer_panel = QGroupBox("Edge Layers")
+        edge_layout = QVBoxLayout(self._edge_layer_panel)
+
+        # 4 edge tab buttons (Bottom / Top / Left / Right), exclusive
+        edge_tab_row = QHBoxLayout()
+        self._edge_buttons: dict[str, QPushButton] = {}
+        for edge_name in ("bottom", "top", "left", "right"):
+            btn = QPushButton(edge_name.capitalize())
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda checked, e=edge_name: self._on_edge_tab_clicked(e))
+            self._edge_buttons[edge_name] = btn
+            edge_tab_row.addWidget(btn)
+        edge_tab_row.addStretch()
+        edge_layout.addLayout(edge_tab_row)
+        # Default: bottom is active
+        self._edge_buttons["bottom"].setChecked(True)
+
+        # Edge table: Material, Thickness [mm]
+        self._edge_table = QTableWidget(0, 2)
+        self._edge_table.setHorizontalHeaderLabels(["Material", "Thickness [mm]"])
+        self._edge_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._edge_table.verticalHeader().setVisible(False)
+        self._edge_table.setAlternatingRowColors(True)
+        self._edge_table.setMaximumHeight(130)
+        self._edge_table.cellChanged.connect(self._on_edge_table_changed)
+        edge_layout.addWidget(self._edge_table)
+
+        edge_btn_row = QHBoxLayout()
+        add_edge_btn = QPushButton("+ Add")
+        add_edge_btn.setToolTip("Add an edge layer to this edge")
+        add_edge_btn.clicked.connect(self._add_edge_layer_row)
+        rm_edge_btn = QPushButton("- Remove")
+        rm_edge_btn.setToolTip("Remove the selected edge layer")
+        rm_edge_btn.clicked.connect(self._remove_edge_layer_row)
+        self._copy_from_btn = QPushButton("Copy From \u25bc")
+        self._copy_from_btn.setToolTip("Copy edge layers from another edge")
+        self._copy_from_btn.clicked.connect(self._on_copy_from_clicked)
+        edge_btn_row.addWidget(add_edge_btn)
+        edge_btn_row.addWidget(rm_edge_btn)
+        edge_btn_row.addWidget(self._copy_from_btn)
+        edge_btn_row.addStretch()
+        edge_layout.addLayout(edge_btn_row)
+
+        self._edge_layer_panel.setVisible(False)
+        layout.addWidget(self._edge_layer_panel)
+
+        # Wire layer row selection to show/hide zone panel and edge panel
         self.layers_table.itemSelectionChanged.connect(self._on_layer_selected_for_zones)
 
         return tab
@@ -1380,6 +1448,7 @@ class MainWindow(QMainWindow):
                 self._layer_zones = new_zones
             # Hide zone panel if the selected layer was removed
             self._zone_panel.setVisible(False)
+            self._refresh_3d_preview()
 
     # ------------------------------------------------------------------
     # Inline cell validation
@@ -1529,6 +1598,17 @@ class MainWindow(QMainWindow):
         # Refresh zone panel if a layer row is currently selected
         self._zone_panel.setVisible(False)
 
+        # Populate edge layer data per layer from loaded project
+        self._layer_edge_layers = {}
+        for row, layer in enumerate(project.layers):
+            edge_layers = getattr(layer, "edge_layers", {})
+            if edge_layers:
+                self._layer_edge_layers[row] = {
+                    edge: [{"material": el.material, "thickness": el.thickness} for el in els]
+                    for edge, els in edge_layers.items()
+                }
+        self._edge_layer_panel.setVisible(False)
+
         self._refresh_layer_choices(project)
         self._refresh_profile_choices(project)
 
@@ -1558,6 +1638,9 @@ class MainWindow(QMainWindow):
         self._update_path_label()
         self._update_node_count_label()
 
+        # Refresh 3D preview if the dock is visible
+        self._refresh_3d_preview()
+
     def _set_layer_nz_spinbox(self, row: int, nz: int = 1) -> None:
         """Create and install an nz QSpinBox cell widget for the given layers_table row."""
         nz_spin = QSpinBox()
@@ -1575,6 +1658,7 @@ class MainWindow(QMainWindow):
         self._layer_zones[row] = []
         self._undo_stack.endMacro()
         self._update_node_count_label()
+        self._refresh_3d_preview()
 
     def _load_default_materials(self) -> None:
         """Load built-in materials into the table; existing user materials are cleared."""
@@ -2069,9 +2153,71 @@ class MainWindow(QMainWindow):
             f" | {project.mesh.nx}x{project.mesh.ny}x{n_layers}"
         )
 
+        # Update 3D temperature overlay if dock is visible
+        if self._3d_dock is not None and self._3d_dock.isVisible():
+            try:
+                self._3d_widget.update_temperature(project, result)
+            except Exception as exc:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).debug("3D temperature overlay failed: %s", exc)
+
     def _on_sim_error(self, message: str) -> None:
         self._solver_label.setText("Error")
         self._show_error("Simulation failed", message)
+
+    # ------------------------------------------------------------------
+    # 3D Assembly Preview
+    # ------------------------------------------------------------------
+
+    def _toggle_3d_preview(self, checked: bool) -> None:
+        """Toggle the 3D assembly dock panel on/off."""
+        if self._3d_dock is None:
+            if not checked:
+                return
+            self._create_3d_dock()
+            if self._3d_dock is None:
+                # Failed to create (e.g. pyvista not installed)
+                self._3d_preview_action.setChecked(False)
+                return
+            self._refresh_3d_preview()
+        else:
+            self._3d_dock.setVisible(checked)
+
+    def _create_3d_dock(self) -> None:
+        """Create the 3D assembly dock widget (lazy-loaded on first use)."""
+        try:
+            from thermal_sim.ui.assembly_3d import Assembly3DWidget
+        except ImportError:
+            QMessageBox.information(
+                self,
+                "3D Preview Unavailable",
+                "Install pyvista and pyvistaqt to enable 3D preview:\n"
+                "pip install pyvista pyvistaqt qtpy",
+            )
+            return
+
+        self._3d_widget = Assembly3DWidget(self)
+        self._3d_dock = QDockWidget("3D Assembly", self)
+        self._3d_dock.setObjectName("Assembly3DDock")
+        self._3d_dock.setWidget(self._3d_widget)
+        self._3d_dock.visibilityChanged.connect(self._on_3d_dock_visibility_changed)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._3d_dock)
+        self.tabifyDockWidget(self._plots_dock, self._3d_dock)
+
+    def _on_3d_dock_visibility_changed(self, visible: bool) -> None:
+        """Update the action check state when the dock is closed."""
+        self._3d_preview_action.setChecked(visible)
+
+    def _refresh_3d_preview(self) -> None:
+        """Update the 3D view from the current project state."""
+        if self._3d_dock is None or not self._3d_dock.isVisible():
+            return
+        try:
+            project = self._build_project_from_ui()
+            self._3d_widget.update_assembly(project)
+        except Exception as exc:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).debug("3D preview refresh failed: %s", exc)
 
     # ------------------------------------------------------------------
     # Parametric sweep
@@ -2406,14 +2552,17 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_layer_selected_for_zones(self) -> None:
-        """Show/hide zone panel and populate it when a layer row is selected."""
+        """Show/hide zone panel and edge layer panel when a layer row is selected."""
         row = self.layers_table.currentRow()
         if row < 0:
             self._zone_panel.setVisible(False)
+            self._edge_layer_panel.setVisible(False)
             return
         self._zone_panel.setVisible(True)
         self._populate_zone_table(row)
         self._refresh_zone_preview(row)
+        self._edge_layer_panel.setVisible(True)
+        self._populate_edge_table(row, self._current_edge)
 
     def _populate_zone_table(self, layer_row: int) -> None:
         """Load zone data for *layer_row* into the zone sub-table (display in mm)."""
@@ -2579,6 +2728,128 @@ class MainWindow(QMainWindow):
         ax.tick_params(labelsize=6)
         self._zone_preview_canvas.figure.tight_layout()
         self._zone_preview_canvas.draw_idle()
+
+    # ------------------------------------------------------------------
+    # Edge layer UI helpers
+    # ------------------------------------------------------------------
+
+    def _on_edge_tab_clicked(self, edge: str) -> None:
+        """Switch to the clicked edge tab and repopulate the edge table."""
+        for name, btn in self._edge_buttons.items():
+            btn.setChecked(name == edge)
+        self._current_edge = edge
+        layer_row = self.layers_table.currentRow()
+        if layer_row >= 0:
+            self._populate_edge_table(layer_row, edge)
+
+    def _populate_edge_table(self, layer_row: int, edge: str) -> None:
+        """Load edge layer data for *layer_row*/*edge* into the edge sub-table."""
+        self._updating_edge_layers = True
+        self._edge_table.blockSignals(True)
+        self._edge_table.setRowCount(0)
+        entries = self._layer_edge_layers.get(layer_row, {}).get(edge, [])
+        for entry in entries:
+            r = self._edge_table.rowCount()
+            self._edge_table.insertRow(r)
+            mat_combo = self._make_edge_material_combo(entry.get("material", ""))
+            self._edge_table.setCellWidget(r, 0, mat_combo)
+            t_mm = entry.get("thickness", 0.003) * 1000.0
+            self._edge_table.setItem(r, 1, QTableWidgetItem(f"{t_mm:.3f}"))
+        self._edge_table.blockSignals(False)
+        self._updating_edge_layers = False
+
+    def _make_edge_material_combo(self, current_material: str = "") -> QComboBox:
+        """Create a QComboBox for edge layer material selection."""
+        combo = QComboBox()
+        for row in range(self.materials_table.rowCount()):
+            name = TableDataParser._cell_text(self.materials_table, row, 0)
+            if name:
+                combo.addItem(name)
+        idx = combo.findText(current_material)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        combo.currentTextChanged.connect(self._on_edge_combo_changed)
+        return combo
+
+    def _on_edge_combo_changed(self) -> None:
+        """Handle material combo change in edge layer table."""
+        if self._updating_edge_layers:
+            return
+        layer_row = self.layers_table.currentRow()
+        if layer_row >= 0:
+            self._read_edge_table_into_store(layer_row)
+
+    def _on_edge_table_changed(self, row: int, col: int) -> None:  # noqa: ARG002
+        """Handle thickness cell edits in the edge layer table."""
+        if self._updating_edge_layers:
+            return
+        layer_row = self.layers_table.currentRow()
+        if layer_row >= 0:
+            self._read_edge_table_into_store(layer_row)
+
+    def _read_edge_table_into_store(self, layer_row: int) -> None:
+        """Read all edge table rows and persist them into _layer_edge_layers (SI metres)."""
+        entries = []
+        for r in range(self._edge_table.rowCount()):
+            mat_combo = self._edge_table.cellWidget(r, 0)
+            material = mat_combo.currentText() if mat_combo else "Steel"
+            try:
+                t_mm = float((self._edge_table.item(r, 1) or QTableWidgetItem("3.0")).text())
+            except ValueError:
+                t_mm = 3.0
+            entries.append({"material": material, "thickness": t_mm / 1000.0})
+        if layer_row not in self._layer_edge_layers:
+            self._layer_edge_layers[layer_row] = {}
+        self._layer_edge_layers[layer_row][self._current_edge] = entries
+
+    def _add_edge_layer_row(self) -> None:
+        """Add a new edge layer row with default Steel 3mm."""
+        layer_row = self.layers_table.currentRow()
+        if layer_row < 0:
+            return
+        self._updating_edge_layers = True
+        r = self._edge_table.rowCount()
+        self._edge_table.insertRow(r)
+        mat_combo = self._make_edge_material_combo("Steel")
+        self._edge_table.setCellWidget(r, 0, mat_combo)
+        self._edge_table.setItem(r, 1, QTableWidgetItem("3.000"))
+        self._updating_edge_layers = False
+        self._read_edge_table_into_store(layer_row)
+
+    def _remove_edge_layer_row(self) -> None:
+        """Remove the selected edge layer row."""
+        layer_row = self.layers_table.currentRow()
+        if layer_row < 0:
+            return
+        selected = self._edge_table.currentRow()
+        if selected < 0:
+            return
+        self._edge_table.removeRow(selected)
+        self._read_edge_table_into_store(layer_row)
+
+    def _on_copy_from_clicked(self) -> None:
+        """Show a context menu to copy edge layers from another edge."""
+        layer_row = self.layers_table.currentRow()
+        if layer_row < 0:
+            return
+        menu = QMenu(self)
+        other_edges = [e for e in ("bottom", "top", "left", "right") if e != self._current_edge]
+        for edge in other_edges:
+            action = menu.addAction(edge.capitalize())
+            action.triggered.connect(lambda checked, src=edge: self._copy_edge_from(src))
+        menu.exec(self._copy_from_btn.mapToGlobal(self._copy_from_btn.rect().bottomLeft()))
+
+    def _copy_edge_from(self, source_edge: str) -> None:
+        """Copy edge layers from source_edge to current edge."""
+        layer_row = self.layers_table.currentRow()
+        if layer_row < 0:
+            return
+        if layer_row not in self._layer_edge_layers:
+            self._layer_edge_layers[layer_row] = {}
+        source_entries = self._layer_edge_layers.get(layer_row, {}).get(source_edge, [])
+        import copy
+        self._layer_edge_layers[layer_row][self._current_edge] = copy.deepcopy(source_entries)
+        self._populate_edge_table(layer_row, self._current_edge)
 
     # ------------------------------------------------------------------
     # Power profile UI helpers
@@ -2989,6 +3260,9 @@ class MainWindow(QMainWindow):
         self._validation_errors.clear()
         for table in editable_tables:
             self._revalidate_table(table)
+
+        # Refresh 3D preview with new template
+        self._refresh_3d_preview()
 
     def _build_led_arrays_from_arch_panel(self) -> list:
         """Build LEDArray list from DLED or ELED spinbox panel values (mm -> SI)."""
