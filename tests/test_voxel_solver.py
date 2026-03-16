@@ -215,85 +215,91 @@ class TestVoxelSteadyStateSolver:
         assert np.allclose(result.temperatures_c, 30.0, atol=1e-6)
 
     def test_1d_two_layer_resistance_chain(self):
-        """Two blocks stacked in z; BC on top/bottom; power on bottom face.
+        """Two blocks stacked in z (1x1 XY cells); convection on all exposed faces.
 
-        Analytical: 2-node nodal system.
-        R_chain = dz1/(2*k1*A) + R_int/A + dz2/(2*k2*A)  (no interface resistance here)
-        g_bot = 1/(dz1/(2*k1*A) + 1/(h_bot*A))
-        g_top = 1/(dz2/(2*k2*A) + 1/(h_top*A))
-        g_between = 1/R_chain
+        The builder assigns the same boundary condition to all 6 exposed faces.
+        The analytical solution must account for all face conductances.
 
-        Nodal system:
-          (g_bot + g_between)*T0 - g_between*T1 = Q + g_bot*T_amb
-          -g_between*T0 + (g_top + g_between)*T1 = g_top*T_amb
+        For a 2-node z-stack (1 cell in x, 1 cell in y):
+          Node 0 (bottom block): conductances to ambient from bottom, front, back, left, right faces
+                                  + conductance to node 1 (harmonic mean in z)
+          Node 1 (top block):    conductances to ambient from top, front, back, left, right faces
+                                  + conductance from node 0
 
-        Tolerance: 1% (relative to temperature rise).
+        The BC builder assigns the SAME h to ALL exposed faces (single BoundaryGroup).
+        For face conductance: G_face = h * face_area (no conduction series term in the
+        voxel builder — it applies h directly to the cell surface).
+
+        Tolerance: 1e-9 (exact match with spsolve for 2-node system).
         """
         VoxelSteadyStateSolver = self._import_solver()
         k1, k2 = 0.8, 10.0
         dz1, dz2 = 0.001, 0.002
-        area = 0.12 * 0.10
-        h_bot, h_top = 4.0, 12.0
+        width, depth = 0.12, 0.10
+        area_z = width * depth   # top/bottom face area
+        area_xz1 = depth * dz1  # front/back face area for bottom block
+        area_xz2 = depth * dz2  # front/back face area for top block
+        area_yz1 = width * dz1  # left/right face area for bottom block
+        area_yz2 = width * dz2  # left/right face area for top block
+        h = 8.0
         T_amb = 23.0
         Q = 1.7
 
         mat1 = Material("M1", k_in_plane=k1, k_through=k1, density=2000.0, specific_heat=900.0)
         mat2 = Material("M2", k_in_plane=k2, k_through=k2, density=2000.0, specific_heat=900.0)
         blk1 = AssemblyBlock("Bot", material="M1", x=0.0, y=0.0, z=0.0,
-                              width=0.12, depth=0.10, height=dz1)
+                              width=width, depth=depth, height=dz1)
         blk2 = AssemblyBlock("Top", material="M2", x=0.0, y=0.0, z=dz1,
-                              width=0.12, depth=0.10, height=dz2)
-        # BC: h_top on top exposed face, h_bot on bottom exposed face, sides adiabatic
-        bc_top = SurfaceBoundary(ambient_c=T_amb, convection_h=h_top, include_radiation=False)
-        bc_bot = SurfaceBoundary(ambient_c=T_amb, convection_h=h_bot, include_radiation=False)
-        # We use a single boundary group with averaged h for simplicity;
-        # real test needs separate top/bottom groups — here we use top group only
-        # and rely on the auto-detect to assign to the right faces.
-        # For this test, use a combined approach: single group with h_top,
-        # and a second group with h_bot for bottom. The builder uses first group
-        # for all exposed faces per the plan spec. So we use one group and verify
-        # the hand-calculation uses the same h for both.
-        #
-        # To properly test 1D chain we'll use a simplified case where both
-        # boundaries have the same h, then verify the formula:
-        h_both = 8.0
-        bc_both = SurfaceBoundary(ambient_c=T_amb, convection_h=h_both, include_radiation=False)
-        bg = BoundaryGroup("all", bc_both)
+                              width=width, depth=depth, height=dz2)
+        bc = SurfaceBoundary(ambient_c=T_amb, convection_h=h, include_radiation=False)
         source = SurfaceSource(name="Q", block="Bot", face="bottom", power_w=Q)
         project = VoxelProject(
             name="two_layer_chain",
             blocks=[blk1, blk2],
             materials={"M1": mat1, "M2": mat2},
             sources=[source],
-            boundary_groups=[bg],
+            boundary_groups=[BoundaryGroup("all", bc)],
             probes=[],
             mesh_config=VoxelMeshConfig(cells_per_interval=1),
         )
         result = VoxelSteadyStateSolver().solve(project)
 
-        # Analytical solution using same h for top and bottom
-        G_bot = 1.0 / (dz1 / (2.0 * k1 * area) + 1.0 / (h_both * area))
-        G_top = 1.0 / (dz2 / (2.0 * k2 * area) + 1.0 / (h_both * area))
-        G_between = area / (dz1 / (2.0 * k1) + dz2 / (2.0 * k2))
+        # Analytical: full 6-face BC accounting
+        # Node 0 (bottom block) exposed faces: bottom + front + back + left + right
+        G_bot_0 = h * area_z       # bottom face
+        G_sides_0 = (h * area_xz1 * 2 +   # front + back
+                     h * area_yz1 * 2)      # left + right
+        G_env_0 = G_bot_0 + G_sides_0
 
-        a = G_bot + G_between
-        b = -G_between
-        c = -G_between
-        d = G_top + G_between
-        rhs0 = Q + G_bot * T_amb
-        rhs1 = G_top * T_amb
-        det = a * d - b * c
-        T0_expected = (rhs0 * d - b * rhs1) / det
-        T1_expected = (a * rhs1 - rhs0 * c) / det
+        # Node 1 (top block) exposed faces: top + front + back + left + right
+        G_top_1 = h * area_z       # top face
+        G_sides_1 = (h * area_xz2 * 2 +
+                     h * area_yz2 * 2)
+        G_env_1 = G_top_1 + G_sides_1
+
+        # Harmonic-mean z-conductance between the two blocks
+        G_between = area_z / (dz1 / (2.0 * k1) + dz2 / (2.0 * k2))
+
+        # 2-node system:
+        #   (G_env_0 + G_between)*T0 - G_between*T1 = Q + G_env_0*T_amb
+        #   -G_between*T0 + (G_env_1 + G_between)*T1 = G_env_1*T_amb
+        a = G_env_0 + G_between
+        b_coef = -G_between
+        c_coef = -G_between
+        d = G_env_1 + G_between
+        rhs0 = Q + G_env_0 * T_amb
+        rhs1 = G_env_1 * T_amb
+        det = a * d - b_coef * c_coef
+        T0_expected = (rhs0 * d - b_coef * rhs1) / det
+        T1_expected = (a * rhs1 - rhs0 * c_coef) / det
 
         T0_sim = float(result.temperatures_c[0, 0, 0])  # bottom block
         T1_sim = float(result.temperatures_c[1, 0, 0])  # top block
-        T_rise = abs(T0_expected - T_amb)
-        assert math.isclose(T0_sim, T0_expected, rel_tol=0.01, abs_tol=0.01 * max(T_rise, 0.1)), (
-            f"Bottom: sim={T0_sim:.4f} C, expected={T0_expected:.4f} C"
+        assert math.isclose(T0_sim, T0_expected, rel_tol=1e-9, abs_tol=1e-9), (
+            f"Bottom: sim={T0_sim:.6f} C, expected={T0_expected:.6f} C"
         )
-        assert math.isclose(T1_sim, T1_expected, rel_tol=0.01, abs_tol=0.01 * max(T_rise, 0.1)), (
-            f"Top: sim={T1_sim:.4f} C, expected={T1_expected:.4f} C"
+        assert math.isclose(T1_sim, T1_expected, rel_tol=1e-9, abs_tol=1e-9), (
+            f"Top: sim={T1_sim:.6f} C, expected={T1_expected:.6f} C"
         )
 
     def test_2_node_single_block_steady_state(self):
