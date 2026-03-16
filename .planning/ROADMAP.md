@@ -151,7 +151,7 @@ Plans:
   3. An interactive 3D view shows the full assembly as color-coded blocks with rotation, zoom, and an explode slider to separate layers for inspection
   4. After solving, the 3D results view shows temperature data overlaid on the assembly geometry
   5. Edge layers and manual zones coexist: edge layers define perimeter, manual zones overlay for partial features — manual wins on overlap
-**Plans:** 3/4 plans complete (+ 1 gap closure)
+**Plans:** 4/4 plans complete
 Plans:
 - [x] 10-01-PLAN.md — EdgeLayer dataclass, Layer.edge_layers field, generate_edge_zones() solver integration
 - [x] 10-02-PLAN.md — Assembly3DWidget with PyVista/VTK, explode slider, dock panel wired to layer changes
@@ -174,4 +174,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 7. 3D Solver Core | 2/2 | Complete   | 2026-03-15 | - |
 | 8. Z-Refinement | 3/3 | Complete   | 2026-03-15 | - |
 | 9. 3D GUI and ELED Zone Preset | v2.0 | 2/3 | Paused | - |
-| 10. Edge Layers and 3D Preview | v2.0 | 3/3 | Complete | 2026-03-16 |
+| 10. Edge Layers and 3D Preview | 4/4 | Complete   | 2026-03-16 | 2026-03-16 |

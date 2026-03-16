@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
-status: in_progress
-last_updated: "2026-03-16T06:35:00Z"
+status: complete
+last_updated: "2026-03-16T07:15:00Z"
 progress:
   total_phases: 10
-  completed_phases: 9
-  total_plans: 35
-  completed_plans: 34
+  completed_phases: 10
+  total_plans: 36
+  completed_plans: 36
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 ## Current Position
 
 Phase: 10 of 10 (Edge Layers and 3D Preview) — complete
-Plan: 3 of 3 (10-03 complete)
+Plan: 4 of 4 (10-04 complete)
 Status: complete
-Last activity: 2026-03-16 — 10-03 edge layer GUI editor, ELED template auto-populate, 3D temperature overlay with toggle; 246 tests pass
+Last activity: 2026-03-16 — 10-04 gap closure: wire edge zones into 3D assembly preview, mark all Phase 10 requirements complete; 255 tests pass
 
 Progress: [██████████] 100%
 
@@ -43,7 +43,7 @@ Progress: [██████████] 100%
 | 07-3d-solver-core | 2 | 20 min | 10 min |
 | 08-z-refinement | 3 | 20 min | 7 min |
 | 09-3d-gui-and-eled-zone-preset | 2 | 15 min | 8 min |
-| 10-edge-layers-and-3d-preview | 3 | 50 min | 17 min |
+| 10-edge-layers-and-3d-preview | 4 | 54 min | 14 min |
 
 *Updated after each plan completion*
 
@@ -88,6 +88,7 @@ Progress: [██████████] 100%
 - [Phase 10-edge-layers-and-3d-preview]: _filter_materials updated to scan layer.edge_layers so ELED edge materials auto-included in template materials dict
 - [Phase 10-edge-layers-and-3d-preview]: update_temperature() uses pv.ImageData per layer with cell_data scalars for temperature colormap overlay
 - [Phase 10-edge-layers-and-3d-preview]: Toggle button starts disabled; enabled after first solve result; switches between material-colored structure and temperature overlay
+- [Phase 10-edge-layers-and-3d-preview]: generate_edge_zones() called inside try/except in build_assembly_blocks() — catches ValueError (invalid dims) and ImportError; imported lazily inside block
 
 ### Pending Todos
 
@@ -101,5 +102,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 10-03-PLAN.md
-Resume file: .planning/phases/10-edge-layers-and-3d-preview/10-03-SUMMARY.md
+Stopped at: Completed 10-04-PLAN.md (gap closure — all Phase 10 requirements complete)
+Resume file: .planning/phases/10-edge-layers-and-3d-preview/10-04-SUMMARY.md
