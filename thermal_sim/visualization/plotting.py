@@ -264,3 +264,104 @@ def plot_probe_history(
     fig.tight_layout()
     fig.savefig(out)
     plt.close(fig)
+
+
+def plot_voxel_slice(
+    result: object,
+    mesh: object,
+    axis: str,
+    position: float,
+    ax=None,
+) -> object:
+    """Render a 2D slice through a voxel result onto a matplotlib axes.
+
+    Provides a matplotlib fallback for systems without PyVista and for
+    PDF report export.
+
+    Parameters
+    ----------
+    result:
+        VoxelSteadyStateResult or VoxelTransientResult.  Must have
+        ``.temperatures_c`` (shape (nz, ny, nx) or (n_steps+1, nz, ny, nx))
+        and a ``.mesh`` with x_edges/y_edges/z_edges arrays.
+    mesh:
+        ConformalMesh3D instance (may be the same as result.mesh).
+    axis:
+        Slice normal: ``'x'``, ``'y'``, or ``'z'``.
+    position:
+        Physical coordinate of the slice plane (metres).
+    ax:
+        If given, draw onto this axes.  Otherwise a new figure is created.
+
+    Returns
+    -------
+    matplotlib.image.AxesImage
+        The image object (useful for adding a colorbar).
+    """
+    import matplotlib.pyplot as plt
+
+    temps_c = getattr(result, "temperatures_c", None)
+    if temps_c is None:
+        raise ValueError("result has no temperatures_c attribute")
+
+    # For transient, use last timestep
+    if temps_c.ndim == 4:
+        temps_3d = temps_c[-1]
+    else:
+        temps_3d = temps_c  # (nz, ny, nx)
+
+    x_edges = getattr(mesh, "x_edges", None)
+    y_edges = getattr(mesh, "y_edges", None)
+    z_edges = getattr(mesh, "z_edges", None)
+    if x_edges is None or y_edges is None or z_edges is None:
+        raise ValueError("mesh does not expose x_edges/y_edges/z_edges")
+
+    x_c = 0.5 * (x_edges[:-1] + x_edges[1:])
+    y_c = 0.5 * (y_edges[:-1] + y_edges[1:])
+    z_c = 0.5 * (z_edges[:-1] + z_edges[1:])
+
+    axis = axis.lower()
+    if axis == "z":
+        iz = int(np.searchsorted(z_c, position))
+        iz = max(0, min(iz, temps_3d.shape[0] - 1))
+        slice_data = temps_3d[iz, :, :]  # (ny, nx)
+        h_arr, v_arr = x_c * 1000.0, y_c * 1000.0
+        h_label, v_label = "x [mm]", "y [mm]"
+        title_suffix = f"z = {position * 1000.0:.1f} mm"
+        extent = [x_edges[0] * 1000.0, x_edges[-1] * 1000.0,
+                  y_edges[0] * 1000.0, y_edges[-1] * 1000.0]
+    elif axis == "y":
+        iy = int(np.searchsorted(y_c, position))
+        iy = max(0, min(iy, temps_3d.shape[1] - 1))
+        slice_data = temps_3d[:, iy, :]  # (nz, nx)
+        h_arr, v_arr = x_c * 1000.0, z_c * 1000.0
+        h_label, v_label = "x [mm]", "z [mm]"
+        title_suffix = f"y = {position * 1000.0:.1f} mm"
+        extent = [x_edges[0] * 1000.0, x_edges[-1] * 1000.0,
+                  z_edges[0] * 1000.0, z_edges[-1] * 1000.0]
+    elif axis == "x":
+        ix = int(np.searchsorted(x_c, position))
+        ix = max(0, min(ix, temps_3d.shape[2] - 1))
+        slice_data = temps_3d[:, :, ix]  # (nz, ny)
+        h_arr, v_arr = y_c * 1000.0, z_c * 1000.0
+        h_label, v_label = "y [mm]", "z [mm]"
+        title_suffix = f"x = {position * 1000.0:.1f} mm"
+        extent = [y_edges[0] * 1000.0, y_edges[-1] * 1000.0,
+                  z_edges[0] * 1000.0, z_edges[-1] * 1000.0]
+    else:
+        raise ValueError(f"axis must be 'x', 'y', or 'z'; got {axis!r}")
+
+    if ax is None:
+        _fig, ax = plt.subplots(figsize=(7.5, 4.5), dpi=150)
+
+    im = ax.imshow(
+        slice_data,
+        origin="lower",
+        extent=extent,
+        aspect="auto",
+        cmap="inferno",
+    )
+    ax.set_xlabel(h_label)
+    ax.set_ylabel(v_label)
+    ax.set_title(f"Temperature slice — {title_suffix}")
+    return im

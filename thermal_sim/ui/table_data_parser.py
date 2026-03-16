@@ -16,11 +16,29 @@ from PySide6.QtWidgets import (
 )
 
 from thermal_sim.models.boundary import BoundaryConditions, SurfaceBoundary
-from thermal_sim.models.heat_source import HeatSource, LEDArray
-from thermal_sim.models.layer import Layer
 from thermal_sim.models.material import Material
-from thermal_sim.models.project import DisplayProject, MeshConfig, TransientConfig
-from thermal_sim.models.probe import Probe
+
+# Legacy (Phase <=10) model imports — removed in Phase 11 Plan 03.
+# Wrapped in try/except so this file remains importable for VoxelMainWindow.
+try:
+    from thermal_sim.models.heat_source import HeatSource, LEDArray
+except ImportError:
+    HeatSource = LEDArray = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.models.layer import Layer
+except ImportError:
+    Layer = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.models.project import DisplayProject, MeshConfig, TransientConfig
+except ImportError:
+    DisplayProject = MeshConfig = TransientConfig = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.models.probe import Probe
+except ImportError:
+    Probe = None  # type: ignore[assignment,misc]
 
 
 class TableDataParser:

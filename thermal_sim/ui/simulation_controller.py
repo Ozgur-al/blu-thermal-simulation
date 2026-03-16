@@ -9,9 +9,82 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, QThread, Signal
 
-from thermal_sim.models.project import DisplayProject
-from thermal_sim.solvers.steady_state import SteadyStateSolver
-from thermal_sim.solvers.transient import TransientSolver
+# Legacy (Phase <=10) imports — removed in Phase 11 Plan 03.
+# Wrapped so the controller file stays importable for VoxelMainWindow.
+try:
+    from thermal_sim.models.project import DisplayProject
+except ImportError:
+    DisplayProject = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.solvers.steady_state import SteadyStateSolver
+    from thermal_sim.solvers.transient import TransientSolver
+except ImportError:
+    SteadyStateSolver = TransientSolver = None  # type: ignore[assignment,misc]
+
+
+# ---------------------------------------------------------------------------
+# _VoxelSimWorker
+# ---------------------------------------------------------------------------
+
+class _VoxelSimWorker(QObject):
+    """Runs the voxel solver (steady or transient) in a background thread.
+
+    Signals
+    -------
+    finished : Signal(object)
+        Emitted with VoxelSteadyStateResult or VoxelTransientResult.
+    error : Signal(str)
+        Emitted with an error message string if an exception occurs.
+    progress : Signal(int, str)
+        Emitted with (percent 0-100, status message).
+    """
+
+    finished = Signal(object)
+    error = Signal(str)
+    progress = Signal(int, str)
+
+    def __init__(self, project: object, mode: str) -> None:
+        super().__init__()
+        self._project = project
+        self._mode = mode
+        self._cancel_requested = False
+
+    def request_cancel(self) -> None:
+        self._cancel_requested = True
+
+    def run(self) -> None:
+        try:
+            if self._mode == "steady":
+                from thermal_sim.solvers.steady_state_voxel import VoxelSteadyStateSolver
+
+                def _progress(phase: str) -> None:
+                    if phase == "building":
+                        self.progress.emit(-1, "Building voxel network…")
+                    elif phase == "solving":
+                        self.progress.emit(-1, "Solving voxel steady-state…")
+
+                result = VoxelSteadyStateSolver().solve(
+                    self._project, on_progress=_progress
+                )
+                self.progress.emit(100, "Complete")
+            else:
+                from thermal_sim.solvers.transient_voxel import VoxelTransientSolver
+
+                def _t_progress(step: int, n_steps: int, t_max_c: float) -> None:
+                    pct = int(100 * step / max(n_steps, 1))
+                    self.progress.emit(pct, f"Step {step}/{n_steps} | T_max: {t_max_c:.1f} C")
+
+                result = VoxelTransientSolver().solve(
+                    self._project, on_progress=_t_progress
+                )
+                if self._cancel_requested:
+                    self.progress.emit(0, "Cancelled")
+                else:
+                    self.progress.emit(100, "Complete")
+            self.finished.emit(result)
+        except Exception as exc:  # noqa: BLE001
+            self.error.emit(str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +229,8 @@ class SimulationController(QObject):
         self._worker: _SimWorker | None = None
         self._sweep_thread: QThread | None = None
         self._sweep_worker: _SweepWorker | None = None
+        self._voxel_thread: QThread | None = None
+        self._voxel_worker: _VoxelSimWorker | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -232,6 +307,40 @@ class SimulationController(QObject):
         self.run_started.emit()
         self._sweep_thread.start()
 
+    def start_voxel_run(self, project: object, mode: str) -> None:
+        """Start a voxel simulation (steady or transient) in a background thread.
+
+        Uses VoxelSteadyStateSolver or VoxelTransientSolver.
+        Emits the same signals as start_run(): run_started, progress_updated,
+        run_finished, run_error, run_ended.
+
+        Parameters
+        ----------
+        project:
+            A VoxelProject instance.
+        mode:
+            ``"steady"`` or ``"transient"``.
+        """
+        if self.is_running or (
+            self._voxel_thread is not None and self._voxel_thread.isRunning()
+        ):
+            return
+
+        self._voxel_worker = _VoxelSimWorker(project, mode)
+        self._voxel_thread = QThread()
+        self._voxel_worker.moveToThread(self._voxel_thread)
+
+        self._voxel_thread.started.connect(self._voxel_worker.run)
+        self._voxel_worker.progress.connect(self.progress_updated)
+        self._voxel_worker.finished.connect(self._on_voxel_finished)
+        self._voxel_worker.error.connect(self._on_voxel_error)
+        self._voxel_worker.finished.connect(self._voxel_thread.quit)
+        self._voxel_worker.error.connect(self._voxel_thread.quit)
+        self._voxel_thread.finished.connect(self._cleanup_voxel)
+
+        self.run_started.emit()
+        self._voxel_thread.start()
+
     def cancel(self) -> None:
         """Request cooperative cancellation of the current run.
 
@@ -241,6 +350,8 @@ class SimulationController(QObject):
             self._worker.request_cancel()
         if self._sweep_worker is not None:
             self._sweep_worker.request_cancel()
+        if self._voxel_worker is not None:
+            self._voxel_worker.request_cancel()
 
     # ------------------------------------------------------------------
     # Private slots
@@ -279,3 +390,20 @@ class SimulationController(QObject):
         if self._sweep_thread is not None:
             self._sweep_thread.deleteLater()
             self._sweep_thread = None
+
+    def _on_voxel_finished(self, result: object) -> None:
+        self.run_finished.emit(result)
+        self.run_ended.emit()
+
+    def _on_voxel_error(self, message: str) -> None:
+        self.run_error.emit(message)
+        self.run_ended.emit()
+
+    def _cleanup_voxel(self) -> None:
+        """Release voxel worker and thread objects after the thread stops."""
+        if self._voxel_worker is not None:
+            self._voxel_worker.deleteLater()
+            self._voxel_worker = None
+        if self._voxel_thread is not None:
+            self._voxel_thread.deleteLater()
+            self._voxel_thread = None

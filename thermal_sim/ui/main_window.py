@@ -55,38 +55,91 @@ from thermal_sim.core.material_library import (
     load_materials_json,
 )
 from thermal_sim.core.paths import APP_VERSION, get_examples_dir, get_output_dir
-from thermal_sim.core.postprocess import (
-    basic_stats,
-    basic_stats_transient,
-    layer_stats,
-    probe_temperatures,
-    probe_temperatures_over_time,
-    top_n_hottest_cells,
-    top_n_hottest_cells_for_layer,
-    top_n_hottest_cells_transient,
-)
-from thermal_sim.visualization.plotting import plot_temperature_map_annotated
-from thermal_sim.io.csv_export import (
-    export_probe_temperatures,
-    export_probe_temperatures_vs_time,
-    export_temperature_map,
-    export_temperature_map_array,
-)
-from thermal_sim.io.project_io import load_project, save_project
-from thermal_sim.models.project import DisplayProject
-from thermal_sim.solvers.steady_state import SteadyStateResult, SteadyStateSolver
-from thermal_sim.solvers.transient import TransientResult, TransientSolver
 from thermal_sim.io.pdf_export import generate_pdf_report
 from thermal_sim.models.snapshot import ResultSnapshot
 from thermal_sim.ui.comparison_tab import ComparisonWidget
 from thermal_sim.ui.plot_manager import MplCanvas, PlotManager
 from thermal_sim.ui.results_tab import ResultsSummaryWidget
 from thermal_sim.ui.simulation_controller import SimulationController
-from thermal_sim.ui.structure_preview import StructurePreviewDialog
-from thermal_sim.ui.sweep_dialog import SweepDialog
-from thermal_sim.ui.sweep_results_widget import SweepResultsWidget
 from thermal_sim.ui.table_data_parser import TableDataParser
-from thermal_sim.models.material_zone import MaterialZone
+
+# ---------------------------------------------------------------------------
+# Legacy (Layer-based) imports — these modules were removed in Phase 11 Plan 03.
+# Wrapped in try/except so the file remains importable; the old MainWindow class
+# below will not function correctly at runtime without them, but VoxelMainWindow
+# (added at the end of this file) is the active GUI class.
+# ---------------------------------------------------------------------------
+try:
+    from thermal_sim.core.postprocess import (
+        basic_stats,
+        basic_stats_transient,
+        layer_stats,
+        probe_temperatures,
+        probe_temperatures_over_time,
+        top_n_hottest_cells,
+        top_n_hottest_cells_for_layer,
+        top_n_hottest_cells_transient,
+    )
+except ImportError:
+    basic_stats = basic_stats_transient = layer_stats = None  # type: ignore[assignment]
+    probe_temperatures = probe_temperatures_over_time = None  # type: ignore[assignment]
+    top_n_hottest_cells = top_n_hottest_cells_for_layer = top_n_hottest_cells_transient = None  # type: ignore[assignment]
+
+try:
+    from thermal_sim.visualization.plotting import plot_temperature_map_annotated
+except ImportError:
+    plot_temperature_map_annotated = None  # type: ignore[assignment]
+
+try:
+    from thermal_sim.io.csv_export import (
+        export_probe_temperatures,
+        export_probe_temperatures_vs_time,
+        export_temperature_map,
+        export_temperature_map_array,
+    )
+except ImportError:
+    export_probe_temperatures = export_probe_temperatures_vs_time = None  # type: ignore[assignment]
+    export_temperature_map = export_temperature_map_array = None  # type: ignore[assignment]
+
+try:
+    from thermal_sim.io.project_io import load_project, save_project
+except ImportError:
+    load_project = save_project = None  # type: ignore[assignment]
+
+try:
+    from thermal_sim.models.project import DisplayProject
+except ImportError:
+    DisplayProject = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.solvers.steady_state import SteadyStateResult, SteadyStateSolver
+except ImportError:
+    SteadyStateResult = SteadyStateSolver = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.solvers.transient import TransientResult, TransientSolver
+except ImportError:
+    TransientResult = TransientSolver = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.ui.structure_preview import StructurePreviewDialog
+except ImportError:
+    StructurePreviewDialog = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.ui.sweep_dialog import SweepDialog
+except ImportError:
+    SweepDialog = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.ui.sweep_results_widget import SweepResultsWidget
+except ImportError:
+    SweepResultsWidget = None  # type: ignore[assignment,misc]
+
+try:
+    from thermal_sim.models.material_zone import MaterialZone
+except ImportError:
+    MaterialZone = None  # type: ignore[assignment,misc]
 
 
 class _CellEditCommand(QUndoCommand):
@@ -3805,3 +3858,461 @@ class MainWindow(QMainWindow):
 
     def _show_error(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)
+
+
+# ===========================================================================
+# VoxelMainWindow — GUI for the voxel-based 3D solver
+# ===========================================================================
+
+class VoxelMainWindow(QMainWindow):
+    """Main window for the voxel-based 3D thermal solver.
+
+    Layout:
+    - Left dock: Materials tab + BlockEditorWidget (blocks, sources, boundaries,
+      probes, mesh config)
+    - Right dock: Voxel3DView (structure preview / temperature overlay)
+    - Bottom status bar with solver state and progress
+
+    Wires block editor changes to 3D structure preview, and simulation results
+    to the temperature overlay.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        from thermal_sim.core.paths import APP_VERSION
+        self.setWindowTitle(f"Voxel Thermal Simulator v{APP_VERSION}")
+        self.resize(1400, 800)
+        self.setMinimumSize(800, 500)
+
+        self.current_project_path: Path | None = None
+
+        self._sim_controller = SimulationController(self)
+        self._sim_mode: str = "steady"
+        self._last_result: object = None
+
+        self._build_ui()
+        self._build_menus()
+        self._build_toolbar()
+        self._connect_signals()
+        self._load_startup_materials()
+        self._restore_layout()
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
+
+    def _build_ui(self) -> None:
+        self.setCentralWidget(QWidget())
+
+        # --- Left dock: editor ---
+        editor_outer = QWidget()
+        editor_layout = QVBoxLayout(editor_outer)
+        editor_layout.setContentsMargins(2, 2, 2, 2)
+        editor_layout.setSpacing(4)
+
+        # Materials sub-tab + BlockEditorWidget in a QTabWidget
+        self._editor_tabs = QTabWidget()
+
+        # Materials tab (reuses the material library widget pattern)
+        self._build_materials_tab()
+        self._editor_tabs.addTab(self._materials_tab_widget, "Materials")
+
+        # Block editor
+        from thermal_sim.ui.block_editor import BlockEditorWidget
+        self._block_editor = BlockEditorWidget()
+        self._block_editor.project_changed.connect(self._on_project_changed)
+        self._editor_tabs.addTab(self._block_editor, "Assembly")
+
+        editor_layout.addWidget(self._editor_tabs)
+
+        self._editor_dock = QDockWidget("Editor", self)
+        self._editor_dock.setObjectName("VoxelEditorDock")
+        self._editor_dock.setWidget(editor_outer)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._editor_dock)
+
+        # --- Right dock: 3D view ---
+        from thermal_sim.ui.voxel_3d_view import Voxel3DView
+        self._voxel_3d_view = Voxel3DView()
+
+        self._view_dock = QDockWidget("3D View", self)
+        self._view_dock.setObjectName("Voxel3DDock")
+        self._view_dock.setWidget(self._voxel_3d_view)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._view_dock)
+
+        # --- Status bar ---
+        sb = self.statusBar()
+        self._path_label = QLabel("No file")
+        self._solver_label = QLabel("Ready")
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setVisible(False)
+        self._progress_bar.setMaximumWidth(200)
+        self._progress_bar.setTextVisible(True)
+        sb.addPermanentWidget(self._path_label, stretch=2)
+        sb.addPermanentWidget(self._solver_label, stretch=1)
+        sb.addPermanentWidget(self._progress_bar, stretch=1)
+
+    def _build_materials_tab(self) -> None:
+        """Build a minimal materials tab (library view + add/remove)."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        from thermal_sim.core.material_library import load_builtin_library
+        self._materials: dict = {}
+        try:
+            self._materials = load_builtin_library()
+        except Exception:
+            pass
+
+        self._mat_table = QTableWidget(0, 4)
+        self._mat_table.setHorizontalHeaderLabels([
+            "Name", "k_in_plane (W/mK)", "k_through (W/mK)", "rho_cp (J/m3K)"
+        ])
+        self._mat_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for c in range(1, 4):
+            self._mat_table.horizontalHeader().setSectionResizeMode(
+                c, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self._mat_table.cellChanged.connect(self._on_mat_table_changed)
+        layout.addWidget(self._mat_table)
+
+        btn_row = QHBoxLayout()
+        add_btn = QPushButton("Add Material")
+        add_btn.clicked.connect(self._add_material_row)
+        rm_btn = QPushButton("Remove Selected")
+        rm_btn.clicked.connect(self._remove_material_row)
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(rm_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        self._materials_tab_widget = tab
+        self._populate_mat_table()
+
+    def _populate_mat_table(self) -> None:
+        self._mat_table.blockSignals(True)
+        self._mat_table.setRowCount(0)
+        for name, mat in sorted(self._materials.items()):
+            row = self._mat_table.rowCount()
+            self._mat_table.insertRow(row)
+            self._mat_table.setItem(row, 0, QTableWidgetItem(name))
+            self._mat_table.setItem(row, 1, QTableWidgetItem(f"{mat.k_in_plane:.4g}"))
+            self._mat_table.setItem(row, 2, QTableWidgetItem(f"{mat.k_through:.4g}"))
+            self._mat_table.setItem(row, 3, QTableWidgetItem(f"{mat.rho_cp:.4g}"))
+        self._mat_table.blockSignals(False)
+
+    def _add_material_row(self) -> None:
+        row = self._mat_table.rowCount()
+        self._mat_table.blockSignals(True)
+        self._mat_table.insertRow(row)
+        self._mat_table.setItem(row, 0, QTableWidgetItem(f"Material{row + 1}"))
+        self._mat_table.setItem(row, 1, QTableWidgetItem("1.0"))
+        self._mat_table.setItem(row, 2, QTableWidgetItem("1.0"))
+        self._mat_table.setItem(row, 3, QTableWidgetItem("1.0e6"))
+        self._mat_table.blockSignals(False)
+        self._sync_materials_from_table()
+
+    def _remove_material_row(self) -> None:
+        row = self._mat_table.currentRow()
+        if row >= 0:
+            self._mat_table.removeRow(row)
+            self._sync_materials_from_table()
+
+    def _on_mat_table_changed(self) -> None:
+        self._sync_materials_from_table()
+
+    def _sync_materials_from_table(self) -> None:
+        """Read the materials table and update self._materials dict."""
+        from thermal_sim.models.material import Material
+        new_mats: dict = {}
+        for row in range(self._mat_table.rowCount()):
+            name_item = self._mat_table.item(row, 0)
+            if name_item is None or not name_item.text().strip():
+                continue
+            name = name_item.text().strip()
+
+            def _cell_f(r: int, c: int, fallback: float = 1.0) -> float:
+                item = self._mat_table.item(r, c)
+                if item is None:
+                    return fallback
+                try:
+                    return float(item.text())
+                except ValueError:
+                    return fallback
+
+            try:
+                mat = Material(
+                    name=name,
+                    k_in_plane=max(1e-6, _cell_f(row, 1, 1.0)),
+                    k_through=max(1e-6, _cell_f(row, 2, 1.0)),
+                    rho_cp=max(1.0, _cell_f(row, 3, 1e6)),
+                )
+                new_mats[name] = mat
+            except Exception:
+                pass
+        self._materials = new_mats
+        self._block_editor.update_material_list(new_mats)
+
+    def _build_menus(self) -> None:
+        from PySide6.QtGui import QKeySequence, QAction
+
+        file_menu = self.menuBar().addMenu("&File")
+
+        new_action = QAction("&New Project", self)
+        new_action.setShortcut(QKeySequence.StandardKey.New)
+        new_action.triggered.connect(self._new_project)
+        file_menu.addAction(new_action)
+
+        open_action = QAction("&Open Project...", self)
+        open_action.setShortcut(QKeySequence.StandardKey.Open)
+        open_action.triggered.connect(self._open_project_dialog)
+        file_menu.addAction(open_action)
+
+        file_menu.addSeparator()
+
+        self._save_action = QAction("&Save Project", self)
+        self._save_action.setShortcut(QKeySequence.StandardKey.Save)
+        self._save_action.triggered.connect(self._save_project)
+        file_menu.addAction(self._save_action)
+
+        save_as_action = QAction("Save Project &As...", self)
+        save_as_action.triggered.connect(self._save_project_as)
+        file_menu.addAction(save_as_action)
+
+        run_menu = self.menuBar().addMenu("&Run")
+
+        self._run_action = QAction("&Run Simulation", self)
+        self._run_action.setShortcut("F5")
+        self._run_action.triggered.connect(self._run_simulation)
+        run_menu.addAction(self._run_action)
+
+        self._cancel_action = QAction("&Cancel", self)
+        self._cancel_action.setShortcut("Escape")
+        self._cancel_action.setEnabled(False)
+        self._cancel_action.triggered.connect(self._sim_controller.cancel)
+        run_menu.addAction(self._cancel_action)
+
+        view_menu = self.menuBar().addMenu("&View")
+        view_menu.addAction(self._editor_dock.toggleViewAction())
+        view_menu.addAction(self._view_dock.toggleViewAction())
+        view_menu.addSeparator()
+        reset_action = QAction("Reset Layout", self)
+        reset_action.triggered.connect(self._reset_layout)
+        view_menu.addAction(reset_action)
+
+    def _build_toolbar(self) -> None:
+        from PySide6.QtWidgets import QComboBox as _QCB
+        toolbar = self.addToolBar("Main")
+        toolbar.setMovable(False)
+        toolbar.addWidget(QLabel(" Mode: "))
+        self.mode_combo = _QCB()
+        self.mode_combo.addItems(["steady", "transient"])
+        self.mode_combo.setToolTip("Steady-state or transient simulation")
+        self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
+        toolbar.addWidget(self.mode_combo)
+        toolbar.addSeparator()
+        toolbar.addAction(self._run_action)
+        toolbar.addAction(self._cancel_action)
+
+    def _connect_signals(self) -> None:
+        self._sim_controller.run_started.connect(self._on_run_started)
+        self._sim_controller.run_ended.connect(self._on_run_ended)
+        self._sim_controller.progress_updated.connect(self._on_progress)
+        self._sim_controller.run_finished.connect(self._on_result)
+        self._sim_controller.run_error.connect(self._on_error)
+
+    # ------------------------------------------------------------------
+    # Startup helpers
+    # ------------------------------------------------------------------
+
+    def _load_startup_materials(self) -> None:
+        """Populate block editor with the default material library."""
+        self._block_editor.update_material_list(self._materials)
+
+    def _restore_layout(self) -> None:
+        settings = QSettings("ThermalSim", "VoxelSimulator")
+        state = settings.value("dock_state")
+        geometry = settings.value("window_geometry")
+        if state:
+            self.restoreState(state)
+        if geometry:
+            self.restoreGeometry(geometry)
+
+    # ------------------------------------------------------------------
+    # Project operations
+    # ------------------------------------------------------------------
+
+    def _new_project(self) -> None:
+        self._block_editor.load_project(
+            self._block_editor.build_project(self._materials).__class__(
+                name="Untitled",
+                blocks=[],
+                materials=dict(self._materials),
+                sources=[],
+                boundary_groups=[],
+                probes=[],
+                mesh_config=__import__(
+                    "thermal_sim.models.voxel_project", fromlist=["VoxelMeshConfig"]
+                ).VoxelMeshConfig(),
+            )
+        )
+        self.current_project_path = None
+        self._update_title()
+
+    def _open_project_dialog(self) -> None:
+        from thermal_sim.io.voxel_project_io import load_voxel_project
+        settings = QSettings("ThermalSim", "VoxelSimulator")
+        start_dir = str(settings.value("last_open_dir", "."))
+        path_str, _ = QFileDialog.getOpenFileName(
+            self, "Open Voxel Project", start_dir, "JSON (*.json)"
+        )
+        if not path_str:
+            return
+        try:
+            path = Path(path_str)
+            project = load_voxel_project(path)
+            # Merge project materials into library
+            self._materials.update(project.materials)
+            self._populate_mat_table()
+            self._block_editor.update_material_list(self._materials)
+            self._block_editor.load_project(project)
+            self.current_project_path = path
+            settings.setValue("last_open_dir", str(path.parent))
+            self._update_title()
+            self._update_3d_structure()
+        except Exception as exc:
+            QMessageBox.critical(self, "Open Error", str(exc))
+
+    def _save_project(self) -> None:
+        if self.current_project_path is None:
+            self._save_project_as()
+        else:
+            self._write_project(self.current_project_path)
+
+    def _save_project_as(self) -> None:
+        settings = QSettings("ThermalSim", "VoxelSimulator")
+        start_dir = str(settings.value("last_open_dir", "."))
+        path_str, _ = QFileDialog.getSaveFileName(
+            self, "Save Voxel Project", start_dir, "JSON (*.json)"
+        )
+        if not path_str:
+            return
+        path = Path(path_str)
+        if not path.suffix:
+            path = path.with_suffix(".json")
+        self._write_project(path)
+        settings.setValue("last_open_dir", str(path.parent))
+
+    def _write_project(self, path: Path) -> None:
+        from thermal_sim.io.voxel_project_io import save_voxel_project
+        try:
+            project = self._block_editor.build_project(self._materials)
+            save_voxel_project(project, path)
+            self.current_project_path = path
+            self._update_title()
+        except Exception as exc:
+            QMessageBox.critical(self, "Save Error", str(exc))
+
+    # ------------------------------------------------------------------
+    # Simulation
+    # ------------------------------------------------------------------
+
+    def _on_mode_changed(self, mode: str) -> None:
+        self._sim_mode = mode
+
+    def _run_simulation(self) -> None:
+        try:
+            project = self._block_editor.build_project(self._materials)
+        except Exception as exc:
+            QMessageBox.critical(self, "Project Error", str(exc))
+            return
+
+        if not project.blocks:
+            QMessageBox.warning(self, "No Blocks", "Add at least one assembly block before solving.")
+            return
+
+        # For transient mode, require transient config
+        if self._sim_mode == "transient" and project.transient_config is None:
+            QMessageBox.warning(
+                self, "No Transient Config",
+                "Enable transient in the Mesh tab to run a transient simulation."
+            )
+            return
+
+        self._sim_controller.start_voxel_run(project, self._sim_mode)
+
+    def _on_run_started(self) -> None:
+        self._run_action.setEnabled(False)
+        self._cancel_action.setEnabled(True)
+        self._solver_label.setText("Solving...")
+        self._progress_bar.setVisible(True)
+        self._progress_bar.setRange(0, 0)  # indeterminate
+
+    def _on_run_ended(self) -> None:
+        self._run_action.setEnabled(True)
+        self._cancel_action.setEnabled(False)
+        self._progress_bar.setVisible(False)
+
+    def _on_progress(self, pct: int, msg: str) -> None:
+        self._solver_label.setText(msg)
+        if pct >= 0:
+            self._progress_bar.setRange(0, 100)
+            self._progress_bar.setValue(pct)
+        else:
+            self._progress_bar.setRange(0, 0)
+
+    def _on_result(self, result: object) -> None:
+        self._last_result = result
+        self._solver_label.setText("Complete")
+        self._voxel_3d_view.update_temperature(result)
+
+    def _on_error(self, message: str) -> None:
+        self._solver_label.setText("Error")
+        QMessageBox.critical(self, "Simulation Error", message)
+
+    # ------------------------------------------------------------------
+    # 3D view update
+    # ------------------------------------------------------------------
+
+    def _on_project_changed(self) -> None:
+        """Live-update the 3D structure preview when the editor changes."""
+        self._update_3d_structure()
+
+    def _update_3d_structure(self) -> None:
+        try:
+            project = self._block_editor.build_project(self._materials)
+            self._voxel_3d_view.update_structure(project)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).debug("3D structure update skipped: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Title / path
+    # ------------------------------------------------------------------
+
+    def _update_title(self) -> None:
+        from thermal_sim.core.paths import APP_VERSION
+        base = f"Voxel Thermal Simulator v{APP_VERSION}"
+        if self.current_project_path:
+            base = f"{self.current_project_path.name} — {base}"
+        self.setWindowTitle(base)
+
+    # ------------------------------------------------------------------
+    # Layout
+    # ------------------------------------------------------------------
+
+    def _reset_layout(self) -> None:
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._editor_dock)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._view_dock)
+        self._editor_dock.show()
+        self._view_dock.show()
+
+    # ------------------------------------------------------------------
+    # Window lifecycle
+    # ------------------------------------------------------------------
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        settings = QSettings("ThermalSim", "VoxelSimulator")
+        settings.setValue("dock_state", self.saveState())
+        settings.setValue("window_geometry", self.saveGeometry())
+        event.accept()
