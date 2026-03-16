@@ -444,6 +444,119 @@ class BlockEditorWidget(QWidget):
             transient_config=transient_config,
         )
 
+    def validate_blocks(self) -> list[str]:
+        """Check block geometry for common issues and return warning strings.
+
+        Performs geometry checks without building the full project or running
+        the solver. Operates only on block geometry (AABBs) from the table.
+
+        Returns a list of warning strings (empty list = no issues found).
+        Callers (main window, simulation controller) are responsible for
+        presenting these warnings to the user.
+
+        Checks:
+        1. AABB overlap (last-defined-wins warning for overlapping blocks).
+        2. Powered block without face contact with any other solid block.
+        3. Air gap between powered block and any metal block.
+        """
+        blocks = self._read_blocks()
+        warnings: list[str] = []
+
+        _METAL_KEYWORDS = ("aluminum", "copper", "steel", "metal")
+
+        def _aabb_overlap(a: AssemblyBlock, b: AssemblyBlock) -> bool:
+            """Return True if the two AABBs overlap in all 3 axes."""
+            return (
+                a.x < b.x + b.width and b.x < a.x + a.width
+                and a.y < b.y + b.depth and b.y < a.y + a.depth
+                and a.z < b.z + b.height and b.z < a.z + a.height
+            )
+
+        def _axis_overlap(lo1: float, hi1: float, lo2: float, hi2: float) -> bool:
+            """Strict overlap — intervals must share interior, not just touch."""
+            return lo1 < hi2 and lo2 < hi1
+
+        def _share_face(a: AssemblyBlock, b: AssemblyBlock) -> bool:
+            """Return True if the two blocks share a face (not just edge/corner).
+
+            Face sharing: one axis has exact boundary alignment (a_max == b_min or
+            b_max == a_min) AND the remaining two axes have overlapping (not just
+            touching) intervals.
+            """
+            # +x face of a aligns with -x face of b
+            if abs((a.x + a.width) - b.x) < 1e-12:
+                return (_axis_overlap(a.y, a.y + a.depth, b.y, b.y + b.depth)
+                        and _axis_overlap(a.z, a.z + a.height, b.z, b.z + b.height))
+            # -x face of a aligns with +x face of b
+            if abs(a.x - (b.x + b.width)) < 1e-12:
+                return (_axis_overlap(a.y, a.y + a.depth, b.y, b.y + b.depth)
+                        and _axis_overlap(a.z, a.z + a.height, b.z, b.z + b.height))
+            # +y face of a aligns with -y face of b
+            if abs((a.y + a.depth) - b.y) < 1e-12:
+                return (_axis_overlap(a.x, a.x + a.width, b.x, b.x + b.width)
+                        and _axis_overlap(a.z, a.z + a.height, b.z, b.z + b.height))
+            # -y face of a aligns with +y face of b
+            if abs(a.y - (b.y + b.depth)) < 1e-12:
+                return (_axis_overlap(a.x, a.x + a.width, b.x, b.x + b.width)
+                        and _axis_overlap(a.z, a.z + a.height, b.z, b.z + b.height))
+            # +z face of a aligns with -z face of b
+            if abs((a.z + a.height) - b.z) < 1e-12:
+                return (_axis_overlap(a.x, a.x + a.width, b.x, b.x + b.width)
+                        and _axis_overlap(a.y, a.y + a.depth, b.y, b.y + b.depth))
+            # -z face of a aligns with +z face of b
+            if abs(a.z - (b.z + b.height)) < 1e-12:
+                return (_axis_overlap(a.x, a.x + a.width, b.x, b.x + b.width)
+                        and _axis_overlap(a.y, a.y + a.depth, b.y, b.y + b.depth))
+            return False
+
+        def _has_gap(a: AssemblyBlock, b: AssemblyBlock) -> bool:
+            """Return True if blocks have space (gap) between them in any axis."""
+            x_gap = (a.x + a.width < b.x - 1e-12) or (b.x + b.width < a.x - 1e-12)
+            y_gap = (a.y + a.depth < b.y - 1e-12) or (b.y + b.depth < a.y - 1e-12)
+            z_gap = (a.z + a.height < b.z - 1e-12) or (b.z + b.height < a.z - 1e-12)
+            return x_gap or y_gap or z_gap
+
+        # 1. Overlap warning (last-defined-wins for j > i pairs)
+        for i in range(len(blocks)):
+            for j in range(i + 1, len(blocks)):
+                if _aabb_overlap(blocks[i], blocks[j]):
+                    warnings.append(
+                        f"Warning: Block '{blocks[j].name}' overlaps '{blocks[i].name}'"
+                        f" — {blocks[j].name} takes priority in overlap region"
+                        " (last-defined-wins rule)"
+                    )
+
+        # 2 & 3. Per-powered-block checks
+        for blk in blocks:
+            if blk.power_w <= 0.0:
+                continue
+
+            other_solid = [b for b in blocks if b is not blk]
+
+            # Check 2: does this powered block share a face with any other solid block?
+            has_face_contact = any(_share_face(blk, other) for other in other_solid)
+            if not has_face_contact:
+                warnings.append(
+                    f"Warning: Powered block '{blk.name}' ({blk.power_w}W) does not"
+                    " share a face with any other solid block"
+                    " — heat may only dissipate to air"
+                )
+
+            # Check 3: is there a metal block close but not touching?
+            for other in other_solid:
+                is_metal = any(kw in other.material.lower() for kw in _METAL_KEYWORDS)
+                if not is_metal:
+                    continue
+                if _share_face(blk, other):
+                    continue  # already touching — no gap
+                if _has_gap(blk, other):
+                    warnings.append(
+                        f"Warning: Powered block '{blk.name}' has gap between it and"
+                        f" '{other.name}' — air gap may impede thermal path"
+                    )
+
+        return warnings
+
     def load_project(self, project: VoxelProject) -> None:
         """Populate all tables from an existing VoxelProject."""
         # Blocks
