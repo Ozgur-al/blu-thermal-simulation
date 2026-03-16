@@ -12,7 +12,7 @@ import pyvista as pv  # noqa: E402  (OFF_SCREEN set by conftest.py)
 
 from thermal_sim.ui.assembly_3d import build_assembly_blocks  # noqa: E402
 from thermal_sim.models.project import DisplayProject  # noqa: E402
-from thermal_sim.models.layer import Layer  # noqa: E402
+from thermal_sim.models.layer import EdgeLayer, Layer  # noqa: E402
 from thermal_sim.models.material import Material  # noqa: E402
 from thermal_sim.models.material_zone import MaterialZone  # noqa: E402
 
@@ -83,6 +83,53 @@ def _minimal_project() -> DisplayProject:
                 k_through=1.0,
                 density=2500.0,
                 specific_heat=840.0,
+            ),
+        },
+    )
+
+
+def _project_with_edge_layers() -> DisplayProject:
+    """Project with a layer that has steel edge_layers on all 4 edges."""
+    layers = [
+        Layer(
+            name="Base",
+            material="Aluminum",
+            thickness=0.002,
+            edge_layers={
+                "bottom": [EdgeLayer("Steel", 0.005)],
+                "top":    [EdgeLayer("Steel", 0.005)],
+                "left":   [EdgeLayer("Steel", 0.005)],
+                "right":  [EdgeLayer("Steel", 0.005)],
+            },
+        ),
+        Layer(name="Cover", material="Glass", thickness=0.001),
+    ]
+    return DisplayProject(
+        name="test_edge_layers",
+        width=0.100,
+        height=0.050,
+        layers=layers,
+        materials={
+            "Aluminum": Material(
+                name="Aluminum",
+                k_in_plane=237.0,
+                k_through=237.0,
+                density=2700.0,
+                specific_heat=900.0,
+            ),
+            "Glass": Material(
+                name="Glass",
+                k_in_plane=1.0,
+                k_through=1.0,
+                density=2500.0,
+                specific_heat=840.0,
+            ),
+            "Steel": Material(
+                name="Steel",
+                k_in_plane=50.0,
+                k_through=50.0,
+                density=7800.0,
+                specific_heat=500.0,
             ),
         },
     )
@@ -198,6 +245,72 @@ class TestBuildAssemblyBlocks:
         blocks = build_assembly_blocks(project)
         for b in blocks:
             assert hasattr(b["mesh"], "n_cells"), "mesh should be a pyvista PolyData"
+
+    def test_edge_layers_produce_zone_blocks(self):
+        """A layer with edge_layers on all 4 edges produces at least 4 zone blocks."""
+        project = _project_with_edge_layers()
+        blocks = build_assembly_blocks(project)
+        zone_blocks = [b for b in blocks if b["is_zone"]]
+        assert len(zone_blocks) >= 4, (
+            f"Expected at least 4 zone blocks for 4-edge edge_layers, got {len(zone_blocks)}"
+        )
+
+    def test_edge_layers_blocks_have_correct_material_label(self):
+        """Edge zone block labels contain the edge material name."""
+        project = _project_with_edge_layers()
+        blocks = build_assembly_blocks(project)
+        zone_blocks = [b for b in blocks if b["is_zone"]]
+        labels = [b["label"] for b in zone_blocks]
+        assert any("Steel" in lbl for lbl in labels), (
+            f"Expected 'Steel' in at least one zone label, got: {labels}"
+        )
+
+    def test_edge_layers_invalid_does_not_crash(self):
+        """Edge layers with combined width exceeding panel do not crash build_assembly_blocks.
+
+        The try/except in build_assembly_blocks catches ValueError from generate_edge_zones.
+        """
+        # left + right = 0.060 + 0.060 = 0.120 > panel_width 0.100  => ValueError
+        layers = [
+            Layer(
+                name="Base",
+                material="Aluminum",
+                thickness=0.002,
+                edge_layers={
+                    "left":  [EdgeLayer("Steel", 0.060)],
+                    "right": [EdgeLayer("Steel", 0.060)],
+                },
+            ),
+        ]
+        project = DisplayProject(
+            name="test_invalid_edge",
+            width=0.100,
+            height=0.050,
+            layers=layers,
+            materials={
+                "Aluminum": Material(
+                    name="Aluminum",
+                    k_in_plane=237.0,
+                    k_through=237.0,
+                    density=2700.0,
+                    specific_heat=900.0,
+                ),
+                "Steel": Material(
+                    name="Steel",
+                    k_in_plane=50.0,
+                    k_through=50.0,
+                    density=7800.0,
+                    specific_heat=500.0,
+                ),
+            },
+        )
+        # Should not raise
+        blocks = build_assembly_blocks(project)
+        # No zone blocks from the invalid edge configuration
+        zone_blocks = [b for b in blocks if b["is_zone"]]
+        assert len(zone_blocks) == 0, (
+            f"Expected 0 zone blocks for invalid edge config, got {len(zone_blocks)}"
+        )
 
 
 # ---------------------------------------------------------------------------
