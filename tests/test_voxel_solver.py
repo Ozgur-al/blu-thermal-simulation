@@ -519,3 +519,132 @@ class TestVoxelLayerStats:
         entry = stats[0]
         assert entry["t_max_c"] >= entry["t_avg_c"] >= entry["t_min_c"]
         assert entry["t_max_c"] > 25.0  # heated above ambient
+
+
+# ---------------------------------------------------------------------------
+# Plan 07 tests: powered block contact diagnostic
+# ---------------------------------------------------------------------------
+
+
+class TestPoweredBlockDiagnostic:
+    """Tests for diagnose_powered_block_contacts() in voxel_network_builder."""
+
+    def _import_diagnostic(self):
+        from thermal_sim.solvers.voxel_network_builder import diagnose_powered_block_contacts
+        return diagnose_powered_block_contacts
+
+    def _make_two_block_project(self) -> VoxelProject:
+        """Powered LED block (small) sitting directly on top of an aluminum slab.
+
+        Geometry (z-axis):
+          z=0.000 to z=0.002 — Aluminum slab (100mm x 100mm x 2mm)
+          z=0.002 to z=0.003 — LED block    ( 50mm x  50mm x 1mm, power_w=0.5)
+
+        The LED block shares its -z face with the aluminum slab.
+        """
+        al_mat = Material("Aluminum", k_in_plane=205.0, k_through=205.0,
+                          density=2700.0, specific_heat=900.0)
+        led_mat = Material("LED", k_in_plane=1.0, k_through=1.0,
+                           density=2000.0, specific_heat=900.0)
+        # Slab: full 100 x 100 mm base
+        slab = AssemblyBlock("Slab", material="Aluminum",
+                              x=0.0, y=0.0, z=0.0,
+                              width=0.10, depth=0.10, height=0.002)
+        # LED block: centered, sits on slab top face
+        led = AssemblyBlock("LED_1", material="LED",
+                             x=0.025, y=0.025, z=0.002,
+                             width=0.05, depth=0.05, height=0.001,
+                             power_w=0.5)
+        bc = SurfaceBoundary(ambient_c=25.0, convection_h=8.0, include_radiation=False)
+        return VoxelProject(
+            name="led_on_slab",
+            blocks=[slab, led],
+            materials={"Aluminum": al_mat, "LED": led_mat},
+            boundary_groups=[BoundaryGroup("all", bc)],
+            probes=[],
+            mesh_config=VoxelMeshConfig(cells_per_interval=1),
+        )
+
+    def _make_isolated_block_project(self) -> VoxelProject:
+        """Single powered block with no neighboring solid blocks — all faces touch air."""
+        led_mat = Material("LED", k_in_plane=1.0, k_through=1.0,
+                           density=2000.0, specific_heat=900.0)
+        led = AssemblyBlock("LED_alone", material="LED",
+                             x=0.0, y=0.0, z=0.0,
+                             width=0.05, depth=0.05, height=0.001,
+                             power_w=1.0)
+        bc = SurfaceBoundary(ambient_c=25.0, convection_h=8.0, include_radiation=False)
+        return VoxelProject(
+            name="isolated_led",
+            blocks=[led],
+            materials={"LED": led_mat},
+            boundary_groups=[BoundaryGroup("all", bc)],
+            probes=[],
+            mesh_config=VoxelMeshConfig(cells_per_interval=1),
+        )
+
+    def test_powered_block_contact_diagnostic(self):
+        """LED block on aluminum slab: diagnostic reports Aluminum as -z neighbor."""
+        diagnose_powered_block_contacts = self._import_diagnostic()
+        project = self._make_two_block_project()
+        results = diagnose_powered_block_contacts(project)
+
+        # Only the LED block has power_w > 0
+        assert len(results) == 1, f"Expected 1 powered block, got {len(results)}"
+        entry = results[0]
+        assert entry["block_name"] == "LED_1"
+        assert entry["power_w"] == pytest.approx(0.5)
+        assert "neighbors" in entry
+
+        # Find Aluminum neighbor
+        al_neighbors = [n for n in entry["neighbors"] if n["material"] == "Aluminum"]
+        assert len(al_neighbors) >= 1, (
+            f"Expected at least one Aluminum neighbor, got: {entry['neighbors']}"
+        )
+        al = al_neighbors[0]
+        assert al["face_area_m2"] > 0.0
+        assert al["direction"] in ("+x", "-x", "+y", "-y", "+z", "-z")
+
+        # Aluminum should be below the LED block: -z direction
+        assert al["direction"] == "-z", (
+            f"Expected Aluminum in -z direction, got {al['direction']}"
+        )
+
+        # Face area should equal the LED block footprint (50mm x 50mm = 0.0025 m2)
+        assert al["face_area_m2"] == pytest.approx(0.05 * 0.05, rel=0.01)
+
+    def test_powered_block_isolated_in_air(self):
+        """Single powered block with no neighbors reports only air."""
+        diagnose_powered_block_contacts = self._import_diagnostic()
+        project = self._make_isolated_block_project()
+        results = diagnose_powered_block_contacts(project)
+
+        assert len(results) == 1
+        entry = results[0]
+        assert entry["block_name"] == "LED_alone"
+
+        # All neighbors should be "Air Gap" (the default air material name)
+        non_air = [n for n in entry["neighbors"]
+                   if n["material"] not in ("Air Gap", "Air", "air", "air gap")]
+        assert len(non_air) == 0, (
+            f"Isolated block should only have air neighbors, got: {non_air}"
+        )
+
+    def test_diagnostic_return_structure(self):
+        """Verify return type and dict keys match the documented contract."""
+        diagnose_powered_block_contacts = self._import_diagnostic()
+        project = self._make_two_block_project()
+        results = diagnose_powered_block_contacts(project)
+
+        assert isinstance(results, list)
+        for entry in results:
+            assert isinstance(entry, dict)
+            assert "block_name" in entry
+            assert "power_w" in entry
+            assert "neighbors" in entry
+            assert isinstance(entry["neighbors"], list)
+            for n in entry["neighbors"]:
+                assert "material" in n
+                assert "face_area_m2" in n
+                assert "direction" in n
+                assert n["direction"] in ("+x", "-x", "+y", "-y", "+z", "-z")
