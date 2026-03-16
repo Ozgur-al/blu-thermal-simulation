@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
-status: complete
-last_updated: "2026-03-16T07:15:00Z"
+status: in-progress
+last_updated: "2026-03-16T14:39:57Z"
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 10
-  total_plans: 36
-  completed_plans: 36
+  total_plans: 41
+  completed_plans: 37
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-16)
 
 **Core value:** Engineers can quickly set up a display stack, run thermal simulations, and get actionable results without programming knowledge or admin access — one-click launch, intuitive workflow.
-**Current focus:** Milestone v2.0 — Phase 10: Edge Layers and 3D Preview
+**Current focus:** Milestone v2.0 — Phase 11: Voxel-Based 3D Solver
 
 ## Current Position
 
-Phase: 10 of 10 (Edge Layers and 3D Preview) — complete
-Plan: 4 of 4 (10-04 complete)
-Status: complete
-Last activity: 2026-03-16 — 10-04 gap closure: wire edge zones into 3D assembly preview, mark all Phase 10 requirements complete; 255 tests pass
+Phase: 11 of 11 (Voxel-Based 3D Solver) — in progress
+Plan: 1 of 5 (11-01 complete)
+Status: in-progress
+Last activity: 2026-03-16 — 11-01: voxel data models + conformal mesh + voxel assignment; 287 tests pass
 
-Progress: [██████████] 100%
+Progress: [█████████▌] 91%
 
 ## Performance Metrics
 
@@ -46,6 +46,8 @@ Progress: [██████████] 100%
 | 10-edge-layers-and-3d-preview | 4 | 54 min | 14 min |
 
 *Updated after each plan completion*
+
+| Phase 11-voxel-3d-solver | 1 | 4 min | 4 min |
 
 ## Accumulated Context
 
@@ -90,6 +92,8 @@ Progress: [██████████] 100%
 - [Phase 10-edge-layers-and-3d-preview]: Toggle button starts disabled; enabled after first solve result; switches between material-colored structure and temperature overlay
 - [Phase 10-edge-layers-and-3d-preview]: generate_edge_zones() called inside try/except in build_assembly_blocks() — catches ValueError (invalid dims) and ImportError; imported lazily inside block
 - [Phase 10-edge-layers-and-3d-preview]: 2.5D model fundamentally cannot represent edge structures with independent z-thickness — edge zones inherit parent layer thickness, causing unrealistic thermal resistance for thin PCBs on thick LGPs
+- [Phase 11-voxel-3d-solver]: C-order node indexing (iz*ny*nx+iy*nx+ix) kept separate from PyVista visualization — VTK callers will ravel with order='F'
+- [Phase 11-voxel-3d-solver]: Cell-centre containment uses inclusive-lower/exclusive-upper bounds: cx >= block.x and cx < block.x + block.width
 
 ### Roadmap Evolution
 
@@ -107,5 +111,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 10-04-PLAN.md (gap closure — all Phase 10 requirements complete)
-Resume file: .planning/phases/10-edge-layers-and-3d-preview/10-04-SUMMARY.md
+Stopped at: Completed 11-01-PLAN.md (voxel data models + conformal mesh + voxel assignment)
+Resume file: .planning/phases/11-voxel-3d-solver/11-01-SUMMARY.md

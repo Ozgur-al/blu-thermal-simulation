@@ -100,13 +100,13 @@
 
 ### Voxel-Based 3D Solver
 
-- [ ] **VOX-01**: Assembly block model (named 3D rectangular solids with position, size, material) with frozen dataclass and to_dict/from_dict serialization
-- [ ] **VOX-02**: Conformal mesh generation snapping to all block boundaries in x, y, and z, producing non-uniform Cartesian grid
-- [ ] **VOX-03**: Per-voxel material assignment via cell-center containment test; empty voxels filled with air (k=0.026 W/mK); last-defined-wins on overlap
+- [x] **VOX-01**: Assembly block model (named 3D rectangular solids with position, size, material) with frozen dataclass and to_dict/from_dict serialization
+- [x] **VOX-02**: Conformal mesh generation snapping to all block boundaries in x, y, and z, producing non-uniform Cartesian grid
+- [x] **VOX-03**: Per-voxel material assignment via cell-center containment test; empty voxels filled with air (k=0.026 W/mK); last-defined-wins on overlap
 - [ ] **VOX-04**: Voxel network builder assembling COO sparse conductance matrix with harmonic-mean conductance at material boundaries and non-uniform cell geometry
 - [ ] **VOX-05**: Steady-state solver using bicgstab+ILU preconditioner for >5k nodes, spsolve for smaller problems
 - [ ] **VOX-06**: Transient solver using splu LU prefactoring for implicit Euler time-stepping
-- [ ] **VOX-07**: Surface source placement on named block faces (LEDs as separate heat source objects, not assembly blocks)
+- [x] **VOX-07**: Surface source placement on named block faces (LEDs as separate heat source objects, not assembly blocks)
 - [ ] **VOX-08**: Auto-detect exposed boundary faces (voxel faces not touching another block) and apply convection/radiation BCs from named boundary groups
 - [ ] **VOX-09**: Analytical validation tests (1D resistance chain, 2-node network, RC transient decay) rewritten using assembly blocks
 - [ ] **VOX-10**: CLI and project IO for new VoxelProject JSON format (clean break from old DisplayProject format)
