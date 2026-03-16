@@ -85,6 +85,51 @@ def test_generate_eled_zones_symmetric_known_inputs() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Test 1b: generate_eled_zones with bottom edge config (zones along y)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_eled_zones_bottom_edge_config() -> None:
+    """bottom edge_config produces zones along the y-axis (x=0, varying y)."""
+    panel_width = 0.300
+    panel_height = 0.200
+    frame = 0.003
+    pcb = 0.005
+    air = 0.001
+
+    zones = generate_eled_zones(
+        panel_width=panel_width,
+        panel_height=panel_height,
+        frame_width_left=frame,
+        pcb_width_left=pcb,
+        air_gap_left=air,
+        frame_width_right=frame,
+        pcb_width_right=pcb,
+        air_gap_right=air,
+        edge_config="bottom",
+    )
+
+    assert len(zones) == 7
+    expected_materials = ["Steel", "FR4", "Air Gap", "PMMA", "Air Gap", "FR4", "Steel"]
+    assert [z.material for z in zones] == expected_materials
+
+    # All zones should have x=0 and width=panel_width (full panel width)
+    for z in zones:
+        assert abs(z.x - 0.0) < 1e-9
+        assert abs(z.width - panel_width) < 1e-9
+
+    # y-positions should be cumulative; heights should match zone widths
+    expected_y = [0.0, frame, frame + pcb, frame + pcb + air]
+    for i in range(3):
+        assert abs(zones[i].y - expected_y[i]) < 1e-9
+
+    # LGP bulk height
+    edge_total = 2 * (frame + pcb + air)
+    expected_bulk_h = panel_height - edge_total
+    assert abs(zones[3].height - expected_bulk_h) < 1e-9
+
+
+# ---------------------------------------------------------------------------
 # Test 2: generate_eled_zones raises ValueError on width overflow
 # ---------------------------------------------------------------------------
 

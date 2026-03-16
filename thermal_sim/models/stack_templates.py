@@ -223,45 +223,75 @@ def generate_eled_zones(
     frame_width_right: float,
     pcb_width_right: float,
     air_gap_right: float,
+    edge_config: str = "left_right",
 ) -> list:
     """Return MaterialZone list for ELED LGP cross-section.
 
-    Physical arrangement (left-to-right):
+    Physical arrangement (near-edge to far-edge):
     [frame | PCB+LED | air gap | LGP bulk | air gap | PCB+LED | frame]
+
+    For ``left_right``: zones run along x (left-to-right).  "left"/"right"
+    spinbox values map to the left and right panel edges.
+
+    For ``bottom`` or ``top``: zones run along y.  "left" spinbox values
+    map to the bottom edge and "right" values to the top edge (``bottom``),
+    or vice-versa (``top``).
 
     Parameters are in SI metres. Zones with width <= 0 are omitted.
 
-    Raises ValueError if the sum of left/right zone widths exceeds panel_width.
+    Raises ValueError if the sum of edge zone widths exceeds the relevant
+    panel dimension.
     """
     from thermal_sim.models.material_zone import MaterialZone
 
-    total_edge = (
-        frame_width_left + pcb_width_left + air_gap_left
-        + frame_width_right + pcb_width_right + air_gap_right
-    )
-    lgp_bulk_width = panel_width - total_edge
+    # Choose the axis that is perpendicular to the LED edge.
+    # "left_right" -> zones along x, span full height.
+    # "bottom"/"top" -> zones along y, span full width.
+    horizontal = edge_config in ("left_right", "all")
+    span_dim = panel_width if horizontal else panel_height  # extent along zone axis
+    cross_dim = panel_height if horizontal else panel_width  # extent perpendicular
+
+    # For "bottom": "left" spinbox = bottom edge, "right" = top edge.
+    # For "top": "left" spinbox = top edge, "right" = bottom edge.
+    if edge_config == "top":
+        near_frame, near_pcb, near_air = frame_width_right, pcb_width_right, air_gap_right
+        far_frame, far_pcb, far_air = frame_width_left, pcb_width_left, air_gap_left
+    else:
+        near_frame, near_pcb, near_air = frame_width_left, pcb_width_left, air_gap_left
+        far_frame, far_pcb, far_air = frame_width_right, pcb_width_right, air_gap_right
+
+    total_edge = near_frame + near_pcb + near_air + far_frame + far_pcb + far_air
+    lgp_bulk_width = span_dim - total_edge
     if lgp_bulk_width <= 0:
         raise ValueError(
             f"ELED zone widths ({total_edge:.4f} m) "
-            f"exceed panel width ({panel_width:.4f} m). Reduce zone widths."
+            f"exceed panel {'width' if horizontal else 'height'} ({span_dim:.4f} m). "
+            f"Reduce zone widths."
         )
 
     zones = []
-    x = 0.0
+    pos = 0.0
     for material, w in [
-        ("Steel",    frame_width_left),
-        ("FR4",      pcb_width_left),
-        ("Air Gap",  air_gap_left),
+        ("Steel",    near_frame),
+        ("FR4",      near_pcb),
+        ("Air Gap",  near_air),
         ("PMMA",     lgp_bulk_width),
-        ("Air Gap",  air_gap_right),
-        ("FR4",      pcb_width_right),
-        ("Steel",    frame_width_right),
+        ("Air Gap",  far_air),
+        ("FR4",      far_pcb),
+        ("Steel",    far_frame),
     ]:
         if w > 0:
-            zones.append(MaterialZone(
-                material=material, x=x, y=0.0, width=w, height=panel_height
-            ))
-        x += w
+            if horizontal:
+                zones.append(MaterialZone(
+                    material=material, x=pos, y=0.0,
+                    width=w, height=cross_dim,
+                ))
+            else:
+                zones.append(MaterialZone(
+                    material=material, x=0.0, y=pos,
+                    width=cross_dim, height=w,
+                ))
+        pos += w
     return zones
 
 

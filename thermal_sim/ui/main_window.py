@@ -977,6 +977,7 @@ class MainWindow(QMainWindow):
             "Physically: the standoff air space."
         )
 
+        self._eled_zone_form = zone_form
         zone_form.addRow("Frame width (left) [mm]", self._eled_frame_width_left)
         zone_form.addRow("PCB+LED width (left) [mm]", self._eled_pcb_width_left)
         zone_form.addRow("Air gap (left) [mm]", self._eled_air_gap_left)
@@ -1001,6 +1002,9 @@ class MainWindow(QMainWindow):
         self._eled_edge_offset.valueChanged.connect(self._update_eled_pitch_label)
         self._eled_edge_config.currentTextChanged.connect(
             lambda _: self._update_eled_pitch_label()
+        )
+        self._eled_edge_config.currentTextChanged.connect(
+            lambda _: self._update_eled_zone_labels()
         )
 
         return outer
@@ -1065,6 +1069,27 @@ class MainWindow(QMainWindow):
         pitch = usable / (count - 1) if count > 1 else 0.0
         self._eled_pitch_label.setText(f"{pitch:.2f}")
 
+    def _update_eled_zone_labels(self) -> None:
+        """Update zone spinbox labels to match the current edge configuration."""
+        edge_cfg = self._eled_edge_config.currentText().lower().replace("/", "_")
+        if edge_cfg in ("bottom", "top"):
+            near = "bottom" if edge_cfg == "bottom" else "top"
+            far = "top" if edge_cfg == "bottom" else "bottom"
+        else:
+            near, far = "left", "right"
+        form = self._eled_zone_form
+        for spin, prefix in [
+            (self._eled_frame_width_left, f"Frame width ({near})"),
+            (self._eled_pcb_width_left, f"PCB+LED width ({near})"),
+            (self._eled_air_gap_left, f"Air gap ({near})"),
+            (self._eled_frame_width_right, f"Frame width ({far})"),
+            (self._eled_pcb_width_right, f"PCB+LED width ({far})"),
+            (self._eled_air_gap_right, f"Air gap ({far})"),
+        ]:
+            label = form.labelForField(spin)
+            if label is not None:
+                label.setText(f"{prefix} [mm]")
+
     def _on_generate_eled_zones(self) -> None:
         """Generate ELED cross-section material zones for the LGP layer.
 
@@ -1095,6 +1120,7 @@ class MainWindow(QMainWindow):
         # Read panel dimensions (mm -> metres)
         panel_width = self.width_spin.value() / 1000.0
         panel_height = self.height_spin.value() / 1000.0
+        edge_cfg = self._eled_edge_config.currentText().lower().replace("/", "_")
 
         # Read zone widths (mm -> metres)
         frame_w_left = self._eled_frame_width_left.value() / 1000.0
@@ -1114,6 +1140,7 @@ class MainWindow(QMainWindow):
                 frame_width_right=frame_w_right,
                 pcb_width_right=pcb_w_right,
                 air_gap_right=air_g_right,
+                edge_config=edge_cfg,
             )
         except ValueError as exc:
             QMessageBox.warning(self, "Zone Width Error", str(exc))
