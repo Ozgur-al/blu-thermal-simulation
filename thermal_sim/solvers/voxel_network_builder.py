@@ -15,8 +15,20 @@ from scipy.sparse import coo_matrix, csr_matrix
 
 from thermal_sim.core.conformal_mesh import ConformalMesh3D, build_conformal_mesh
 from thermal_sim.core.constants import STEFAN_BOLTZMANN
-from thermal_sim.core.voxel_assignment import assign_voxel_materials
+from thermal_sim.core.voxel_assignment import assign_voxel_materials, _DEFAULT_AIR
+from thermal_sim.models.material import Material
 from thermal_sim.models.voxel_project import VoxelProject
+
+# Default air material used for cells outside any defined block.
+# Projects that don't define "Air Gap" explicitly will fall back to this.
+_DEFAULT_AIR_MATERIAL = Material(
+    name=_DEFAULT_AIR,
+    k_in_plane=0.026,
+    k_through=0.026,
+    density=1.2,
+    specific_heat=1006.0,
+    emissivity=0.0,
+)
 
 
 @dataclass
@@ -62,7 +74,7 @@ def build_voxel_network(project: VoxelProject) -> VoxelThermalNetwork:
         for iy in range(ny):
             for ix in range(nx):
                 mat_name = str(material_grid[iz, iy, ix])
-                mat = project.materials[mat_name]
+                mat = project.materials.get(mat_name, _DEFAULT_AIR_MATERIAL)
                 k_ip[iz, iy, ix] = mat.k_in_plane
                 k_th[iz, iy, ix] = mat.k_through
                 rho_cp[iz, iy, ix] = mat.density * mat.specific_heat
@@ -427,6 +439,15 @@ def _apply_surface_sources(
             iz_f, iy_f, ix_f = iz_f[shape_mask], iy_f[shape_mask], ix_f[shape_mask]
 
         n_cells_face = iz_f.size
+        if n_cells_face == 0:
+            # Shape filter eliminated all cells (source smaller than mesh cells).
+            # Fall back to distributing power uniformly across all face cells so
+            # energy is conserved regardless of mesh resolution.
+            iz_g2, iy_g2, ix_g2 = np.meshgrid(iz_face, iy_face, ix_face, indexing='ij')
+            iz_f = iz_g2.ravel()
+            iy_f = iy_g2.ravel()
+            ix_f = ix_g2.ravel()
+            n_cells_face = iz_f.size
         if n_cells_face == 0:
             continue
 
