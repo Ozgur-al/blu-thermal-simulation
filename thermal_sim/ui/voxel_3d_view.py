@@ -68,8 +68,14 @@ def _material_color_map(material_names: list[str]) -> dict[str, tuple[float, flo
     result: dict[str, tuple[float, float, float]] = {}
     tab20_index = 0
     for name in material_names:
-        if name in _FIXED_COLORS:
-            result[name] = _FIXED_COLORS[name]
+        matched = _FIXED_COLORS.get(name)
+        if matched is None:
+            for key, color in _FIXED_COLORS.items():
+                if key in name:
+                    matched = color
+                    break
+        if matched is not None:
+            result[name] = matched
         else:
             if cmap is not None:
                 rgba = cmap(tab20_index % 20)
@@ -534,11 +540,11 @@ class Voxel3DView(QWidget):
             pos = lo + (slider.value() / 100.0) * (hi - lo)
 
             try:
-                sliced = self._temp_grid.slice(normal=axis, origin=[
-                    pos if axis == "x" else 0.0,
-                    pos if axis == "y" else 0.0,
-                    pos if axis == "z" else 0.0,
-                ])
+                # Slice requires point_data for interpolation; convert from cell_data
+                grid_pd = self._temp_grid.cell_data_to_point_data()
+                origin = list(grid_pd.center)
+                origin[{"x": 0, "y": 1, "z": 2}[axis]] = pos
+                sliced = grid_pd.slice(normal=axis, origin=origin)
                 t_min = float(self._temp_grid.cell_data["Temperature_C"].min())
                 t_max = float(self._temp_grid.cell_data["Temperature_C"].max())
                 if t_max - t_min < 0.01:
@@ -554,6 +560,15 @@ class Voxel3DView(QWidget):
                 self._slice_actors[actor_key] = actor
             except Exception as exc:
                 logger.debug("Slice %s failed: %s", axis, exc)
+
+        # Hide the full temperature grid when any slice is active so slices
+        # aren't obscured; restore it when all slices are cleared.
+        any_slice_active = len(self._slice_actors) > 0
+        if self._temp_grid_actor is not None:
+            try:
+                self._temp_grid_actor.SetVisibility(not any_slice_active)
+            except Exception:
+                pass
 
         self._plotter.render()
 
