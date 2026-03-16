@@ -151,11 +151,12 @@ Plans:
   3. An interactive 3D view shows the full assembly as color-coded blocks with rotation, zoom, and an explode slider to separate layers for inspection
   4. After solving, the 3D results view shows temperature data overlaid on the assembly geometry
   5. Edge layers and manual zones coexist: edge layers define perimeter, manual zones overlay for partial features — manual wins on overlap
-**Plans:** 3/3 plans complete
+**Plans:** 3/4 plans complete (+ 1 gap closure)
 Plans:
 - [x] 10-01-PLAN.md — EdgeLayer dataclass, Layer.edge_layers field, generate_edge_zones() solver integration
 - [x] 10-02-PLAN.md — Assembly3DWidget with PyVista/VTK, explode slider, dock panel wired to layer changes
 - [x] 10-03-PLAN.md — Edge layer GUI editor, ELED template auto-populate, 3D temperature overlay with toggle
+- [ ] 10-04-PLAN.md — Gap closure: wire edge layers into 3D preview, update REQUIREMENTS.md
 
 ## Progress
 
