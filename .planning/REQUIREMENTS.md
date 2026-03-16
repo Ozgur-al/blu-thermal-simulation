@@ -90,13 +90,13 @@
 
 - [x] **EDGE-01**: Layer model supports `edge_layers` dict field with per-edge (bottom/top/left/right) ordered lists of lateral layers (material + thickness), serialized in project JSON
 - [x] **EDGE-02**: Edge layers auto-generate MaterialZone rectangles at solve time; corners use outermost material (frame); edge zones + manual zones coexist with manual winning on overlap
-- [ ] **EDGE-03**: ELED architecture selection auto-populates LGP layer edge layers with correct perimeter structure (frame+air+PCB on LED edges, frame+air on non-LED edges)
+- [x] **EDGE-03**: ELED architecture selection auto-populates LGP layer edge layers with correct perimeter structure (frame+air+PCB on LED edges, frame+air on non-LED edges)
 
 ### 3D Assembly Visualization
 
 - [x] **VIS3D-01**: Interactive 3D view (PyVista/VTK) showing assembly as color-coded blocks with rotation, pan, zoom, and layer labels
 - [x] **VIS3D-02**: Explode slider separates layers vertically for inspecting internal structure including edge layers
-- [ ] **VIS3D-03**: 3D results view shows temperature data overlaid on assembly geometry after solving
+- [x] **VIS3D-03**: 3D results view shows temperature data overlaid on assembly geometry after solving
 
 ## Future Enhancements
 
@@ -167,19 +167,19 @@
 | ELED-01 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
 | ELED-02 | Phase 9 — 3D GUI and ELED Zone Preset | Complete |
 
-| EDGE-01 | Phase 10 — Edge Layers and 3D Preview | Planned |
-| EDGE-02 | Phase 10 — Edge Layers and 3D Preview | Planned |
-| EDGE-03 | Phase 10 — Edge Layers and 3D Preview | Planned |
+| EDGE-01 | Phase 10 — Edge Layers and 3D Preview | Complete |
+| EDGE-02 | Phase 10 — Edge Layers and 3D Preview | Complete |
+| EDGE-03 | Phase 10 — Edge Layers and 3D Preview | Complete |
 | VIS3D-01 | Phase 10 — Edge Layers and 3D Preview | Complete |
 | VIS3D-02 | Phase 10 — Edge Layers and 3D Preview | Complete |
-| VIS3D-03 | Phase 10 — Edge Layers and 3D Preview | Planned |
+| VIS3D-03 | Phase 10 — Edge Layers and 3D Preview | Complete |
 
 **Coverage:**
 - v1 requirements: 30 total (all complete)
-- v2 requirements: 22 total (16 complete, 6 planned)
+- v2 requirements: 22 total (22 complete, 0 planned)
 - Mapped to phases: 30 (v1) + 22 (v2)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-16 — v2.0 roadmap created, all 16 v2 requirements mapped to Phases 7-9*
+*Last updated: 2026-03-16 — Phase 10 complete: EDGE-01/02/03 and VIS3D-03 marked complete; all Phase 10 requirements now satisfied*
