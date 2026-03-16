@@ -1,0 +1,240 @@
+{
+  "name": "DLED Voxel Example — 450x300 backlight stack",
+  "blocks": [
+    {
+      "name": "Metal Frame",
+      "material": "Aluminum 6061",
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "width": 0.450,
+      "depth": 0.300,
+      "height": 0.003
+    },
+    {
+      "name": "Reflector",
+      "material": "PET",
+      "x": 0.005,
+      "y": 0.005,
+      "z": 0.003,
+      "width": 0.440,
+      "depth": 0.290,
+      "height": 0.0001
+    },
+    {
+      "name": "LGP",
+      "material": "PMMA",
+      "x": 0.005,
+      "y": 0.005,
+      "z": 0.0031,
+      "width": 0.440,
+      "depth": 0.290,
+      "height": 0.004
+    },
+    {
+      "name": "Diffuser",
+      "material": "PET",
+      "x": 0.005,
+      "y": 0.005,
+      "z": 0.0071,
+      "width": 0.440,
+      "depth": 0.290,
+      "height": 0.0005
+    }
+  ],
+  "materials": {
+    "Aluminum 6061": {
+      "name": "Aluminum 6061",
+      "k_in_plane": 167.0,
+      "k_through": 167.0,
+      "density": 2700.0,
+      "specific_heat": 896.0,
+      "emissivity": 0.1
+    },
+    "PET": {
+      "name": "PET",
+      "k_in_plane": 0.24,
+      "k_through": 0.24,
+      "density": 1380.0,
+      "specific_heat": 1200.0,
+      "emissivity": 0.9
+    },
+    "PMMA": {
+      "name": "PMMA",
+      "k_in_plane": 0.19,
+      "k_through": 0.19,
+      "density": 1180.0,
+      "specific_heat": 1460.0,
+      "emissivity": 0.9
+    }
+  },
+  "sources": [
+    {
+      "name": "LED-R0-C0",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.03125,
+      "y": 0.025,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R0-C1",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.14375,
+      "y": 0.025,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R0-C2",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.25625,
+      "y": 0.025,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R0-C3",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.36875,
+      "y": 0.025,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R1-C0",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.03125,
+      "y": 0.125,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R1-C1",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.14375,
+      "y": 0.125,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R1-C2",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.25625,
+      "y": 0.125,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R1-C3",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.36875,
+      "y": 0.125,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R2-C0",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.03125,
+      "y": 0.225,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R2-C1",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.14375,
+      "y": 0.225,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R2-C2",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.25625,
+      "y": 0.225,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    },
+    {
+      "name": "LED-R2-C3",
+      "block": "Metal Frame",
+      "face": "top",
+      "power_w": 0.5,
+      "shape": "rectangle",
+      "x": 0.36875,
+      "y": 0.225,
+      "width": 0.003,
+      "height": 0.003,
+      "radius": null
+    }
+  ],
+  "boundary_groups": [
+    {
+      "name": "exposed",
+      "boundary": {
+        "ambient_c": 25.0,
+        "convection_h": 8.0,
+        "include_radiation": true,
+        "emissivity_override": null
+      }
+    }
+  ],
+  "probes": [
+    {
+      "name": "Centre LGP",
+      "x": 0.225,
+      "y": 0.150,
+      "z": 0.005
+    }
+  ],
+  "mesh_config": {
+    "cells_per_interval": 1
+  },
+  "transient_config": null
+}

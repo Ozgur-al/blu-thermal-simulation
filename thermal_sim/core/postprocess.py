@@ -7,9 +7,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from thermal_sim.models.project import DisplayProject
-from thermal_sim.solvers.steady_state import SteadyStateResult
-from thermal_sim.solvers.transient import TransientResult
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from thermal_sim.models.project import DisplayProject
+    from thermal_sim.solvers.steady_state import SteadyStateResult
+    from thermal_sim.solvers.transient import TransientResult
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +181,61 @@ def top_n_hottest_cells_for_layer(
         single = temperature_map_c[layer_idx:layer_idx + 1]
         local_z_offsets = [0, 1]
     return _top_n_from_map(single, [layer_name], dx, dy, n=n, z_offsets=local_z_offsets)
+
+
+def voxel_layer_stats(result, project) -> list[dict]:
+    """Per-block T_max, T_avg, T_min from a VoxelSteadyStateResult.
+
+    Computes statistics by masking the 3D temperature array using cell-centre
+    containment (inclusive-lower / exclusive-upper bounds — same as voxel
+    assignment). Each block's voxels are the cells whose centres lie inside it.
+
+    ``result`` must have attributes: ``temperatures_c`` (nz, ny, nx) and
+    ``mesh`` (ConformalMesh3D). ``project`` must have a ``blocks`` list of
+    AssemblyBlock instances.
+
+    Returns a list of dicts, one per block (in definition order), with keys:
+    ``block``, ``t_max_c``, ``t_avg_c``, ``t_min_c``.
+
+    If a block covers no voxels (too thin for the mesh resolution), it is
+    included with NaN statistics rather than raising an error.
+    """
+    T = result.temperatures_c  # (nz, ny, nx)
+    mesh = result.mesh
+
+    cx = mesh.x_centers()
+    cy = mesh.y_centers()
+    cz = mesh.z_centers()
+
+    stats = []
+    for blk in project.blocks:
+        in_x = (cx >= blk.x) & (cx < blk.x + blk.width)
+        in_y = (cy >= blk.y) & (cy < blk.y + blk.depth)
+        in_z = (cz >= blk.z) & (cz < blk.z + blk.height)
+
+        # Build 3D boolean mask via broadcasting (nz, ny, nx)
+        mask = (
+            in_z[:, np.newaxis, np.newaxis] &
+            in_y[np.newaxis, :, np.newaxis] &
+            in_x[np.newaxis, np.newaxis, :]
+        )
+
+        cell_temps = T[mask]
+        if cell_temps.size == 0:
+            stats.append({
+                "block": blk.name,
+                "t_max_c": float("nan"),
+                "t_avg_c": float("nan"),
+                "t_min_c": float("nan"),
+            })
+        else:
+            stats.append({
+                "block": blk.name,
+                "t_max_c": float(cell_temps.max()),
+                "t_avg_c": float(cell_temps.mean()),
+                "t_min_c": float(cell_temps.min()),
+            })
+    return stats
 
 
 def _stats_from_map(temperature_map_c: np.ndarray) -> TemperatureStats:

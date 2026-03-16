@@ -10,7 +10,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from thermal_sim.models.project import DisplayProject
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from thermal_sim.models.project import DisplayProject
 
 
 # ---------------------------------------------------------------------------

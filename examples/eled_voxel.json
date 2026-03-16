@@ -1,0 +1,350 @@
+{
+  "name": "ELED Voxel Example — edge-lit 450x300 module",
+  "blocks": [
+    {
+      "name": "Metal Frame",
+      "material": "Steel",
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "width": 0.450,
+      "depth": 0.300,
+      "height": 0.003
+    },
+    {
+      "name": "LGP",
+      "material": "PMMA",
+      "x": 0.010,
+      "y": 0.010,
+      "z": 0.003,
+      "width": 0.430,
+      "depth": 0.280,
+      "height": 0.004
+    },
+    {
+      "name": "Left FR4 PCB",
+      "material": "FR4",
+      "x": 0.0084,
+      "y": 0.010,
+      "z": 0.003,
+      "width": 0.0016,
+      "depth": 0.280,
+      "height": 0.004
+    },
+    {
+      "name": "Right FR4 PCB",
+      "material": "FR4",
+      "x": 0.440,
+      "y": 0.010,
+      "z": 0.003,
+      "width": 0.0016,
+      "depth": 0.280,
+      "height": 0.004
+    }
+  ],
+  "materials": {
+    "Steel": {
+      "name": "Steel",
+      "k_in_plane": 50.0,
+      "k_through": 50.0,
+      "density": 7850.0,
+      "specific_heat": 490.0,
+      "emissivity": 0.3
+    },
+    "PMMA": {
+      "name": "PMMA",
+      "k_in_plane": 0.19,
+      "k_through": 0.19,
+      "density": 1180.0,
+      "specific_heat": 1460.0,
+      "emissivity": 0.9
+    },
+    "FR4": {
+      "name": "FR4",
+      "k_in_plane": 0.81,
+      "k_through": 0.29,
+      "density": 1850.0,
+      "specific_heat": 1000.0,
+      "emissivity": 0.9
+    },
+    "Air Gap": {
+      "name": "Air Gap",
+      "k_in_plane": 0.026,
+      "k_through": 0.026,
+      "density": 1.2,
+      "specific_heat": 1006.0,
+      "emissivity": 0.0
+    }
+  },
+  "sources": [
+    {
+      "name": "LED-L-0",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.014,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-1",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.042,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-2",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.070,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-3",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.098,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-4",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.126,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-5",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.154,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-6",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.182,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-7",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.210,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-8",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.238,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-L-9",
+      "block": "Left FR4 PCB",
+      "face": "right",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.266,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-0",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.014,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-1",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.042,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-2",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.070,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-3",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.098,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-4",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.126,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-5",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.154,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-6",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.182,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-7",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.210,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-8",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.238,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    },
+    {
+      "name": "LED-R-9",
+      "block": "Right FR4 PCB",
+      "face": "left",
+      "power_w": 0.3,
+      "shape": "rectangle",
+      "x": 0.001,
+      "y": 0.266,
+      "width": 0.002,
+      "height": 0.002,
+      "radius": null
+    }
+  ],
+  "boundary_groups": [
+    {
+      "name": "external",
+      "boundary": {
+        "ambient_c": 25.0,
+        "convection_h": 8.0,
+        "include_radiation": true,
+        "emissivity_override": null
+      }
+    }
+  ],
+  "probes": [
+    {
+      "name": "LGP Centre",
+      "x": 0.225,
+      "y": 0.150,
+      "z": 0.005
+    },
+    {
+      "name": "Left PCB Mid",
+      "x": 0.0092,
+      "y": 0.150,
+      "z": 0.005
+    }
+  ],
+  "mesh_config": {
+    "cells_per_interval": 1
+  },
+  "transient_config": null
+}
