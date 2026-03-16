@@ -35,21 +35,29 @@ class VoxelProbe:
 class BoundaryGroup:
     """Named boundary condition group applied to a set of exposed faces.
 
-    Actual face assignment is performed by the solver at build time; the group
-    here just carries the thermal boundary condition parameters.
+    Actual face assignment is performed by the solver at build time based on
+    the ``faces`` list.  Valid face values: "all", "top", "bottom", "front",
+    "back", "left", "right".  Use ["all"] (the default) to apply this group
+    to every exposed grid-boundary face.
     """
 
     name: str
     boundary: SurfaceBoundary
+    faces: list[str] = field(default_factory=lambda: ["all"])
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "boundary": self.boundary.to_dict()}
+        return {
+            "name": self.name,
+            "boundary": self.boundary.to_dict(),
+            "faces": list(self.faces),
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "BoundaryGroup":
         return cls(
             name=data["name"],
             boundary=SurfaceBoundary.from_dict(data["boundary"]),
+            faces=list(data.get("faces", ["all"])),
         )
 
 

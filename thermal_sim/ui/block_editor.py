@@ -150,13 +150,13 @@ class BlockEditorWidget(QWidget):
         v = QVBoxLayout(w)
         v.setContentsMargins(4, 4, 4, 4)
 
-        self._boundary_table = QTableWidget(0, 5)
+        self._boundary_table = QTableWidget(0, 6)
         self._boundary_table.setHorizontalHeaderLabels([
-            "Name", "Ambient (C)", "h_conv (W/m2K)", "Radiation", "Emissivity",
+            "Name", "Ambient (C)", "h_conv (W/m2K)", "Radiation", "Emissivity", "Faces",
         ])
         hdrs = self._boundary_table.horizontalHeader()
         hdrs.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for c in range(1, 5):
+        for c in range(1, 6):
             hdrs.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
 
         _col_tips = [
@@ -165,6 +165,7 @@ class BlockEditorWidget(QWidget):
             "Convection coefficient (W/m²·K)",
             "Include linearised radiation?",
             "Surface emissivity (0–1, used if radiation is enabled)",
+            "Faces to apply this group to: 'all', or comma-separated subset of top,bottom,front,back,left,right",
         ]
         for col, tip in enumerate(_col_tips):
             item = self._boundary_table.horizontalHeaderItem(col)
@@ -338,7 +339,10 @@ class BlockEditorWidget(QWidget):
         h_conv: float = 8.0,
         radiation: bool = True,
         emissivity: float = 0.9,
+        faces: list[str] | None = None,
     ) -> None:
+        if faces is None:
+            faces = ["all"]
         row = self._boundary_table.rowCount()
         self._boundary_table.blockSignals(True)
         self._boundary_table.insertRow(row)
@@ -352,6 +356,8 @@ class BlockEditorWidget(QWidget):
         self._boundary_table.setCellWidget(row, 3, chk)
 
         self._boundary_table.setItem(row, 4, _float_item(emissivity))
+        faces_str = ",".join(faces) if faces else "all"
+        self._boundary_table.setItem(row, 5, QTableWidgetItem(faces_str))
         self._boundary_table.blockSignals(False)
         self.project_changed.emit()
 
@@ -576,6 +582,7 @@ class BlockEditorWidget(QWidget):
                 h_conv=bg.boundary.convection_h,
                 radiation=bg.boundary.include_radiation,
                 emissivity=(bg.boundary.emissivity_override or 0.9),
+                faces=list(bg.faces),
             )
         if self._boundary_table.rowCount() == 0:
             self._add_boundary_row()
@@ -701,6 +708,12 @@ class BlockEditorWidget(QWidget):
             emissivity = _cell(row, 4, 0.9)
             emissivity = max(0.0, min(1.0, emissivity))
 
+            faces_item = self._boundary_table.item(row, 5)
+            if faces_item is not None and faces_item.text().strip():
+                faces = [f.strip() for f in faces_item.text().strip().split(",") if f.strip()]
+            else:
+                faces = ["all"]
+
             bg = BoundaryGroup(
                 name=name,
                 boundary=SurfaceBoundary(
@@ -709,6 +722,7 @@ class BlockEditorWidget(QWidget):
                     include_radiation=radiation,
                     emissivity_override=emissivity,
                 ),
+                faces=faces,
             )
             groups.append(bg)
         return groups

@@ -207,80 +207,105 @@ def build_voxel_network(project: VoxelProject) -> VoxelThermalNetwork:
     # ------------------------------------------------------------------
     # Step 4: boundary conditions on exposed faces
     # ------------------------------------------------------------------
-    # An exposed face is a grid-boundary face (ix=0, ix=nx-1, etc.).
-    # All exposed faces are assigned to the first boundary group.
-    # Future: named face -> group assignment.
+    # Each BoundaryGroup.faces list controls which grid-boundary faces that
+    # group applies to.  The first matching group (in project.boundary_groups
+    # order) is used for each face.  "all" matches every face.
+    # Backward compat: a single group with faces=["all"] behaves identically
+    # to the original single-group-for-all-faces behaviour.
+
+    def _apply_face_bc_for_group(
+        bc_group,
+        iz_arr: np.ndarray,
+        iy_arr: np.ndarray,
+        ix_arr: np.ndarray,
+        face_areas: np.ndarray,
+    ) -> None:
+        """Apply one boundary group's BC to the given face voxels."""
+        bc = bc_group.boundary
+        amb_k = bc.ambient_c + 273.15
+        iz_a = iz_arr.ravel()
+        iy_a = iy_arr.ravel()
+        ix_a = ix_arr.ravel()
+        fa = face_areas.ravel()
+
+        G_conv = bc.convection_h * fa
+        if bc.include_radiation:
+            eps_arr = emissivity[iz_a, iy_a, ix_a]
+            if bc.emissivity_override is not None:
+                eps_arr = np.full_like(eps_arr, bc.emissivity_override)
+            h_rad_cell = 4.0 * eps_arr * STEFAN_BOLTZMANN * amb_k ** 3
+            G_surf = G_conv + h_rad_cell * fa
+        else:
+            G_surf = G_conv
+
+        nodes = _node_flat(iz_a, iy_a, ix_a)
+        mask = G_surf > 0.0
+        if not mask.any():
+            return
+        coo_rows.append(nodes[mask])
+        coo_cols.append(nodes[mask])
+        coo_data.append(G_surf[mask])
+        b_boundary[nodes[mask]] += G_surf[mask] * bc.ambient_c
+
+    def _face_matches_group(face_name: str, group) -> bool:
+        """Return True if this group handles the named face."""
+        return "all" in group.faces or face_name in group.faces
+
+    def _find_group_for_face(face_name: str):
+        """Return the first boundary group that covers this face, or None."""
+        for bg in project.boundary_groups:
+            if _face_matches_group(face_name, bg):
+                return bg
+        return None
 
     if project.boundary_groups:
-        bc = project.boundary_groups[0].boundary
-        amb_k = bc.ambient_c + 273.15
-        h_conv = bc.convection_h
-        h_rad = 0.0
-        if bc.include_radiation:
-            # Compute averaged emissivity over grid for radiation
-            h_rad_arr = 4.0 * emissivity * STEFAN_BOLTZMANN * amb_k ** 3  # per-cell
-
-        def _apply_face_bc(iz_arr, iy_arr, ix_arr, face_areas):
-            """Apply BC to given face voxels with corresponding face areas."""
-            iz_a = iz_arr.ravel()
-            iy_a = iy_arr.ravel()
-            ix_a = ix_arr.ravel()
-            fa = face_areas.ravel()
-
-            G_conv = h_conv * fa
-            if bc.include_radiation:
-                eps_arr = emissivity[iz_a, iy_a, ix_a]
-                if bc.emissivity_override is not None:
-                    eps_arr = np.full_like(eps_arr, bc.emissivity_override)
-                h_rad_cell = 4.0 * eps_arr * STEFAN_BOLTZMANN * amb_k ** 3
-                G_surf = (G_conv + h_rad_cell * fa)
-            else:
-                G_surf = G_conv
-
-            nodes = _node_flat(iz_a, iy_a, ix_a)
-            mask = G_surf > 0.0
-            if not mask.any():
-                return
-            coo_rows.append(nodes[mask])
-            coo_cols.append(nodes[mask])
-            coo_data.append(G_surf[mask])
-            b_boundary[nodes[mask]] += G_surf[mask] * bc.ambient_c
-
         # Bottom face: iz = 0
-        iz_bot = np.zeros((ny, nx), dtype=int)
-        iy_bot, ix_bot = np.meshgrid(np.arange(ny), np.arange(nx), indexing='ij')
-        fa_bot = np.outer(dy, dx)  # (ny, nx): dy[iy]*dx[ix]
-        _apply_face_bc(iz_bot, iy_bot, ix_bot, fa_bot)
+        bg = _find_group_for_face("bottom")
+        if bg is not None:
+            iz_bot = np.zeros((ny, nx), dtype=int)
+            iy_bot, ix_bot = np.meshgrid(np.arange(ny), np.arange(nx), indexing='ij')
+            fa_bot = np.outer(dy, dx)  # (ny, nx): dy[iy]*dx[ix]
+            _apply_face_bc_for_group(bg, iz_bot, iy_bot, ix_bot, fa_bot)
 
         # Top face: iz = nz-1
-        iz_top = np.full((ny, nx), nz - 1, dtype=int)
-        iy_top, ix_top = np.meshgrid(np.arange(ny), np.arange(nx), indexing='ij')
-        fa_top = np.outer(dy, dx)
-        _apply_face_bc(iz_top, iy_top, ix_top, fa_top)
+        bg = _find_group_for_face("top")
+        if bg is not None:
+            iz_top = np.full((ny, nx), nz - 1, dtype=int)
+            iy_top, ix_top = np.meshgrid(np.arange(ny), np.arange(nx), indexing='ij')
+            fa_top = np.outer(dy, dx)
+            _apply_face_bc_for_group(bg, iz_top, iy_top, ix_top, fa_top)
 
         # Front face: iy = 0
-        iz_front, ix_front = np.meshgrid(np.arange(nz), np.arange(nx), indexing='ij')
-        iy_front = np.zeros((nz, nx), dtype=int)
-        fa_front = np.outer(dz, dx)  # (nz, nx): dz[iz]*dx[ix]
-        _apply_face_bc(iz_front, iy_front, ix_front, fa_front)
+        bg = _find_group_for_face("front")
+        if bg is not None:
+            iz_front, ix_front = np.meshgrid(np.arange(nz), np.arange(nx), indexing='ij')
+            iy_front = np.zeros((nz, nx), dtype=int)
+            fa_front = np.outer(dz, dx)  # (nz, nx): dz[iz]*dx[ix]
+            _apply_face_bc_for_group(bg, iz_front, iy_front, ix_front, fa_front)
 
         # Back face: iy = ny-1
-        iz_back, ix_back = np.meshgrid(np.arange(nz), np.arange(nx), indexing='ij')
-        iy_back = np.full((nz, nx), ny - 1, dtype=int)
-        fa_back = np.outer(dz, dx)
-        _apply_face_bc(iz_back, iy_back, ix_back, fa_back)
+        bg = _find_group_for_face("back")
+        if bg is not None:
+            iz_back, ix_back = np.meshgrid(np.arange(nz), np.arange(nx), indexing='ij')
+            iy_back = np.full((nz, nx), ny - 1, dtype=int)
+            fa_back = np.outer(dz, dx)
+            _apply_face_bc_for_group(bg, iz_back, iy_back, ix_back, fa_back)
 
         # Left face: ix = 0
-        iz_left, iy_left = np.meshgrid(np.arange(nz), np.arange(ny), indexing='ij')
-        ix_left = np.zeros((nz, ny), dtype=int)
-        fa_left = np.outer(dz, dy)  # (nz, ny): dz[iz]*dy[iy]
-        _apply_face_bc(iz_left, iy_left, ix_left, fa_left)
+        bg = _find_group_for_face("left")
+        if bg is not None:
+            iz_left, iy_left = np.meshgrid(np.arange(nz), np.arange(ny), indexing='ij')
+            ix_left = np.zeros((nz, ny), dtype=int)
+            fa_left = np.outer(dz, dy)  # (nz, ny): dz[iz]*dy[iy]
+            _apply_face_bc_for_group(bg, iz_left, iy_left, ix_left, fa_left)
 
         # Right face: ix = nx-1
-        iz_right, iy_right = np.meshgrid(np.arange(nz), np.arange(ny), indexing='ij')
-        ix_right = np.full((nz, ny), nx - 1, dtype=int)
-        fa_right = np.outer(dz, dy)
-        _apply_face_bc(iz_right, iy_right, ix_right, fa_right)
+        bg = _find_group_for_face("right")
+        if bg is not None:
+            iz_right, iy_right = np.meshgrid(np.arange(nz), np.arange(ny), indexing='ij')
+            ix_right = np.full((nz, ny), nx - 1, dtype=int)
+            fa_right = np.outer(dz, dy)
+            _apply_face_bc_for_group(bg, iz_right, iy_right, ix_right, fa_right)
 
     # ------------------------------------------------------------------
     # Step 5: heat source vector
