@@ -125,9 +125,14 @@ Progress: [██████████] 100%
 - [Phase 11-voxel-3d-solver]: validate_blocks reads via self._read_blocks() with no mesh/solver — pure AABB geometry; returns list[str] for caller to present
 - [Phase 11-voxel-3d-solver]: BoundaryGroup.faces defaults to ['all'] for backward compat; first-match semantics in face selection; _face_matches_group nested in build_voxel_network
 
+- [ad-hoc 2026-03-16]: Material library overhaul — renamed generic names to specific variants (Glass→Cover Glass/LCD Glass, Aluminum→3 emissivity variants, Thermal Pad→3 tiers, Graphite Sheet→2 tiers, etc.); updated OCA/Silicone Rubber values; added Polarizer, film stacks, 3 PCB effective variants, TIM Grease; total 28 builtin materials
+- [ad-hoc 2026-03-16]: Interface resistance presets — new interface_presets.json resource with 3 contact types (well-bonded adhesive, typical pad, poor dry contact); right-click context menu on layers table column 3
+- [ad-hoc 2026-03-16]: UI color mapping uses substring matching — _FIXED_COLORS lookup changed from exact match to substring containment so renamed materials (e.g. "FR4 Core" matches "FR4") still get correct colors
+
 ### Roadmap Evolution
 
 - Phase 11 added: Voxel-Based 3D Solver — per-cell 3D material grid replacing 2.5D RC-network
+- Phase 12 added: Parametric Display Stack Generator — toolbar wizard for DLED/ELED block generation + adaptive mesh
 
 ### Pending Todos
 
@@ -141,5 +146,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 11-06-PLAN.md — fixed block editor AttributeError, CLI transient plot bug, and added independent boundary face grouping
-Resume file: .planning/phases/11-voxel-3d-solver/11-06-SUMMARY.md
+Stopped at: Updated builtin material library (28 materials), added interface resistance presets with GUI right-click picker on layers table
+Next recommended: Test GUI launch to verify material rename propagation and interface preset context menu work end-to-end

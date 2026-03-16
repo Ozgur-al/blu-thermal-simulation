@@ -190,3 +190,13 @@ Plans:
 - [x] 11-05-PLAN.md — Integration verification + human verification checkpoint
 - [ ] 11-06-PLAN.md — Gap closure: bug fixes (block editor, CLI) + independent boundary face grouping
 - [ ] 11-07-PLAN.md — Gap closure: powered block contact diagnostic + block geometry validation warnings
+
+### Phase 12: Parametric Display Stack Generator
+
+**Goal**: Toolbar wizard that generates all AssemblyBlocks and boundary conditions from high-level parameters. User picks DLED/ELED architecture, sets LED edge/count/dimensions, PCB/metal/optical film thicknesses, and the generator creates the full block stack. Also includes adaptive mesh refinement (max_cell_size) to fix coarse mesh on large blocks.
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 12 to break down)
