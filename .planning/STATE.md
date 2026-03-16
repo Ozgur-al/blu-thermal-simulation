@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Full 3D Solver
 status: in-progress
-last_updated: "2026-03-16T14:39:57Z"
+last_updated: "2026-03-16T14:52:00Z"
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 41
-  completed_plans: 37
+  completed_plans: 39
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-16)
 ## Current Position
 
 Phase: 11 of 11 (Voxel-Based 3D Solver) — in progress
-Plan: 1 of 5 (11-01 complete)
+Plan: 3 of 5 (11-02 complete)
 Status: in-progress
-Last activity: 2026-03-16 — 11-01: voxel data models + conformal mesh + voxel assignment; 287 tests pass
+Last activity: 2026-03-16 — 11-02: voxel network builder + steady-state/transient solvers + 20 analytical validation tests
 
-Progress: [█████████▌] 91%
+Progress: [█████████▊] 93%
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Progress: [█████████▌] 91%
 *Updated after each plan completion*
 
 | Phase 11-voxel-3d-solver | 1 | 4 min | 4 min |
+| Phase 11-voxel-3d-solver P02 | 1 | 6 min | 6 min |
 
 ## Accumulated Context
 
@@ -94,6 +95,8 @@ Progress: [█████████▌] 91%
 - [Phase 10-edge-layers-and-3d-preview]: 2.5D model fundamentally cannot represent edge structures with independent z-thickness — edge zones inherit parent layer thickness, causing unrealistic thermal resistance for thin PCBs on thick LGPs
 - [Phase 11-voxel-3d-solver]: C-order node indexing (iz*ny*nx+iy*nx+ix) kept separate from PyVista visualization — VTK callers will ravel with order='F'
 - [Phase 11-voxel-3d-solver]: Cell-centre containment uses inclusive-lower/exclusive-upper bounds: cx >= block.x and cx < block.x + block.width
+- [Phase 11-voxel-3d-solver]: Single BoundaryGroup applies to all 6 exposed grid-boundary faces; 1D chain test corrected to include all 6-face conductances in hand calculation
+- [Phase 11-voxel-3d-solver]: VoxelThermalNetwork stores b_vector as combined BC+source term — no split needed for voxel solver
 
 ### Roadmap Evolution
 
@@ -111,5 +114,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-16
-Stopped at: Completed 11-01-PLAN.md (voxel data models + conformal mesh + voxel assignment)
-Resume file: .planning/phases/11-voxel-3d-solver/11-01-SUMMARY.md
+Stopped at: Completed 11-02-PLAN.md (voxel network builder + solvers + analytical validation tests)
+Resume file: .planning/phases/11-voxel-3d-solver/11-02-SUMMARY.md
