@@ -254,6 +254,13 @@ def build_thermal_network(project: DisplayProject) -> ThermalNetwork:
     # Each entry: (k_in_plane_map, k_through_map, density_cp_map) shape (ny, nx)
     zone_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     for l_idx, layer in enumerate(project.layers):
+        if getattr(layer, "edge_layers", {}):
+            import dataclasses as _dc
+            from thermal_sim.models.stack_templates import generate_edge_zones
+            edge_zones = generate_edge_zones(layer, project.width, project.height)
+            # Edge zones are prepended; manual zones appended last so they win on overlap.
+            effective_zones = edge_zones + list(layer.zones)
+            layer = _dc.replace(layer, zones=effective_zones)
         maps = _rasterize_zones(layer, project.materials, grid)
         zone_maps.append(maps)
 

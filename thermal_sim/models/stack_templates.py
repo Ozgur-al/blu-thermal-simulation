@@ -9,7 +9,7 @@ from __future__ import annotations
 from thermal_sim.core.material_library import load_builtin_library
 from thermal_sim.models.boundary import BoundaryConditions, SurfaceBoundary
 from thermal_sim.models.heat_source import LEDArray
-from thermal_sim.models.layer import Layer
+from thermal_sim.models.layer import EdgeLayer, Layer
 
 
 def dled_template(
@@ -292,6 +292,122 @@ def generate_eled_zones(
                     width=cross_dim, height=w,
                 ))
         pos += w
+    return zones
+
+
+def generate_edge_zones(
+    layer: "Layer",
+    panel_width: float,
+    panel_height: float,
+) -> list:
+    """Convert a layer's edge_layers dict to MaterialZone rectangles.
+
+    Physical layout:
+    - Bottom/top zones span the full panel width (include corners).
+    - Left/right zones span only the interior height
+      (panel_height - bottom_total - top_total).
+
+    Parameters
+    ----------
+    layer:
+        Layer whose ``edge_layers`` dict defines edge materials.
+    panel_width:
+        Full panel width in metres (SI).
+    panel_height:
+        Full panel height in metres (SI).
+
+    Returns
+    -------
+    list[MaterialZone]
+        Zones ordered bottom → top → left → right.
+        Empty list when ``layer.edge_layers`` is empty or has no entries.
+
+    Raises
+    ------
+    ValueError
+        When left+right total thickness >= panel_width or
+        bottom+top total thickness >= panel_height.
+    """
+    from thermal_sim.models.material_zone import MaterialZone
+
+    if not layer.edge_layers:
+        return []
+
+    bottom_list = layer.edge_layers.get("bottom", [])
+    top_list    = layer.edge_layers.get("top",    [])
+    left_list   = layer.edge_layers.get("left",   [])
+    right_list  = layer.edge_layers.get("right",  [])
+
+    bottom_total = sum(el.thickness for el in bottom_list)
+    top_total    = sum(el.thickness for el in top_list)
+    left_total   = sum(el.thickness for el in left_list)
+    right_total  = sum(el.thickness for el in right_list)
+
+    if left_total + right_total >= panel_width:
+        raise ValueError(
+            f"Edge layer left+right total thickness ({left_total + right_total:.6f} m) "
+            f"must be less than panel_width ({panel_width:.6f} m)."
+        )
+    if bottom_total + top_total >= panel_height:
+        raise ValueError(
+            f"Edge layer bottom+top total thickness ({bottom_total + top_total:.6f} m) "
+            f"must be less than panel_height ({panel_height:.6f} m)."
+        )
+
+    zones: list = []
+
+    # Bottom zones: full-width strips stacked from y=0 upward.
+    y = 0.0
+    for el in bottom_list:
+        zones.append(MaterialZone(
+            material=el.material,
+            x=panel_width / 2.0,
+            y=y + el.thickness / 2.0,
+            width=panel_width,
+            height=el.thickness,
+        ))
+        y += el.thickness
+
+    # Top zones: full-width strips stacked from y=panel_height downward.
+    y = panel_height
+    for el in top_list:
+        zones.append(MaterialZone(
+            material=el.material,
+            x=panel_width / 2.0,
+            y=y - el.thickness / 2.0,
+            width=panel_width,
+            height=el.thickness,
+        ))
+        y -= el.thickness
+
+    # Interior height for left/right zones (excludes corners covered by bottom/top).
+    interior_height = panel_height - bottom_total - top_total
+    interior_y_center = bottom_total + interior_height / 2.0
+
+    # Left zones: interior-height strips from x=0 rightward.
+    x = 0.0
+    for el in left_list:
+        zones.append(MaterialZone(
+            material=el.material,
+            x=x + el.thickness / 2.0,
+            y=interior_y_center,
+            width=el.thickness,
+            height=interior_height,
+        ))
+        x += el.thickness
+
+    # Right zones: interior-height strips from x=panel_width leftward.
+    x = panel_width
+    for el in right_list:
+        zones.append(MaterialZone(
+            material=el.material,
+            x=x - el.thickness / 2.0,
+            y=interior_y_center,
+            width=el.thickness,
+            height=interior_height,
+        ))
+        x -= el.thickness
+
     return zones
 
 
