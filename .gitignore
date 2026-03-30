@@ -8,3 +8,5 @@ build/
 *.zip
 *.spec.bak
 build_cert.pfx
+.claude/
+crash.log

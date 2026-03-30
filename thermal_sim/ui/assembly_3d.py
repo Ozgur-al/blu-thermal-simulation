@@ -50,8 +50,14 @@ def _material_color_map(material_names: list[str]) -> dict[str, tuple[float, flo
     result: dict[str, tuple[float, float, float]] = {}
     tab20_index = 0
     for name in material_names:
-        if name in _FIXED_COLORS:
-            result[name] = _FIXED_COLORS[name]
+        matched = _FIXED_COLORS.get(name)
+        if matched is None:
+            for key, color in _FIXED_COLORS.items():
+                if key in name:
+                    matched = color
+                    break
+        if matched is not None:
+            result[name] = matched
         else:
             if cmap is not None:
                 rgba = cmap(tab20_index % 20)

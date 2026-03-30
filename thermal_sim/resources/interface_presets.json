@@ -1,0 +1,23 @@
+{
+  "Well-bonded adhesive": {
+    "description": "OCA, structural adhesive, well-cured epoxy bond",
+    "typical": 0.0001,
+    "range_low": 0.00005,
+    "range_high": 0.0002,
+    "unit": "m²·K/W"
+  },
+  "Typical pad contact": {
+    "description": "Thermal pad with decent compression, greased bolted joint",
+    "typical": 0.0005,
+    "range_low": 0.0002,
+    "range_high": 0.001,
+    "unit": "m²·K/W"
+  },
+  "Poor dry contact": {
+    "description": "Ungreased metal-to-metal, loose mechanical contact",
+    "typical": 0.005,
+    "range_low": 0.001,
+    "range_high": 0.01,
+    "unit": "m²·K/W"
+  }
+}

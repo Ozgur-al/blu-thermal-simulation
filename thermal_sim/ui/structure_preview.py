@@ -42,8 +42,14 @@ def _material_color_map(names: list[str]) -> dict[str, tuple]:
     result: dict[str, tuple] = {}
     tab_idx = 0
     for name in names:
-        if name in _FIXED_COLORS:
-            result[name] = _FIXED_COLORS[name]
+        matched = _FIXED_COLORS.get(name)
+        if matched is None:
+            for key, color in _FIXED_COLORS.items():
+                if key in name:
+                    matched = color
+                    break
+        if matched is not None:
+            result[name] = matched
         elif name not in result:
             result[name] = cmap(tab_idx % 20)
             tab_idx += 1

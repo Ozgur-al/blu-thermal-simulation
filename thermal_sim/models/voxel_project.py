@@ -66,13 +66,20 @@ class VoxelMeshConfig:
     """Mesh generation parameters."""
 
     cells_per_interval: int = 1  # subdivision count per conformal interval
+    max_cell_size: float | None = None  # metres; subdivide intervals exceeding this
 
     def to_dict(self) -> dict:
-        return {"cells_per_interval": self.cells_per_interval}
+        d: dict = {"cells_per_interval": self.cells_per_interval}
+        if self.max_cell_size is not None:
+            d["max_cell_size"] = self.max_cell_size
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "VoxelMeshConfig":
-        return cls(cells_per_interval=int(data.get("cells_per_interval", 1)))
+        return cls(
+            cells_per_interval=int(data.get("cells_per_interval", 1)),
+            max_cell_size=data.get("max_cell_size"),
+        )
 
 
 @dataclass

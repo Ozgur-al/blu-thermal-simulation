@@ -59,7 +59,7 @@ def build_voxel_network(project: VoxelProject) -> VoxelThermalNetwork:
     # ------------------------------------------------------------------
     # Step 1: mesh + material assignment
     # ------------------------------------------------------------------
-    mesh = build_conformal_mesh(project.blocks, project.mesh_config.cells_per_interval)
+    mesh = build_conformal_mesh(project.blocks, project.mesh_config.cells_per_interval, project.mesh_config.max_cell_size)
     material_grid = assign_voxel_materials(mesh, project.blocks)  # (nz, ny, nx)
 
     nx, ny, nz = mesh.nx, mesh.ny, mesh.nz
@@ -369,7 +369,7 @@ def diagnose_powered_block_contacts(
     Only reports contacts with non-air materials, plus a single aggregate "air" entry
     if any air contact exists.
     """
-    mesh = build_conformal_mesh(project.blocks, project.mesh_config.cells_per_interval)
+    mesh = build_conformal_mesh(project.blocks, project.mesh_config.cells_per_interval, project.mesh_config.max_cell_size)
     material_grid = assign_voxel_materials(mesh, project.blocks)  # (nz, ny, nx)
 
     nx, ny, nz = mesh.nx, mesh.ny, mesh.nz

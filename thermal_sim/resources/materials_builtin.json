@@ -1,6 +1,14 @@
 {
-  "Glass": {
-    "name": "Glass",
+  "Cover Glass": {
+    "name": "Cover Glass",
+    "k_in_plane": 1.05,
+    "k_through": 1.05,
+    "density": 2500.0,
+    "specific_heat": 840.0,
+    "emissivity": 0.92
+  },
+  "LCD Glass": {
+    "name": "LCD Glass",
     "k_in_plane": 1.05,
     "k_through": 1.05,
     "density": 2500.0,
@@ -9,14 +17,22 @@
   },
   "OCA": {
     "name": "OCA",
-    "k_in_plane": 0.25,
-    "k_through": 0.25,
+    "k_in_plane": 0.22,
+    "k_through": 0.22,
     "density": 980.0,
-    "specific_heat": 1800.0,
+    "specific_heat": 1500.0,
     "emissivity": 0.95
   },
-  "PMMA": {
-    "name": "PMMA",
+  "Polarizer": {
+    "name": "Polarizer",
+    "k_in_plane": 0.20,
+    "k_through": 0.20,
+    "density": 1200.0,
+    "specific_heat": 1400.0,
+    "emissivity": 0.95
+  },
+  "PMMA / LGP": {
+    "name": "PMMA / LGP",
     "k_in_plane": 0.20,
     "k_through": 0.20,
     "density": 1180.0,
@@ -31,28 +47,60 @@
     "specific_heat": 1250.0,
     "emissivity": 0.94
   },
-  "Aluminum": {
-    "name": "Aluminum",
-    "k_in_plane": 205.0,
-    "k_through": 205.0,
-    "density": 2700.0,
-    "specific_heat": 897.0,
-    "emissivity": 0.10
+  "Reflector Film / PET-like Film": {
+    "name": "Reflector Film / PET-like Film",
+    "k_in_plane": 0.15,
+    "k_through": 0.15,
+    "density": 1350.0,
+    "specific_heat": 1200.0,
+    "emissivity": 0.90
   },
-  "Steel": {
-    "name": "Steel",
-    "k_in_plane": 16.0,
-    "k_through": 16.0,
-    "density": 7850.0,
-    "specific_heat": 490.0,
-    "emissivity": 0.60
+  "Diffuser / Prism Film Stack (effective)": {
+    "name": "Diffuser / Prism Film Stack (effective)",
+    "k_in_plane": 0.16,
+    "k_through": 0.16,
+    "density": 1300.0,
+    "specific_heat": 1250.0,
+    "emissivity": 0.90
   },
-  "FR4": {
-    "name": "FR4",
+  "Polyimide / FPC Base": {
+    "name": "Polyimide / FPC Base",
+    "k_in_plane": 0.12,
+    "k_through": 0.12,
+    "density": 1420.0,
+    "specific_heat": 1090.0,
+    "emissivity": 0.95
+  },
+  "FR4 Core": {
+    "name": "FR4 Core",
     "k_in_plane": 0.35,
     "k_through": 0.30,
     "density": 1900.0,
     "specific_heat": 1100.0,
+    "emissivity": 0.90
+  },
+  "PCB Effective, low copper": {
+    "name": "PCB Effective, low copper",
+    "k_in_plane": 1.5,
+    "k_through": 0.35,
+    "density": 2200.0,
+    "specific_heat": 1000.0,
+    "emissivity": 0.90
+  },
+  "PCB Effective, medium copper": {
+    "name": "PCB Effective, medium copper",
+    "k_in_plane": 4.0,
+    "k_through": 0.40,
+    "density": 2500.0,
+    "specific_heat": 950.0,
+    "emissivity": 0.90
+  },
+  "PCB Effective, heavy copper / power board": {
+    "name": "PCB Effective, heavy copper / power board",
+    "k_in_plane": 8.0,
+    "k_through": 0.50,
+    "density": 2800.0,
+    "specific_heat": 900.0,
     "emissivity": 0.90
   },
   "Copper": {
@@ -63,21 +111,93 @@
     "specific_heat": 385.0,
     "emissivity": 0.20
   },
-  "Thermal Pad": {
-    "name": "Thermal Pad",
+  "Aluminum, bare/shiny": {
+    "name": "Aluminum, bare/shiny",
+    "k_in_plane": 205.0,
+    "k_through": 205.0,
+    "density": 2700.0,
+    "specific_heat": 897.0,
+    "emissivity": 0.10
+  },
+  "Aluminum, oxidized / rough": {
+    "name": "Aluminum, oxidized / rough",
+    "k_in_plane": 205.0,
+    "k_through": 205.0,
+    "density": 2700.0,
+    "specific_heat": 897.0,
+    "emissivity": 0.30
+  },
+  "Aluminum, black coated / painted": {
+    "name": "Aluminum, black coated / painted",
+    "k_in_plane": 205.0,
+    "k_through": 205.0,
+    "density": 2700.0,
+    "specific_heat": 897.0,
+    "emissivity": 0.85
+  },
+  "Steel": {
+    "name": "Steel",
+    "k_in_plane": 16.0,
+    "k_through": 16.0,
+    "density": 7850.0,
+    "specific_heat": 490.0,
+    "emissivity": 0.60
+  },
+  "Thermal Pad, soft standard": {
+    "name": "Thermal Pad, soft standard",
+    "k_in_plane": 1.5,
+    "k_through": 1.5,
+    "density": 2000.0,
+    "specific_heat": 1200.0,
+    "emissivity": 0.90
+  },
+  "Thermal Pad, good": {
+    "name": "Thermal Pad, good",
     "k_in_plane": 3.0,
     "k_through": 3.0,
     "density": 2200.0,
     "specific_heat": 1200.0,
     "emissivity": 0.90
   },
-  "Graphite Sheet": {
-    "name": "Graphite Sheet",
+  "Thermal Pad, high performance": {
+    "name": "Thermal Pad, high performance",
+    "k_in_plane": 6.0,
+    "k_through": 6.0,
+    "density": 2500.0,
+    "specific_heat": 1100.0,
+    "emissivity": 0.90
+  },
+  "Silicone Rubber": {
+    "name": "Silicone Rubber",
+    "k_in_plane": 0.20,
+    "k_through": 0.20,
+    "density": 1200.0,
+    "specific_heat": 1400.0,
+    "emissivity": 0.90
+  },
+  "Graphite Sheet, in-plane high": {
+    "name": "Graphite Sheet, in-plane high",
     "k_in_plane": 400.0,
-    "k_through": 5.0,
+    "k_through": 8.0,
     "density": 1800.0,
-    "specific_heat": 710.0,
+    "specific_heat": 700.0,
     "emissivity": 0.80
+  },
+  "Graphite Sheet, in-plane very high": {
+    "name": "Graphite Sheet, in-plane very high",
+    "k_in_plane": 800.0,
+    "k_through": 10.0,
+    "density": 1900.0,
+    "specific_heat": 700.0,
+    "emissivity": 0.80
+  },
+  "TIM Grease / Paste": {
+    "name": "TIM Grease / Paste",
+    "k_in_plane": 3.0,
+    "k_through": 3.0,
+    "density": 2500.0,
+    "specific_heat": 1000.0,
+    "emissivity": 0.90
   },
   "Solder (SnAgCu)": {
     "name": "Solder (SnAgCu)",
@@ -93,22 +213,6 @@
     "k_through": 0.40,
     "density": 1950.0,
     "specific_heat": 1050.0,
-    "emissivity": 0.90
-  },
-  "Polyimide": {
-    "name": "Polyimide",
-    "k_in_plane": 0.12,
-    "k_through": 0.12,
-    "density": 1420.0,
-    "specific_heat": 1090.0,
-    "emissivity": 0.95
-  },
-  "Silicone Rubber": {
-    "name": "Silicone Rubber",
-    "k_in_plane": 0.25,
-    "k_through": 0.25,
-    "density": 1200.0,
-    "specific_heat": 1400.0,
     "emissivity": 0.90
   },
   "Air Gap": {

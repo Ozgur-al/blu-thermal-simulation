@@ -243,6 +243,20 @@ class BlockEditorWidget(QWidget):
         self._cells_per_interval_spin.valueChanged.connect(self.project_changed)
         form.addRow("Cells per interval:", self._cells_per_interval_spin)
 
+        self._max_cell_size_spin = QDoubleSpinBox()
+        self._max_cell_size_spin.setRange(0.0, 1000.0)
+        self._max_cell_size_spin.setDecimals(1)
+        self._max_cell_size_spin.setSingleStep(1.0)
+        self._max_cell_size_spin.setSpecialValueText("Off")
+        self._max_cell_size_spin.setValue(0.0)
+        self._max_cell_size_spin.setSuffix(" mm")
+        self._max_cell_size_spin.setToolTip(
+            "Maximum cell size in any direction. Large conformal intervals "
+            "are subdivided until each cell is within this limit. 0 = no limit."
+        )
+        self._max_cell_size_spin.valueChanged.connect(self.project_changed)
+        form.addRow("Max cell size:", self._max_cell_size_spin)
+
         transient_group = QGroupBox("Transient Config")
         tform = QFormLayout(transient_group)
 
@@ -428,8 +442,10 @@ class BlockEditorWidget(QWidget):
         blocks = self._read_blocks()
         boundary_groups = self._read_boundaries()
         probes = self._read_probes()
+        max_cell_mm = self._max_cell_size_spin.value()
         mesh_config = VoxelMeshConfig(
-            cells_per_interval=self._cells_per_interval_spin.value()
+            cells_per_interval=self._cells_per_interval_spin.value(),
+            max_cell_size=(max_cell_mm / 1000.0) if max_cell_mm > 0 else None,
         )
 
         transient_config: VoxelTransientConfig | None = None
@@ -597,6 +613,8 @@ class BlockEditorWidget(QWidget):
 
         # Mesh config
         self._cells_per_interval_spin.setValue(project.mesh_config.cells_per_interval)
+        mcs = project.mesh_config.max_cell_size
+        self._max_cell_size_spin.setValue((mcs * 1000.0) if mcs is not None else 0.0)
 
         # Transient config
         if project.transient_config is not None:

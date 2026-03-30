@@ -29,7 +29,7 @@ def test_load_builtin_library_returns_dict_of_materials():
 
 def test_load_builtin_library_contains_expected_materials():
     lib = load_builtin_library()
-    for name in ("Copper", "Aluminum", "Glass", "FR4"):
+    for name in ("Copper", "Aluminum, bare/shiny", "Cover Glass", "FR4 Core"):
         assert name in lib, f"{name!r} missing from built-in library"
 
 
@@ -52,8 +52,8 @@ def test_load_builtin_library_round_trip():
 # ---------------------------------------------------------------------------
 
 ORIGINAL_NAMES = {
-    "Glass", "OCA", "PMMA", "PC", "Aluminum", "Steel",
-    "FR4", "Copper", "Thermal Pad", "Graphite Sheet",
+    "Cover Glass", "OCA", "PMMA / LGP", "PC", "Aluminum, bare/shiny", "Steel",
+    "FR4 Core", "Copper", "Thermal Pad, good", "Graphite Sheet, in-plane high",
 }
 
 

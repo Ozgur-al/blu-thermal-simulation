@@ -123,15 +123,36 @@ def _subdivide(edges: np.ndarray, cells_per_interval: int) -> np.ndarray:
     return np.array(result, dtype=np.float64)
 
 
+def _subdivide_by_max_size(edges: np.ndarray, max_size: float) -> np.ndarray:
+    """Subdivide any interval larger than *max_size* into equal parts."""
+    import math
+
+    result: list[float] = [float(edges[0])]
+    for i in range(len(edges) - 1):
+        lo = float(edges[i])
+        hi = float(edges[i + 1])
+        span = hi - lo
+        if span > max_size:
+            n = math.ceil(span / max_size)
+            for j in range(1, n + 1):
+                result.append(lo + j * span / n)
+        else:
+            result.append(hi)
+    return np.array(result, dtype=np.float64)
+
+
 def build_conformal_mesh(
     blocks: list[AssemblyBlock],
     cells_per_interval: int = 1,
+    max_cell_size: float | None = None,
 ) -> ConformalMesh3D:
     """Build a ConformalMesh3D from a list of AssemblyBlocks.
 
     Collects all block boundary coordinates in x, y, and z, sorts and
     deduplicates them (within floating-point tolerance), and optionally
-    subdivides each interval by ``cells_per_interval``.
+    subdivides each interval by ``cells_per_interval``.  If *max_cell_size*
+    is given (metres), any interval still larger than the limit is further
+    subdivided into equal parts.
     """
     x_coords: list[float] = []
     y_coords: list[float] = []
@@ -150,5 +171,10 @@ def build_conformal_mesh(
         x_edges = _subdivide(x_edges, cells_per_interval)
         y_edges = _subdivide(y_edges, cells_per_interval)
         z_edges = _subdivide(z_edges, cells_per_interval)
+
+    if max_cell_size is not None and max_cell_size > 0:
+        x_edges = _subdivide_by_max_size(x_edges, max_cell_size)
+        y_edges = _subdivide_by_max_size(y_edges, max_cell_size)
+        z_edges = _subdivide_by_max_size(z_edges, max_cell_size)
 
     return ConformalMesh3D(x_edges=x_edges, y_edges=y_edges, z_edges=z_edges)
